@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Profile &amp; preferences · WellNest Scribe{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="page-title-box">
+            <h4 class="mb-1 fw-semibold">Profile &amp; preferences</h4>
+            <p class="text-muted mb-0 small">
+                These settings tailor how WellNest writes notes and how the app feels for you.
+            </p>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-12 col-xl-8">
+        <div class="card">
+            <div class="card-body p-4">
+                <form method="post" novalidate>
+                    {% csrf_token %}
+                    <h6 class="fw-semibold">Identity</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted" for="id_title">Title</label>
+                            {{ form.title }}
+                        </div>
+                        <div class="col-md-9">
+                            <label class="form-label small text-muted" for="id_full_name">Full name</label>
+                            {{ form.full_name }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted" for="id_specialty">Specialty</label>
+                            {{ form.specialty }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted" for="id_facility">Facility</label>
+                            {{ form.facility }}
+                        </div>
+                    </div>
+
+                    <h6 class="fw-semibold">Note style</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted" for="id_default_note_style">Default note style</label>
+                            {{ form.default_note_style }}
+                        </div>
+                        <div class="col-md-6 d-flex align-items-end">
+                            <div class="form-check form-switch">
+                                {{ form.long_form_default }}
+                                <label class="form-check-label small" for="id_long_form_default">Default to long-form mode</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h6 class="fw-semibold">Display</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted" for="id_theme">Theme</label>
+                            {{ form.theme }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted" for="id_font_scale">Font size (%)</label>
+                            {{ form.font_scale }}
+                            <small class="text-muted">80 to 160 — for screen comfort.</small>
+                        </div>
+                    </div>
+
+                    <h6 class="fw-semibold">Custom instructions</h6>
+                    <p class="text-muted small">
+                        Anything you&rsquo;d always like the AI to do — preferred abbreviations,
+                        reminders to include foot pulses on diabetic patients, etc. We append
+                        these to every prompt for your account.
+                    </p>
+                    {{ form.custom_instructions }}
+
+                    <div class="d-flex justify-content-end mt-4">
+                        <button type="submit" class="btn btn-primary">Save preferences</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-4">
+        <div class="card">
+            <div class="card-body p-4">
+                <h6 class="fw-semibold">About your specialty</h6>
+                <p class="text-muted small mb-2">
+                    The AI applies specialty-specific guidance during note generation. For
+                    example, anesthesia notes prioritise pre-op assessment and intra-op events;
+                    OB/GYN notes capture LMP, GA, fundal height; pediatrics notes treat
+                    paediatric vitals correctly.
+                </p>
+                <p class="text-muted small mb-0">
+                    Update your specialty above and the AI adapts on the next note.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

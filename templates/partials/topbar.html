@@ -1,0 +1,111 @@
+{% load static %}
+<header class="topbar">
+    <div class="container-xxl">
+        <div class="navbar-header">
+            <div class="d-flex align-items-center gap-2">
+                {# Desktop: collapses Reback sidebar. Mobile: opens bottom-sheet. #}
+                <div class="topbar-item">
+                    <button type="button"
+                            class="button-toggle-menu d-none d-lg-inline-flex"
+                            aria-label="Toggle sidebar">
+                        <iconify-icon icon="iconamoon:menu-burger-horizontal" class="fs-22"></iconify-icon>
+                    </button>
+                    <button type="button"
+                            class="topbar-button d-inline-flex d-lg-none"
+                            data-bs-toggle="offcanvas"
+                            data-bs-target="#wellnestMobileNav"
+                            aria-controls="wellnestMobileNav"
+                            aria-label="Open menu">
+                        <iconify-icon icon="iconamoon:menu-burger-horizontal" class="fs-22"></iconify-icon>
+                    </button>
+                </div>
+
+                <a href="{% url 'scribe:record' %}" class="d-lg-none d-flex align-items-center text-decoration-none">
+                    <img src="{% static 'images/wellnest-logo.png' %}" alt="WellNest" height="28" class="me-2">
+                    <span class="fw-semibold text-body">WellNest Scribe</span>
+                </a>
+            </div>
+
+            <div class="d-flex align-items-center gap-1 ms-auto">
+                <div class="topbar-item">
+                    <button type="button" class="topbar-button" id="light-dark-mode" aria-label="Toggle theme">
+                        <iconify-icon icon="iconamoon:mode-dark-duotone" class="fs-22 align-middle"></iconify-icon>
+                    </button>
+                </div>
+
+                <div class="dropdown topbar-item">
+                    <button type="button"
+                            class="topbar-button"
+                            data-bs-toggle="dropdown"
+                            aria-haspopup="true"
+                            aria-expanded="false"
+                            aria-label="Display settings">
+                        <iconify-icon icon="iconamoon:settings-duotone" class="fs-22 align-middle"></iconify-icon>
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end p-3" style="min-width: 280px;">
+                        <h6 class="mb-2 fw-semibold">Display</h6>
+                        <label class="form-label small text-muted mb-1" for="prefFontScale">Font size</label>
+                        <input type="range" min="80" max="160" step="10"
+                               class="form-range"
+                               id="prefFontScale"
+                               value="{{ ui_font_scale|default:100 }}">
+                        <div class="d-flex justify-content-between small text-muted mt-1">
+                            <span>A</span><span class="fw-semibold" id="prefFontScaleValue">{{ ui_font_scale|default:100 }}%</span><span class="fs-5">A</span>
+                        </div>
+
+                        <hr class="my-3">
+
+                        <h6 class="mb-2 fw-semibold">Default note style</h6>
+                        <select id="prefNoteStyle" class="form-select form-select-sm">
+                            <option value="soap" {% if doctor_profile.default_note_style == 'soap' %}selected{% endif %}>SOAP (compartmentalized)</option>
+                            <option value="narrative" {% if doctor_profile.default_note_style == 'narrative' %}selected{% endif %}>Narrative (free-form)</option>
+                            <option value="chart" {% if doctor_profile.default_note_style == 'chart' %}selected{% endif %}>Chart / progress note</option>
+                        </select>
+
+                        <div class="form-check form-switch mt-3">
+                            <input class="form-check-input" type="checkbox" id="prefLongForm" {% if doctor_profile.long_form_default %}checked{% endif %}>
+                            <label class="form-check-label small" for="prefLongForm">Default to long-form mode</label>
+                        </div>
+                    </div>
+                </div>
+
+                {% if user.is_authenticated %}
+                <div class="dropdown topbar-item">
+                    <a type="button"
+                       class="topbar-button"
+                       data-bs-toggle="dropdown"
+                       aria-haspopup="true"
+                       aria-expanded="false">
+                        <span class="d-flex align-items-center">
+                            <span class="avatar-sm rounded-circle bg-primary-subtle text-primary fw-semibold d-inline-flex align-items-center justify-content-center" style="width:34px;height:34px;">
+                                {{ user.get_username|slice:":1"|upper }}
+                            </span>
+                        </span>
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-end">
+                        <h6 class="dropdown-header">{{ doctor_profile.display_name|default:user.username }}</h6>
+                        <a class="dropdown-item" href="{% url 'accounts:profile' %}">
+                            <i class="bx bx-user-circle text-muted fs-18 align-middle me-1"></i>
+                            <span class="align-middle">Profile &amp; preferences</span>
+                        </a>
+                        <a class="dropdown-item" href="{% url 'scribe:history' %}">
+                            <i class="bx bx-time text-muted fs-18 align-middle me-1"></i>
+                            <span class="align-middle">Session history</span>
+                        </a>
+                        <div class="dropdown-divider my-1"></div>
+                        <form method="post" action="{% url 'accounts:signout' %}" class="m-0">
+                            {% csrf_token %}
+                            <button type="submit" class="dropdown-item text-danger">
+                                <i class="bx bx-log-out fs-18 align-middle me-1"></i>
+                                <span class="align-middle">Sign out</span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                {% else %}
+                <a href="{% url 'accounts:signin' %}" class="btn btn-primary btn-sm">Sign in</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</header>

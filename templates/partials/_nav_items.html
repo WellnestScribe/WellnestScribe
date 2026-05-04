@@ -1,0 +1,45 @@
+{# Shared nav items used in both desktop sidebar and mobile bottom-sheet. #}
+{% url 'scribe:record' as record_url %}
+{% url 'scribe:history' as history_url %}
+{% url 'accounts:profile' as profile_url %}
+
+<li class="menu-title">Workspace</li>
+
+<li class="nav-item">
+    <a class="nav-link {% if request.path == record_url %}active{% endif %}" href="{{ record_url }}" data-bs-dismiss="offcanvas">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">New session</span>
+    </a>
+</li>
+
+<li class="nav-item">
+    <a class="nav-link {% if request.path == history_url %}active{% endif %}" href="{{ history_url }}" data-bs-dismiss="offcanvas">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:folder-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">Sessions</span>
+    </a>
+</li>
+
+<li class="menu-title">Account</li>
+
+<li class="nav-item">
+    <a class="nav-link {% if request.path == profile_url %}active{% endif %}" href="{{ profile_url }}" data-bs-dismiss="offcanvas">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:profile-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">Profile &amp; preferences</span>
+    </a>
+</li>
+
+<li class="nav-item">
+    <form method="post" action="{% url 'accounts:signout' %}" class="m-0 px-2 mt-3">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-outline-secondary w-100">
+            <iconify-icon icon="iconamoon:exit-duotone" class="me-1 align-middle"></iconify-icon>
+            Sign out
+        </button>
+    </form>
+</li>

@@ -1,0 +1,541 @@
+/* WellNest Scribe — overlay styles on top of Reback's app.min.css.
+   Goals:
+   - Modern, clinical look. Inter / system font stack.
+   - Light + dark mode tuned for medical use.
+   - Sidebar collapses into a bottom-sheet on mobile (offcanvas-bottom).
+   - Per-doctor font scale via [data-font-scale].
+*/
+
+:root {
+  --wellnest-blue: #0c7ec2;
+  --wellnest-blue-dark: #095a8c;
+  --wellnest-blue-light: #e8f4fa;
+  --wellnest-blue-soft: rgba(12, 126, 194, 0.08);
+  --wellnest-radius: 14px;
+  --wellnest-font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* ---- Typography + base ---- */
+html { font-size: 15px; }
+body {
+  font-family: var(--wellnest-font);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Per-doctor font scale (set on <html> from base.html). Applies to clinical
+   surfaces (cards, note editor, sidebar text). */
+html[data-font-scale="80"]  { font-size: 12.5px; }
+html[data-font-scale="90"]  { font-size: 13.5px; }
+html[data-font-scale="100"] { font-size: 15px; }
+html[data-font-scale="110"] { font-size: 16.5px; }
+html[data-font-scale="120"] { font-size: 18px; }
+html[data-font-scale="130"] { font-size: 19.5px; }
+html[data-font-scale="140"] { font-size: 21px; }
+html[data-font-scale="150"] { font-size: 22.5px; }
+html[data-font-scale="160"] { font-size: 24px; }
+
+/* ---- Branded blues that match Wellnest hummingbird ---- */
+:root {
+  --bs-primary: var(--wellnest-blue);
+  --bs-primary-rgb: 12, 126, 194;
+}
+.btn-primary {
+  --bs-btn-bg: var(--wellnest-blue);
+  --bs-btn-border-color: var(--wellnest-blue);
+  --bs-btn-hover-bg: var(--wellnest-blue-dark);
+  --bs-btn-hover-border-color: var(--wellnest-blue-dark);
+  --bs-btn-active-bg: var(--wellnest-blue-dark);
+  --bs-btn-active-border-color: var(--wellnest-blue-dark);
+}
+.text-primary { color: var(--wellnest-blue) !important; }
+.bg-primary { background-color: var(--wellnest-blue) !important; }
+a { color: var(--wellnest-blue); }
+
+/* ---- Cards: more rounded, subtle border, no harsh shadow ---- */
+.card {
+  border-radius: var(--wellnest-radius);
+  border: 1px solid var(--bs-border-color);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+/* ---- Sidebar (desktop) — keep Reback layout, refine spacing ---- */
+.wellnest-logo-box {
+  padding: 18px 18px 12px !important;
+  border-bottom: 1px solid var(--bs-border-color);
+  margin-bottom: 8px;
+  height: auto !important;
+}
+.wellnest-logo-box a:hover { color: inherit; }
+
+.main-nav .navbar-nav .nav-item .nav-link {
+  border-radius: 10px;
+  margin: 2px 8px;
+  padding: 9px 12px;
+  font-weight: 500;
+}
+.main-nav .navbar-nav .nav-item .nav-link.active {
+  background: var(--wellnest-blue-soft);
+  color: var(--wellnest-blue);
+}
+.main-nav .menu-title {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+  padding: 14px 16px 6px;
+}
+
+/* ---- Topbar polish ---- */
+.topbar {
+  border-bottom: 1px solid var(--bs-border-color);
+  background: var(--bs-body-bg);
+}
+.topbar .topbar-button {
+  border-radius: 10px;
+}
+
+/* ---- Big primary record button ---- */
+.record-cta {
+  width: 168px;
+  height: 168px;
+  border-radius: 50%;
+  background: var(--wellnest-blue);
+  color: #fff;
+  border: none;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin: 0 auto;
+  cursor: pointer;
+  box-shadow: 0 12px 30px rgba(12, 126, 194, 0.32),
+              0 0 0 0 rgba(12, 126, 194, 0.45);
+  transition: transform 0.15s ease, box-shadow 0.25s ease, background 0.2s ease;
+}
+.record-cta:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 4px;
+  box-shadow: 0 0 0 6px var(--wellnest-blue-soft),
+              0 12px 30px rgba(12, 126, 194, 0.32);
+}
+.record-cta:hover { transform: translateY(-2px); background: var(--wellnest-blue-dark); }
+.record-cta:active { transform: translateY(0); }
+.record-cta .iconify, .record-cta iconify-icon { font-size: 2.6rem; }
+.record-cta.is-recording {
+  background: #d33b46;
+  box-shadow: 0 0 0 6px rgba(211, 59, 70, 0.18);
+  animation: wellnest-pulse 1.4s ease-out infinite;
+}
+@keyframes wellnest-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(211, 59, 70, 0.45); }
+  70% { box-shadow: 0 0 0 22px rgba(211, 59, 70, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(211, 59, 70, 0); }
+}
+
+/* ---- Recorder waveform / timer ---- */
+.recorder-shell {
+  border: 1px dashed var(--bs-border-color);
+  border-radius: var(--wellnest-radius);
+  padding: 28px 20px;
+  text-align: center;
+  background: var(--bs-tertiary-bg);
+}
+.recorder-timer {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--bs-emphasis-color);
+}
+.waveform-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  height: 48px;
+  margin: 14px auto 4px;
+}
+.waveform-bars span {
+  width: 4px;
+  background: var(--wellnest-blue);
+  border-radius: 2px;
+  height: 8px;
+  transition: height 0.08s linear;
+}
+
+/* ---- Note editor: bigger, comfier ---- */
+.note-section { margin-bottom: 18px; }
+.note-section header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.note-section header .section-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--wellnest-blue-dark);
+}
+.note-textarea {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 12px;
+  padding: 14px 16px;
+  font-family: var(--wellnest-font);
+  font-size: 1rem;
+  line-height: 1.55;
+  background: var(--bs-body-bg);
+  color: var(--bs-body-color);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.note-textarea:focus {
+  outline: none;
+  border-color: var(--wellnest-blue);
+  box-shadow: 0 0 0 4px var(--wellnest-blue-soft);
+}
+.note-textarea.narrative { min-height: 320px; }
+.note-textarea.flagged { border-color: #e89c1d; box-shadow: 0 0 0 3px rgba(232,156,29,0.18); }
+
+.quick-mic-btn {
+  border: 1px solid var(--bs-border-color);
+  background: var(--bs-tertiary-bg);
+  color: var(--wellnest-blue);
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.quick-mic-btn.is-listening {
+  background: #d33b46;
+  color: #fff;
+  border-color: #d33b46;
+  animation: wellnest-pulse 1.4s ease-out infinite;
+}
+
+/* ---- Status pill ---- */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  background: var(--wellnest-blue-soft);
+  color: var(--wellnest-blue-dark);
+}
+.status-pill.is-error { background: rgba(211,59,70,0.12); color: #d33b46; }
+.status-pill.is-success { background: rgba(45,138,78,0.12); color: #2d8a4e; }
+
+/* ---- Recent sessions list ---- */
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  text-decoration: none;
+  color: var(--bs-body-color);
+  border: 1px solid transparent;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.session-row:hover {
+  background: var(--bs-tertiary-bg);
+  border-color: var(--bs-border-color);
+  color: var(--bs-body-color);
+}
+.session-row .session-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--wellnest-blue-soft);
+  color: var(--wellnest-blue);
+  flex-shrink: 0;
+}
+
+/* ---- Mobile bottom-sheet sidebar ----
+   Desktop sidebar stays as-is from Reback. On smaller screens we hide it
+   and surface the same nav inside an offcanvas-bottom drawer.
+*/
+.mobile-nav-sheet { display: none; }
+
+@media (max-width: 991.98px) {
+  /* Hide Reback's left side-nav entirely on mobile so its slide-in CSS
+     can't fight our bottom sheet. */
+  .wrapper > .main-nav { display: none !important; }
+  /* Reback shifts page content right by sidebar width — undo on mobile. */
+  .page-content, .topbar > .container-xxl { padding-left: 0; }
+
+  .mobile-nav-sheet {
+    display: block;
+    border-top-left-radius: 22px;
+    border-top-right-radius: 22px;
+    box-shadow: 0 -16px 32px rgba(15, 23, 42, 0.18);
+    max-height: 86vh;
+  }
+  .mobile-nav-sheet .offcanvas-header {
+    padding: 14px 18px 8px;
+    border-bottom: 1px solid var(--bs-border-color);
+  }
+  .mobile-nav-sheet .offcanvas-header::before {
+    content: "";
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 44px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--bs-border-color);
+  }
+  .mobile-nav-sheet .offcanvas-body {
+    padding: 12px 12px 28px;
+  }
+  .mobile-nav-sheet .nav-item .nav-link {
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-weight: 500;
+  }
+  .mobile-nav-sheet .nav-item .nav-link.active {
+    background: var(--wellnest-blue-soft);
+    color: var(--wellnest-blue);
+  }
+  .mobile-nav-sheet .menu-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--bs-secondary-color);
+    padding: 12px 14px 4px;
+  }
+
+  /* Make the record button feel right on small screens */
+  .record-cta { width: 200px; height: 200px; }
+
+  /* Footer hide on small to save space */
+  .footer { display: none; }
+}
+
+/* Accessibility: respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .record-cta, .quick-mic-btn { animation: none; transition: none; }
+}
+
+/* Dark-mode tweaks (Reback already supports data-bs-theme=dark). */
+[data-bs-theme="dark"] {
+  --wellnest-blue-soft: rgba(12, 126, 194, 0.18);
+}
+[data-bs-theme="dark"] .recorder-shell {
+  background: rgba(255,255,255,0.03);
+}
+[data-bs-theme="dark"] .session-row:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+/* ---- Affordance: clickable signals ---- */
+button, .btn, a[role="button"], [data-bs-toggle], .session-row, .quick-mic-btn {
+  cursor: pointer;
+}
+button:disabled, .btn:disabled { cursor: not-allowed; }
+
+.btn:focus-visible, button:focus-visible, a:focus-visible, .form-control:focus-visible, .form-select:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--wellnest-blue-soft);
+}
+
+/* ---- Editable title (contenteditable h4) ---- */
+.editable-title {
+  outline: none;
+  padding: 4px 8px;
+  margin-left: -8px;
+  border-radius: 8px;
+  border: 1px dashed transparent;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  word-break: break-word;
+}
+.editable-title:hover {
+  border-color: var(--bs-border-color);
+  background: var(--bs-tertiary-bg);
+  cursor: text;
+}
+.editable-title:focus {
+  border-color: var(--wellnest-blue);
+  background: var(--bs-body-bg);
+  box-shadow: 0 0 0 3px var(--wellnest-blue-soft);
+}
+.editable-title:empty::before {
+  content: attr(data-placeholder);
+  color: var(--bs-secondary-color);
+}
+.title-edit-hint { opacity: 0.7; }
+.editable-title:focus + p .title-edit-hint { opacity: 0; }
+
+kbd {
+  background: var(--bs-tertiary-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.78rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ---- Listening indicator on quick mic ---- */
+.quick-mic-btn[data-listening="true"]::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid #d33b46;
+  animation: wellnest-pulse 1.4s ease-out infinite;
+}
+.quick-mic-btn { position: relative; }
+.quick-mic-helper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #d33b46;
+  font-weight: 500;
+  margin-left: 8px;
+}
+.quick-mic-helper .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #d33b46;
+  animation: wellnest-pulse 1.4s ease-out infinite;
+}
+
+/* ---- Print: only the note content ---- */
+@media print {
+  .topbar, .main-nav, .mobile-nav-sheet, .footer,
+  [data-screen='review'] .nav-tabs, .col-xl-4, .page-back-btn,
+  .editable-title-wrap p, .title-edit-hint, .modal { display: none !important; }
+  .page-content, .container-xxl { padding: 0 !important; margin: 0 !important; }
+  .card { border: none !important; box-shadow: none !important; }
+  .note-textarea {
+    border: none !important;
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 12pt !important;
+  }
+}
+
+/* ---- Back button (page header) ---- */
+.page-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--bs-border-color);
+  background: var(--bs-body-bg);
+  color: var(--bs-secondary-color);
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.page-back-btn:hover {
+  background: var(--wellnest-blue-soft);
+  color: var(--wellnest-blue);
+  border-color: var(--wellnest-blue);
+}
+
+/* ---- Search input on session lists ---- */
+.session-search {
+  position: relative;
+}
+.session-search input {
+  padding-left: 38px;
+  border-radius: 999px;
+  height: 40px;
+}
+.session-search .search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--bs-secondary-color);
+  pointer-events: none;
+}
+.session-row.is-hidden { display: none !important; }
+
+/* ---- QR code modal ---- */
+.qr-canvas-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 14px;
+  background: #fff;
+  border-radius: 12px;
+}
+.qr-canvas-wrap img, .qr-canvas-wrap canvas { width: 240px; height: 240px; }
+
+/* ---- Toast / inline feedback ---- */
+.wellnest-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--bs-emphasis-color);
+  color: var(--bs-body-bg);
+  font-size: 0.88rem;
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  pointer-events: none;
+  z-index: 1080;
+  box-shadow: 0 12px 24px rgba(0,0,0,0.15);
+}
+.wellnest-toast.is-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Auth screens */
+.auth-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at top right, rgba(12,126,194,0.12), transparent 55%),
+    radial-gradient(circle at bottom left, rgba(12,126,194,0.08), transparent 55%);
+  padding: 24px;
+}
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bs-body-bg);
+  border-radius: 18px;
+  border: 1px solid var(--bs-border-color);
+  box-shadow: 0 20px 60px rgba(15,23,42,0.08);
+  padding: 28px;
+}
+.auth-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: var(--wellnest-blue-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+.auth-logo img { width: 38px; height: 38px; }

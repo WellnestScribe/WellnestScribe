@@ -1,0 +1,48 @@
+{# Compartmentalized SOAP editor. Each section has a quick-edit mic. #}
+<div class="note-section">
+    <header>
+        <span class="section-label">Subjective</span>
+        <button type="button" class="quick-mic-btn"
+                data-quick-mic="[data-note-field='subjective']"
+                title="Hold to dictate edits">
+            <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+        </button>
+    </header>
+    <textarea class="note-textarea" data-note-field="subjective">{{ note.subjective }}</textarea>
+</div>
+
+<div class="note-section">
+    <header>
+        <span class="section-label">Objective</span>
+        <button type="button" class="quick-mic-btn"
+                data-quick-mic="[data-note-field='objective']"
+                title="Hold to dictate edits">
+            <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+        </button>
+    </header>
+    <textarea class="note-textarea" data-note-field="objective">{{ note.objective }}</textarea>
+</div>
+
+<div class="note-section">
+    <header>
+        <span class="section-label">Assessment</span>
+        <button type="button" class="quick-mic-btn"
+                data-quick-mic="[data-note-field='assessment']"
+                title="Hold to dictate edits">
+            <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+        </button>
+    </header>
+    <textarea class="note-textarea" data-note-field="assessment">{{ note.assessment }}</textarea>
+</div>
+
+<div class="note-section">
+    <header>
+        <span class="section-label">Plan</span>
+        <button type="button" class="quick-mic-btn"
+                data-quick-mic="[data-note-field='plan']"
+                title="Hold to dictate edits">
+            <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+        </button>
+    </header>
+    <textarea class="note-textarea" data-note-field="plan">{{ note.plan }}</textarea>
+</div>

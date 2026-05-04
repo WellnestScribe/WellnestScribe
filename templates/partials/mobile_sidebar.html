@@ -1,0 +1,18 @@
+{% load static %}
+<div class="offcanvas offcanvas-bottom mobile-nav-sheet"
+     tabindex="-1"
+     id="wellnestMobileNav"
+     aria-labelledby="wellnestMobileNavLabel">
+    <div class="offcanvas-header">
+        <div class="d-flex align-items-center gap-2">
+            <img src="{% static 'images/wellnest-logo.png' %}" alt="WellNest" height="28">
+            <h6 class="offcanvas-title m-0 fw-semibold" id="wellnestMobileNavLabel">WellNest Scribe</h6>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body">
+        <ul class="navbar-nav">
+            {% include "partials/_nav_items.html" %}
+        </ul>
+    </div>
+</div>

@@ -1,0 +1,56 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Shared note · WellNest Scribe</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="robots" content="noindex,nofollow">
+    <link rel="shortcut icon" href="{% static 'images/favicon.ico' %}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="{% static 'css/vendor.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/icons.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/app.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/wellnest.css' %}" rel="stylesheet">
+</head>
+<body>
+<div class="container py-4" style="max-width: 820px;">
+    <div class="d-flex align-items-center gap-2 mb-4">
+        <img src="{% static 'images/wellnest-logo.png' %}" alt="WellNest" height="32">
+        <h5 class="m-0 fw-semibold">WellNest Scribe</h5>
+        <span class="status-pill ms-auto">Shared note · expires in 1 hour</span>
+    </div>
+
+    <div class="card">
+        <div class="card-body p-4">
+            <div class="d-flex flex-wrap gap-2 align-items-start justify-content-between mb-3">
+                <div>
+                    <h5 class="fw-semibold mb-1">{{ session.display_title }}</h5>
+                    <p class="text-muted small mb-0">
+                        {{ session.created_at|date:"M j, Y · g:i A" }} · {{ session.get_note_format_display }}
+                    </p>
+                </div>
+                <button type="button" class="btn btn-primary" id="shareCopy">
+                    <iconify-icon icon="iconamoon:copy-duotone" class="me-1 align-middle"></iconify-icon>
+                    Copy note
+                </button>
+            </div>
+
+            <textarea id="shareNote" class="note-textarea" rows="20" readonly>{% if note %}{{ note.edited_note|default:note.full_note }}{% else %}{{ session.transcript }}{% endif %}</textarea>
+
+            <p class="text-muted small mt-3 mb-0">
+                AI-generated draft — review and edit required before clinical use.
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById("shareCopy").addEventListener("click", async function () {
+    const t = document.getElementById("shareNote").value;
+    try { await navigator.clipboard.writeText(t); this.textContent = "Copied"; }
+    catch (e) { document.getElementById("shareNote").select(); document.execCommand("copy"); }
+});
+</script>
+</body>
+</html>

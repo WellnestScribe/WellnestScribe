@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Sign in · WellNest Scribe{% endblock %}
+
+{% block content %}
+<div class="auth-shell">
+    <div class="auth-card">
+        <div class="auth-logo">
+            <img src="{% static 'images/wellnest-logo.png' %}" alt="WellNest">
+        </div>
+        <h4 class="fw-semibold mb-1">Welcome back</h4>
+        <p class="text-muted small mb-4">Sign in to access your scribe sessions.</p>
+
+        <form method="post" novalidate>
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger small">{{ form.non_field_errors }}</div>
+            {% endif %}
+            <div class="mb-3">
+                <label class="form-label small text-muted" for="id_username">Username</label>
+                {{ form.username }}
+                {% if form.username.errors %}<small class="text-danger">{{ form.username.errors|join:" " }}</small>{% endif %}
+            </div>
+            <div class="mb-3">
+                <label class="form-label small text-muted" for="id_password">Password</label>
+                {{ form.password }}
+                {% if form.password.errors %}<small class="text-danger">{{ form.password.errors|join:" " }}</small>{% endif %}
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Sign in</button>
+        </form>
+
+        <p class="text-center text-muted small mt-4 mb-0">
+            New to WellNest? <a href="{% url 'accounts:signup' %}">Create an account</a>.
+        </p>
+    </div>
+</div>
+{% endblock %}

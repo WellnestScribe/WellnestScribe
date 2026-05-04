@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}New session · WellNest Scribe{% endblock %}
+
+{% block content %}
+<div data-screen="record">
+    <div class="row">
+        <div class="col-12">
+            <div class="page-title-box d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div>
+                    <h4 class="mb-1 fw-semibold">New session</h4>
+                    <p class="text-muted mb-0 small">
+                        Welcome back{% if profile.full_name %}, {{ profile.title }} {{ profile.full_name }}{% endif %}.
+                        Record a dictation, upload audio, or type the encounter directly.
+                    </p>
+                </div>
+                <span class="status-pill" id="recordStatus">Ready</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-12 col-xl-7">
+            <div class="card h-100">
+                <div class="card-body p-4">
+                    <div class="recorder-shell text-center">
+                        <div class="recorder-timer" id="recordTimer">0:00</div>
+                        <div class="waveform-bars" id="recordWaveform"></div>
+                        <div class="d-flex justify-content-center align-items-center mt-3">
+                            <button type="button" class="record-cta" id="recordBtn" aria-label="Record">
+                                <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+                                <span data-record-label>Record</span>
+                            </button>
+                        </div>
+                        <p class="text-muted small mt-3 mb-0 mx-auto" style="max-width: 420px;">
+                            Tap to start. Speak naturally for as long as you need — short dictations or long encounters.
+                        </p>
+                    </div>
+
+                    <div class="row g-3 mt-3">
+                        <div class="col-12 col-sm-6 col-md-4">
+                            <label class="form-label small text-muted" for="noteFormatSelect">Note style</label>
+                            <select id="noteFormatSelect" class="form-select">
+                                {% for value, label in format_choices %}
+                                    <option value="{{ value }}" {% if value == profile.default_note_style %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-12 col-sm-6 col-md-4">
+                            <label class="form-label small text-muted">Length</label>
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" id="lengthModeSwitch" {% if profile.long_form_default %}checked{% endif %}>
+                                <label class="form-check-label" for="lengthModeSwitch">Long-form mode</label>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-4 d-flex align-items-end">
+                            <button type="button" class="btn btn-outline-secondary w-100" id="audioUploadBtn">
+                                <iconify-icon icon="iconamoon:cloud-upload-duotone" class="me-1 align-middle"></iconify-icon>
+                                Upload audio
+                            </button>
+                            <input type="file" id="audioFileInput" accept="audio/*" hidden>
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <h6 class="fw-semibold mb-2">Or type the encounter</h6>
+                    <p class="text-muted small mb-2">
+                        Useful when you don&rsquo;t want to record audio. Paste or type what
+                        happened, then generate the structured note.
+                    </p>
+                    <textarea id="manualTranscript"
+                              class="note-textarea"
+                              rows="5"
+                              placeholder="e.g. 58 y/o female, hypertension follow-up. Reports compliance with amlodipine 5mg OD…"></textarea>
+                    <div class="d-flex justify-content-end mt-3">
+                        <button type="button" class="btn btn-primary" id="generateBtn">
+                            <iconify-icon icon="iconamoon:arrow-right-2-duotone" class="me-1 align-middle"></iconify-icon>
+                            Generate note from text
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-5">
+            <div class="card h-100">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <h6 class="fw-semibold m-0">Recent sessions</h6>
+                        <a href="{% url 'scribe:history' %}" class="small text-decoration-none">See all</a>
+                    </div>
+
+                    {% if recent_sessions %}
+                        <div class="session-search mb-3">
+                            <iconify-icon icon="iconamoon:search-duotone" class="search-icon"></iconify-icon>
+                            <input type="search"
+                                   class="form-control"
+                                   data-session-filter="#recentList"
+                                   placeholder="Search recent sessions…"
+                                   aria-label="Search recent sessions">
+                        </div>
+                        <div class="d-flex flex-column gap-1" id="recentList">
+                            {% for s in recent_sessions %}
+                                <a href="{% url 'scribe:review' s.pk %}"
+                                   class="session-row"
+                                   data-session-search="{{ s.display_title|lower }} {{ s.chief_complaint|lower }} {{ s.get_note_format_display|lower }}">
+                                    <span class="session-icon">
+                                        <iconify-icon icon="iconamoon:file-document-duotone"></iconify-icon>
+                                    </span>
+                                    <span class="flex-grow-1">
+                                        <span class="d-block fw-semibold">{{ s.display_title }}</span>
+                                        <span class="d-block small text-muted">
+                                            {{ s.created_at|date:"M j, Y · g:i A" }} · {{ s.get_status_display }}
+                                        </span>
+                                    </span>
+                                    <iconify-icon icon="iconamoon:arrow-right-2-light" class="text-muted"></iconify-icon>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted small mb-0">No sessions yet. Your first note will appear here.</p>
+                    {% endif %}
+
+                    <hr class="my-4">
+
+                    <h6 class="fw-semibold mb-2">Specialty: {{ profile.get_specialty_display }}</h6>
+                    <p class="text-muted small mb-2">
+                        WellNest tailors the note style to your specialty. Update it in
+                        <a href="{% url 'accounts:profile' %}">profile &amp; preferences</a>.
+                    </p>
+
+                    <div class="alert alert-light border mb-0 small mt-3">
+                        AI-generated drafts must be reviewed before clinical use. Audio is
+                        encrypted at rest and auto-deleted after 30 days during the pilot.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

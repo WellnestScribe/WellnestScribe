@@ -1,0 +1,82 @@
+"""High-level orchestration: audio (or text) → transcript → note.
+
+Uses real AI when SCRIBE_USE_REAL_AI=True and credentials are present,
+otherwise falls back to deterministic stubs so the UI still works.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from django.conf import settings
+
+from .clients import AIConfigError
+from .soap_generator import (
+    GeneratedNote,
+    generate_modular_soap,
+    generate_note,
+)
+from .stub import fake_generate_note, fake_transcribe
+from .transcription import transcribe_audio
+
+
+logger = logging.getLogger(__name__)
+
+
+def _use_real_ai() -> bool:
+    return bool(settings.SCRIBE_USE_REAL_AI)
+
+
+def run_transcription(file_path: str) -> str:
+    if not _use_real_ai():
+        return fake_transcribe(file_path)
+    try:
+        return transcribe_audio(file_path).strip()
+    except AIConfigError as exc:
+        logger.warning("Falling back to stub transcription: %s", exc)
+        return fake_transcribe(file_path)
+
+
+def run_note_generation(
+    transcript: str,
+    *,
+    note_format: str,
+    specialty: str,
+    length_mode: str,
+    custom_instructions: str = "",
+) -> GeneratedNote:
+    if not _use_real_ai():
+        return fake_generate_note(
+            transcript,
+            note_format=note_format,
+            specialty=specialty,
+            length_mode=length_mode,
+            custom_instructions=custom_instructions,
+        )
+    try:
+        if (
+            note_format == "soap"
+            and settings.SCRIBE_PIPELINE_MODE == "modular"
+        ):
+            return generate_modular_soap(
+                transcript,
+                specialty=specialty,
+                length_mode=length_mode,
+                custom_instructions=custom_instructions,
+            )
+        return generate_note(
+            transcript,
+            note_format=note_format,
+            specialty=specialty,
+            length_mode=length_mode,
+            custom_instructions=custom_instructions,
+        )
+    except AIConfigError as exc:
+        logger.warning("Falling back to stub note generation: %s", exc)
+        return fake_generate_note(
+            transcript,
+            note_format=note_format,
+            specialty=specialty,
+            length_mode=length_mode,
+            custom_instructions=custom_instructions,
+        )

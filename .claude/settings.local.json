@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python --version)",
+      "PowerShell(pip --version)",
+      "PowerShell(python -m venv \"c:\\\\xampp\\\\htdocs\\\\WellnestScribe\\\\.venv\")",
+      "PowerShell(& \"c:\\\\xampp\\\\htdocs\\\\WellnestScribe\\\\.venv\\\\Scripts\\\\python.exe\" -m pip install --upgrade pip --quiet)",
+      "PowerShell(& \"c:\\\\xampp\\\\htdocs\\\\WellnestScribe\\\\.venv\\\\Scripts\\\\python.exe\" -m pip install Django==5.0.6 python-decouple openai==1.54.0 azure-identity Pillow qrcode --quiet)"
+    ]
+  }
+}

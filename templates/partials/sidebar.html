@@ -1,0 +1,15 @@
+{% load static %}
+<div class="main-nav d-none d-lg-block">
+    <div class="logo-box wellnest-logo-box">
+        <a href="{% url 'scribe:record' %}" class="d-flex align-items-center gap-2 text-decoration-none w-100">
+            <img src="{% static 'images/wellnest-logo.png' %}" alt="WellNest" height="32" class="flex-shrink-0">
+            <span class="fw-semibold fs-5 text-body wellnest-logo-text">WellNest</span>
+        </a>
+    </div>
+
+    <div class="scrollbar" data-simplebar>
+        <ul class="navbar-nav" id="navbar-nav">
+            {% include "partials/_nav_items.html" %}
+        </ul>
+    </div>
+</div>

@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Review note · WellNest Scribe{% endblock %}
+
+{% block content %}
+<div data-screen="review" data-session-id="{{ session.pk }}">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+                <div class="d-flex flex-column gap-2 flex-grow-1" style="min-width: 0;">
+                    <a href="{% url 'scribe:history' %}" class="page-back-btn align-self-start">
+                        <iconify-icon icon="iconamoon:arrow-left-2-light"></iconify-icon>
+                        Back to sessions
+                    </a>
+                    <div class="editable-title-wrap">
+                        <h4 class="mb-1 fw-semibold editable-title"
+                            id="sessionTitle"
+                            contenteditable="true"
+                            spellcheck="false"
+                            data-placeholder="Untitled session"
+                            aria-label="Session title (click to edit)">{{ session.title|default:session.display_title }}</h4>
+                        <div class="d-flex align-items-center flex-wrap gap-2">
+                            <p class="text-muted mb-0 small">
+                                {{ session.created_at|date:"M j, Y · g:i A" }} ·
+                                <span id="noteFormatLabel">{{ session.get_note_format_display }}</span> ·
+                                {{ session.get_length_mode_display }}
+                            </p>
+                            <span class="title-edit-hint small text-muted d-inline-flex align-items-center gap-1">
+                                <iconify-icon icon="iconamoon:edit-duotone"></iconify-icon>
+                                click title to rename
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <span class="status-pill" id="reviewStatus">{{ session.get_status_display }}</span>
+                    <a href="{% url 'scribe:record' %}" class="btn btn-outline-secondary btn-sm">
+                        <iconify-icon icon="iconamoon:plus-light" class="me-1 align-middle"></iconify-icon>
+                        New session
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if session.status == 'error' %}
+        <div class="alert alert-danger d-flex align-items-start gap-2">
+            <iconify-icon icon="iconamoon:warning-2-duotone" class="fs-4 mt-1"></iconify-icon>
+            <div>
+                <strong class="d-block">This session hit an error.</strong>
+                <span class="small">{{ session.error_message|default:"AI request failed. Open the session, edit the transcript, and tap Regenerate." }}</span>
+            </div>
+        </div>
+    {% endif %}
+
+    <div class="row g-4">
+        <div class="col-12 col-xl-8">
+            <div class="card">
+                <div class="card-body p-4">
+                    <ul class="nav nav-tabs mb-3" role="tablist" id="reviewTabs">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-structured" type="button">Structured</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-narrative" type="button">Narrative</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-transcript" type="button">Transcript</button>
+                        </li>
+                        <li class="nav-item ms-auto d-flex align-items-center small text-muted" id="wordCounter" aria-live="polite"></li>
+                    </ul>
+
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="tab-structured">
+                            {% if note %}
+                                {% if session.note_format == 'narrative' or note.narrative and not note.subjective %}
+                                    <div class="note-section">
+                                        <header>
+                                            <span class="section-label">Narrative</span>
+                                            <button type="button"
+                                                    class="quick-mic-btn"
+                                                    data-quick-mic="[data-note-field='narrative']"
+                                                    title="Tap once to start dictating, tap again to stop">
+                                                <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+                                            </button>
+                                        </header>
+                                        <textarea class="note-textarea narrative" data-note-field="narrative">{{ note.narrative }}</textarea>
+                                    </div>
+                                {% else %}
+                                    {% include "scribe/_soap_fields.html" with note=note %}
+                                {% endif %}
+                            {% else %}
+                                <div class="text-center py-5 text-muted">
+                                    <iconify-icon icon="iconamoon:file-document-light" class="fs-1"></iconify-icon>
+                                    <p class="mt-2 mb-3">No note generated for this session yet.</p>
+                                    {% if session.transcript %}
+                                        <button type="button" class="btn btn-primary" id="regenerateBtn">
+                                            Generate from transcript
+                                        </button>
+                                    {% else %}
+                                        <a href="{% url 'scribe:record' %}" class="btn btn-primary">Start a new session</a>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="tab-pane fade" id="tab-narrative">
+                            <div class="d-flex justify-content-between align-items-center mb-2 gap-2 flex-wrap">
+                                <p class="text-muted small mb-0">
+                                    Combined view of the whole note. Edits here save with the rest.
+                                </p>
+                                <button type="button"
+                                        class="quick-mic-btn"
+                                        data-quick-mic="[data-full-note]"
+                                        title="Tap once to start dictating, tap again to stop">
+                                    <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+                                </button>
+                            </div>
+                            <textarea class="note-textarea narrative" data-full-note>{% if note %}{{ note.edited_note|default:note.full_note }}{% endif %}</textarea>
+                        </div>
+
+                        <div class="tab-pane fade" id="tab-transcript">
+                            <p class="text-muted small mb-2">Transcript from the recorded audio. Editable — regenerate the note after changes.</p>
+                            <textarea class="note-textarea" rows="14" id="transcriptArea">{{ session.transcript }}</textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-4">
+            <div class="card">
+                <div class="card-body p-4">
+                    <h6 class="fw-semibold mb-3">Export</h6>
+                    <div class="d-grid gap-2">
+                        <button type="button" class="btn btn-primary" id="copyBtn">
+                            <iconify-icon icon="iconamoon:copy-duotone" class="me-1 align-middle"></iconify-icon>
+                            Copy to clipboard
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" id="qrBtn"
+                                data-bs-toggle="modal" data-bs-target="#shareModal">
+                            <iconify-icon icon="iconamoon:scan-duotone" class="me-1 align-middle"></iconify-icon>
+                            Share to desktop (QR)
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" id="whatsappBtn">
+                            <iconify-icon icon="iconamoon:send-duotone" class="me-1 align-middle"></iconify-icon>
+                            Share via WhatsApp
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" id="printBtn">
+                            <iconify-icon icon="iconamoon:print-duotone" class="me-1 align-middle"></iconify-icon>
+                            Print / save as PDF
+                        </button>
+                        <hr class="my-2">
+                        <button type="button" class="btn btn-outline-secondary" id="regenerateAllBtn">
+                            <iconify-icon icon="iconamoon:restart-duotone" class="me-1 align-middle"></iconify-icon>
+                            Regenerate from transcript
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" id="saveBtn">
+                            <iconify-icon icon="iconamoon:save-duotone" class="me-1 align-middle"></iconify-icon>
+                            Save edits now
+                        </button>
+                        <button type="button" class="btn btn-success" id="finalizeBtn">
+                            <iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon>
+                            Mark reviewed
+                        </button>
+                    </div>
+
+                    {% if note.flags %}
+                        <hr class="my-3">
+                        <h6 class="fw-semibold mb-2">Flags</h6>
+                        <ul class="list-unstyled small mb-0">
+                            {% for f in note.flags %}
+                                <li class="text-warning"><iconify-icon icon="iconamoon:warning-2-duotone" class="me-1 align-middle"></iconify-icon>{{ f }}</li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+
+                    <hr class="my-3">
+                    <p class="text-muted small mb-0">
+                        AI-generated draft. Review and edit required before clinical use.
+                        Notes auto-save while you type.
+                    </p>
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-body p-3">
+                    <details>
+                        <summary class="fw-semibold small">Keyboard shortcuts</summary>
+                        <ul class="list-unstyled small text-muted mt-2 mb-0">
+                            <li><kbd>Ctrl</kbd> + <kbd>S</kbd> — save now</li>
+                            <li><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd> — copy note</li>
+                            <li><kbd>Esc</kbd> — stop dictation</li>
+                        </ul>
+                    </details>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Share modal -->
+<div class="modal fade" id="shareModal" tabindex="-1" aria-labelledby="shareModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-semibold" id="shareModalLabel">Share to desktop</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <p class="text-muted small mb-3">
+                    Scan this QR code with your hospital computer&rsquo;s camera, or open the
+                    short link below. The link expires in 1 hour.
+                </p>
+                <div id="qrLoader" class="py-4">
+                    <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading…</span></div>
+                    <p class="text-muted small mt-2 mb-0">Building share link…</p>
+                </div>
+                <div id="qrCanvas" class="qr-canvas-wrap d-none mx-auto"></div>
+                <div class="input-group mt-3 d-none" id="qrLinkRow">
+                    <input type="text" class="form-control" id="qrLink" readonly>
+                    <button class="btn btn-outline-secondary" type="button" id="qrCopyLink">Copy link</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Idle warning modal -->
+<div class="modal fade" id="idleModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-body text-center p-4">
+                <iconify-icon icon="iconamoon:lock-duotone" class="fs-1 text-primary"></iconify-icon>
+                <h6 class="fw-semibold mt-2">Still there?</h6>
+                <p class="text-muted small">For patient privacy you&rsquo;ll be signed out shortly. Tap to stay.</p>
+                <button type="button" class="btn btn-primary w-100" data-bs-dismiss="modal">I&rsquo;m here</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

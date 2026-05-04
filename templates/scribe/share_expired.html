@@ -1,0 +1,22 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Link expired · WellNest Scribe</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="{% static 'css/app.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/wellnest.css' %}" rel="stylesheet">
+</head>
+<body>
+<div class="auth-shell">
+    <div class="auth-card text-center">
+        <div class="auth-logo mx-auto"><img src="{% static 'images/wellnest-logo.png' %}" alt="WellNest"></div>
+        <h5 class="fw-semibold">Link expired</h5>
+        <p class="text-muted small mb-0">
+            Share links expire after 1 hour for security. Ask the doctor to re-share the note from WellNest.
+        </p>
+    </div>
+</div>
+</body>
+</html>
