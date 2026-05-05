@@ -132,7 +132,7 @@
         <div class="col-12 col-xl-4">
             <div class="card">
                 <div class="card-body p-4">
-                    <h6 class="fw-semibold mb-3">Export</h6>
+                    <h6 class="fw-semibold mb-3">Actions</h6>
                     <div class="d-grid gap-2">
                         <button type="button" class="btn btn-primary" id="copyBtn">
                             <iconify-icon icon="iconamoon:copy-duotone" class="me-1 align-middle"></iconify-icon>
@@ -143,27 +143,49 @@
                             <iconify-icon icon="iconamoon:scan-duotone" class="me-1 align-middle"></iconify-icon>
                             Share to desktop (QR)
                         </button>
-                        <button type="button" class="btn btn-outline-secondary" id="whatsappBtn">
-                            <iconify-icon icon="iconamoon:send-duotone" class="me-1 align-middle"></iconify-icon>
-                            Share via WhatsApp
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary" id="printBtn">
-                            <iconify-icon icon="iconamoon:print-duotone" class="me-1 align-middle"></iconify-icon>
-                            Print / save as PDF
-                        </button>
-                        <hr class="my-2">
-                        <button type="button" class="btn btn-outline-secondary" id="regenerateAllBtn">
-                            <iconify-icon icon="iconamoon:restart-duotone" class="me-1 align-middle"></iconify-icon>
-                            Regenerate from transcript
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary" id="saveBtn">
-                            <iconify-icon icon="iconamoon:save-duotone" class="me-1 align-middle"></iconify-icon>
-                            Save edits now
+                        <button type="button" class="btn btn-outline-secondary" id="improveBtn">
+                            <iconify-icon icon="iconamoon:lightning-1-duotone" class="me-1 align-middle"></iconify-icon>
+                            Check for missing details
                         </button>
                         <button type="button" class="btn btn-success" id="finalizeBtn">
                             <iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon>
                             Mark reviewed
                         </button>
+                    </div>
+
+                    <button type="button"
+                            class="btn btn-link btn-sm text-decoration-none mt-2 px-0"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#moreActions"
+                            aria-expanded="false">
+                        <iconify-icon icon="iconamoon:arrow-down-2-light"></iconify-icon>
+                        More options
+                    </button>
+                    <div class="collapse" id="moreActions">
+                        <div class="d-grid gap-2 mt-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="whatsappBtn">
+                                <iconify-icon icon="iconamoon:send-duotone" class="me-1 align-middle"></iconify-icon>
+                                Share via WhatsApp
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="printBtn">
+                                <iconify-icon icon="iconamoon:print-duotone" class="me-1 align-middle"></iconify-icon>
+                                Print / save as PDF
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="regenerateAllBtn">
+                                <iconify-icon icon="iconamoon:restart-duotone" class="me-1 align-middle"></iconify-icon>
+                                Regenerate from transcript
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="saveBtn">
+                                <iconify-icon icon="iconamoon:save-duotone" class="me-1 align-middle"></iconify-icon>
+                                Save edits now
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="improveResult" class="mt-3 d-none">
+                        <hr class="my-2">
+                        <h6 class="fw-semibold mb-2 small text-uppercase text-muted" style="letter-spacing:0.08em;">Suggestions</h6>
+                        <div id="improveBody" class="small"></div>
                     </div>
 
                     {% if note.flags %}

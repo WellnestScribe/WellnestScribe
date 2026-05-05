@@ -124,7 +124,7 @@ SCRIBE_USE_REAL_AI = config("SCRIBE_USE_REAL_AI", default=False, cast=bool)
 SCRIBE_PIPELINE_MODE = config("SCRIBE_PIPELINE_MODE", default="single")  # single | modular
 SCRIBE_VERIFIER_ENABLED = config("SCRIBE_VERIFIER_ENABLED", default=False, cast=bool)
 SCRIBE_MAX_COMPLETION_TOKENS = config(
-    "SCRIBE_MAX_COMPLETION_TOKENS", default=1400, cast=int
+    "SCRIBE_MAX_COMPLETION_TOKENS", default=4000, cast=int
 )
 
 # Transcription is OpenAI direct (gpt-4o(-mini)-transcribe).

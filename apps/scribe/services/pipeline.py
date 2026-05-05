@@ -15,6 +15,7 @@ from .soap_generator import (
     GeneratedNote,
     generate_modular_soap,
     generate_note,
+    suggest_improvements,
 )
 from .stub import fake_generate_note, fake_transcribe
 from .transcription import transcribe_audio
@@ -80,3 +81,18 @@ def run_note_generation(
             length_mode=length_mode,
             custom_instructions=custom_instructions,
         )
+
+
+def run_suggest_improvements(note_text: str, *, specialty: str = "general") -> str:
+    if not _use_real_ai():
+        return (
+            "- Add chief complaint in plain words.\n"
+            "- Document vitals if any were taken.\n"
+            "- State whether medication was changed and why.\n"
+            "- Add follow-up interval."
+        )
+    try:
+        return suggest_improvements(note_text, specialty=specialty)
+    except AIConfigError as exc:
+        logger.warning("Improvements stub: %s", exc)
+        return "- AI not configured. Add SCRIBE_AZURE_OPENAI_KEY to .env."

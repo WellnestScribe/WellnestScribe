@@ -40,6 +40,11 @@ urlpatterns = [
     path("share/<str:token>/", views.share_view, name="share"),
     path("api/quick-transcribe/", views.quick_transcribe_api, name="api_quick_transcribe"),
     path(
+        "api/sessions/<int:pk>/improve/",
+        views.suggest_improvements_api,
+        name="api_improve",
+    ),
+    path(
         "api/preferences/",
         views.update_preferences_api,
         name="api_preferences",

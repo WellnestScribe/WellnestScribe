@@ -1,7 +1,15 @@
-"""SOAP / narrative / chart note generation via Azure OpenAI."""
+"""SOAP / narrative / chart note generation via Azure OpenAI.
+
+Reasoning-model awareness: Azure deployments backed by GPT-5 / o-series
+spend tokens on internal reasoning before emitting any output. With a
+small `max_completion_tokens` budget the model can return an empty
+string. We detect that and retry with a larger budget + minimal
+reasoning effort. This mirrors what production scribes do.
+"""
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import Iterable
@@ -20,6 +28,9 @@ from .prompts import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 @dataclass
 class GeneratedNote:
     note_format: str
@@ -30,6 +41,14 @@ class GeneratedNote:
     plan: str = ""
     narrative: str = ""
     flags: list[str] = field(default_factory=list)
+
+
+_REASONING_HINTS = ("gpt-5", "o1", "o3", "o4", "reasoning")
+
+
+def _is_reasoning_deployment() -> bool:
+    name = (settings.SCRIBE_AZURE_OPENAI_DEPLOYMENT or "").lower()
+    return any(h in name for h in _REASONING_HINTS)
 
 
 def _system_prompt(specialty: str, custom_instructions: str = "") -> str:
@@ -46,13 +65,58 @@ def _system_prompt(specialty: str, custom_instructions: str = "") -> str:
 
 
 def _chat(messages: list[dict], *, max_tokens: int | None = None) -> str:
+    """Call the chat deployment, with retry-on-empty for reasoning models."""
     client = get_chat_client()
-    response = client.chat.completions.create(
-        model=settings.SCRIBE_AZURE_OPENAI_DEPLOYMENT,
-        messages=messages,
-        max_completion_tokens=max_tokens or settings.SCRIBE_MAX_COMPLETION_TOKENS,
+    deployment = settings.SCRIBE_AZURE_OPENAI_DEPLOYMENT
+    is_reasoning = _is_reasoning_deployment()
+
+    base_budget = max_tokens or settings.SCRIBE_MAX_COMPLETION_TOKENS
+    if is_reasoning and base_budget < 4000:
+        base_budget = 4000
+
+    attempts = []
+    if is_reasoning:
+        attempts.append({"max_completion_tokens": base_budget, "reasoning_effort": "minimal"})
+        attempts.append({"max_completion_tokens": max(base_budget * 2, 8000), "reasoning_effort": "low"})
+    else:
+        attempts.append({"max_completion_tokens": base_budget})
+        attempts.append({"max_completion_tokens": max(base_budget * 2, 4000)})
+
+    last_response = None
+    for attempt_kwargs in attempts:
+        kwargs: dict = {"model": deployment, "messages": messages}
+        # Reasoning models accept `reasoning_effort` (passed via extra_body for
+        # SDKs that don't surface it as a typed kwarg yet).
+        effort = attempt_kwargs.pop("reasoning_effort", None)
+        kwargs.update(attempt_kwargs)
+        if effort is not None:
+            kwargs["extra_body"] = {"reasoning_effort": effort}
+
+        response = client.chat.completions.create(**kwargs)
+        last_response = response
+        text = (response.choices[0].message.content or "").strip()
+        usage = getattr(response, "usage", None)
+        finish = response.choices[0].finish_reason
+        logger.info(
+            "chat call: model=%s finish=%s out_chars=%d reasoning_tokens=%s completion_tokens=%s",
+            deployment,
+            finish,
+            len(text),
+            getattr(getattr(usage, "completion_tokens_details", None), "reasoning_tokens", "n/a"),
+            getattr(usage, "completion_tokens", "n/a"),
+        )
+        if text:
+            return text
+        # Empty output → likely budget consumed by reasoning. Try again.
+        logger.warning(
+            "Empty completion (finish=%s). Retrying with bigger budget.", finish
+        )
+
+    finish = getattr(last_response.choices[0], "finish_reason", "unknown") if last_response else "no-response"
+    raise RuntimeError(
+        f"Model returned no output after {len(attempts)} attempts (finish={finish}). "
+        "Increase SCRIBE_MAX_COMPLETION_TOKENS or switch to a non-reasoning deployment."
     )
-    return (response.choices[0].message.content or "").strip()
 
 
 _SECTION_HEADERS = ("S:", "O:", "A:", "P:")
@@ -63,7 +127,12 @@ def _split_soap(full_note: str) -> dict[str, str]:
     pattern = re.compile(r"(?m)^(S:|O:|A:|P:)\s*")
     matches = list(pattern.finditer(full_note))
     if not matches:
-        return {"subjective": full_note, "objective": "", "assessment": "", "plan": ""}
+        return {
+            "subjective": full_note,
+            "objective": "",
+            "assessment": "",
+            "plan": "",
+        }
 
     sections = {"S:": "", "O:": "", "A:": "", "P:": ""}
     for i, match in enumerate(matches):
@@ -89,7 +158,6 @@ def generate_note(
     length_mode: str = "normal",
     custom_instructions: str = "",
 ) -> GeneratedNote:
-    """Generate a note in the requested format. Single-call pipeline."""
     transcript = (transcript or "").strip()
     if not transcript:
         raise ValueError("Cannot generate a note from an empty transcript.")
@@ -141,7 +209,6 @@ def generate_modular_soap(
     custom_instructions: str = "",
     sections: Iterable[str] = ("subjective", "objective", "assessment", "plan"),
 ) -> GeneratedNote:
-    """Modular SOAP: one LLM call per section. Used when SCRIBE_PIPELINE_MODE=modular."""
     transcript = (transcript or "").strip()
     if not transcript:
         raise ValueError("Cannot generate a note from an empty transcript.")
@@ -157,7 +224,9 @@ def generate_modular_soap(
             ]
         )
 
-    full_note = "\n\n".join(out[s] for s in ("subjective", "objective", "assessment", "plan") if s in out)
+    full_note = "\n\n".join(
+        out[s] for s in ("subjective", "objective", "assessment", "plan") if s in out
+    )
     note = GeneratedNote(
         note_format="soap",
         full_note=full_note,
@@ -173,13 +242,9 @@ def generate_modular_soap(
 def verify_section(
     transcript: str, generated_section: str, section_name: str
 ) -> str:
-    """Return either VERIFIED message or a corrected section."""
     return _chat(
         [
-            {
-                "role": "system",
-                "content": "You are a clinical documentation quality reviewer.",
-            },
+            {"role": "system", "content": "You are a clinical documentation quality reviewer."},
             {
                 "role": "user",
                 "content": VERIFICATION_PROMPT.format(
@@ -189,4 +254,36 @@ def verify_section(
                 ),
             },
         ]
+    )
+
+
+# ---- Suggest improvements (grammar, completeness, missing sections) ----
+
+IMPROVE_PROMPT = """You are a clinical documentation quality reviewer.
+
+Read the following note and suggest specific, actionable improvements.
+Focus on:
+- Missing fields a reader would expect (e.g. vitals not captured, no plan stated)
+- Grammar / clarity issues that hurt readability
+- Inconsistent abbreviations or units
+- Any [unclear] / "Not documented" entries the doctor should resolve
+
+Be concise. Do NOT invent clinical facts. Do NOT recommend specific
+diagnoses or doses. Output 3 to 6 short bullets prefixed with "- ".
+
+NOTE:
+{note}
+"""
+
+
+def suggest_improvements(note_text: str, *, specialty: str = "general") -> str:
+    note_text = (note_text or "").strip()
+    if not note_text:
+        return "- Note is empty. Generate or write content first."
+    return _chat(
+        [
+            {"role": "system", "content": MASTER_SYSTEM_PROMPT},
+            {"role": "user", "content": IMPROVE_PROMPT.format(note=note_text)},
+        ],
+        max_tokens=1200,
     )

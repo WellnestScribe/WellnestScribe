@@ -22,7 +22,11 @@ from accounts.models import DoctorProfile
 
 from .models import NoteShare, ScribeSession, SessionEvent, SOAPNote
 from .services.export import make_share_token, qr_data_url, whatsapp_url
-from .services.pipeline import run_note_generation, run_transcription
+from .services.pipeline import (
+    run_note_generation,
+    run_suggest_improvements,
+    run_transcription,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -242,6 +246,18 @@ def generate_note_api(request, pk):
         _log(session, "error", f"generate: {exc}")
         return JsonResponse({"ok": False, "error": str(exc)}, status=500)
 
+    if not (result.full_note or "").strip():
+        msg = (
+            "The AI returned an empty note. This usually means the model spent "
+            "its token budget on internal reasoning. Increase "
+            "SCRIBE_MAX_COMPLETION_TOKENS in .env or switch to a non-reasoning deployment."
+        )
+        session.status = "error"
+        session.error_message = msg
+        session.save(update_fields=["status", "error_message", "updated_at"])
+        _log(session, "error", "generate: empty output")
+        return JsonResponse({"ok": False, "error": msg}, status=502)
+
     note, _ = SOAPNote.objects.update_or_create(
         session=session,
         defaults={
@@ -317,6 +333,26 @@ def finalize_session_api(request, pk):
     session.save(update_fields=["status", "finalized_at", "updated_at"])
     _log(session, "finalized", "")
     return JsonResponse({"ok": True})
+
+
+@login_required
+@require_POST
+@csrf_protect
+def suggest_improvements_api(request, pk):
+    """Run an AI quality pass over the current note. Returns markdown bullets."""
+    session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)
+    note = getattr(session, "note", None)
+    if note is None:
+        return JsonResponse({"ok": False, "error": "Generate a note first."}, status=400)
+    profile = _get_profile(request.user)
+    note_text = note.edited_note or note.full_note or note.narrative or ""
+    try:
+        suggestions = run_suggest_improvements(note_text, specialty=profile.specialty)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("suggest_improvements failed for session %s", pk)
+        return JsonResponse({"ok": False, "error": str(exc)}, status=500)
+    _log(session, "edited", "ai-suggestions requested")
+    return JsonResponse({"ok": True, "suggestions": suggestions})
 
 
 @login_required

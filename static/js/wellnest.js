@@ -481,31 +481,86 @@
     const qrLink = $("#qrLink");
     const qrLinkRow = $("#qrLinkRow");
     const qrCopyLink = $("#qrCopyLink");
+    function resetQrModal() {
+      if (qrLoader) {
+        qrLoader.classList.remove("d-none");
+        qrLoader.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading…</span></div>'
+                          + '<p class="text-muted small mt-2 mb-0">Building share link…</p>';
+      }
+      if (qrCanvas) { qrCanvas.classList.add("d-none"); qrCanvas.innerHTML = ""; }
+      if (qrLinkRow) qrLinkRow.classList.add("d-none");
+    }
+    function showQrError(msg) {
+      if (qrLoader) {
+        qrLoader.classList.remove("d-none");
+        qrLoader.innerHTML = "<p class='text-danger small mb-0'>" + msg + "</p>";
+      }
+    }
+    async function loadShareLink() {
+      resetQrModal();
+      let r;
+      try {
+        r = await postJSON("/scribe/api/sessions/" + sessionId + "/share/", {});
+      } catch (err) {
+        console.error("share fetch failed", err);
+        showQrError("Network error: " + err.message);
+        return;
+      }
+      if (!r.ok || !r.body || !r.body.ok) {
+        showQrError((r.body && r.body.error) || "Could not build share link.");
+        return;
+      }
+      if (qrLoader) qrLoader.classList.add("d-none");
+      if (qrCanvas) {
+        const img = document.createElement("img");
+        img.src = r.body.qr_data_url;
+        img.alt = "QR code for share link";
+        qrCanvas.appendChild(img);
+        qrCanvas.classList.remove("d-none");
+      }
+      if (qrLink) qrLink.value = r.body.share_url;
+      if (qrLinkRow) qrLinkRow.classList.remove("d-none");
+    }
     if (shareModalEl) {
-      shareModalEl.addEventListener("show.bs.modal", async function () {
-        if (qrLoader) qrLoader.classList.remove("d-none");
-        if (qrCanvas) { qrCanvas.classList.add("d-none"); qrCanvas.innerHTML = ""; }
-        if (qrLinkRow) qrLinkRow.classList.add("d-none");
-        const r = await postJSON("/scribe/api/sessions/" + sessionId + "/share/", {});
-        if (!r.ok || !r.body.ok) {
-          if (qrLoader) qrLoader.innerHTML = "<p class='text-danger small mb-0'>" + ((r.body && r.body.error) || "Could not build share link.") + "</p>";
-          return;
-        }
-        if (qrLoader) qrLoader.classList.add("d-none");
-        if (qrCanvas) {
-          const img = document.createElement("img");
-          img.src = r.body.qr_data_url;
-          img.alt = "QR code for share link";
-          qrCanvas.appendChild(img);
-          qrCanvas.classList.remove("d-none");
-        }
-        if (qrLink) qrLink.value = r.body.share_url;
-        if (qrLinkRow) qrLinkRow.classList.remove("d-none");
-      });
+      shareModalEl.addEventListener("show.bs.modal", loadShareLink);
     }
     if (qrCopyLink) qrCopyLink.addEventListener("click", async function () {
       try { await navigator.clipboard.writeText(qrLink.value); showToast("Link copied"); }
       catch (e) { qrLink.select(); document.execCommand("copy"); }
+    });
+
+    // Suggest improvements
+    const improveBtn = $("#improveBtn", root);
+    const improveResult = $("#improveResult", root);
+    const improveBody = $("#improveBody", root);
+    if (improveBtn) improveBtn.addEventListener("click", async function () {
+      improveBtn.disabled = true;
+      const originalLabel = improveBtn.innerHTML;
+      improveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Checking…';
+      await autosave();
+      let r;
+      try { r = await postJSON("/scribe/api/sessions/" + sessionId + "/improve/", {}); }
+      catch (err) {
+        improveBtn.disabled = false;
+        improveBtn.innerHTML = originalLabel;
+        showToast("Network error: " + err.message);
+        return;
+      }
+      improveBtn.disabled = false;
+      improveBtn.innerHTML = originalLabel;
+      if (!r.ok || !r.body || !r.body.ok) {
+        showToast((r.body && r.body.error) || "Could not get suggestions.");
+        return;
+      }
+      const lines = (r.body.suggestions || "").split(/\r?\n/).filter(Boolean);
+      improveBody.innerHTML = "<ul class='list-unstyled mb-0'>" +
+        lines.map(function (l) {
+          const txt = l.replace(/^\s*[-*•]\s*/, "");
+          return '<li class="d-flex gap-2 mb-2"><iconify-icon icon="iconamoon:lightning-1-duotone" class="text-primary mt-1"></iconify-icon><span>' +
+                 txt.replace(/[<>&]/g, function (c) { return ({"<":"&lt;",">":"&gt;","&":"&amp;"})[c]; }) +
+                 '</span></li>';
+        }).join("") + "</ul>";
+      improveResult.classList.remove("d-none");
     });
 
     // Keyboard shortcuts
