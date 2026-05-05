@@ -39,10 +39,18 @@ urlpatterns = [
     ),
     path("share/<str:token>/", views.share_view, name="share"),
     path("api/quick-transcribe/", views.quick_transcribe_api, name="api_quick_transcribe"),
+    path("triage/", views.TriageView.as_view(), name="triage"),
+    path("api/triage/run/", views.triage_run_api, name="api_triage_run"),
+    path("api/triage/interpret/", views.triage_interpret_api, name="api_triage_interpret"),
     path(
         "api/sessions/<int:pk>/improve/",
         views.suggest_improvements_api,
         name="api_improve",
+    ),
+    path(
+        "api/sessions/<int:pk>/polish/",
+        views.polish_note_api,
+        name="api_polish",
     ),
     path(
         "api/preferences/",

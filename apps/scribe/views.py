@@ -18,15 +18,31 @@ from django.views import View
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_POST
 
+from django.conf import settings as dj_settings
+
 from accounts.models import DoctorProfile
 
 from .models import NoteShare, ScribeSession, SessionEvent, SOAPNote
 from .services.export import make_share_token, qr_data_url, whatsapp_url
 from .services.pipeline import (
+    run_interpret_patois,
     run_note_generation,
+    run_polish_grammar,
     run_suggest_improvements,
     run_transcription,
 )
+from .services.triage import (
+    TriageDependencyError,
+    probe_environment,
+    transcribe_mms,
+    t5_rewrite,
+)
+
+
+def _triage_visible(user) -> bool:
+    if dj_settings.SCRIBE_ENABLE_TRIAGE:
+        return user.is_authenticated
+    return user.is_authenticated and (user.is_staff or user.is_superuser)
 
 
 logger = logging.getLogger(__name__)
@@ -119,6 +135,110 @@ class ReviewView(LoginRequiredMixin, View):
 class SessionDetailView(LoginRequiredMixin, View):
     def get(self, request, pk):
         return redirect("scribe:review", pk=pk)
+
+
+class TriageView(LoginRequiredMixin, View):
+    """Admin/staff sandbox for testing Patois ASR (MMS) + T5 rewrites locally."""
+
+    template_name = "scribe/triage.html"
+
+    def get(self, request):
+        if not _triage_visible(request.user):
+            return redirect("scribe:record")
+        return render(
+            request,
+            self.template_name,
+            {
+                "env": probe_environment(),
+                "default_system_prompt": (
+                    "You are a Jamaican Patois-to-clinical-English interpreter. "
+                    "Read the raw Patwa transcript phonetically, rewrite it as "
+                    "neutral clinical English in third person, capture every "
+                    "symptom and herbal remedy, tag herbs as [HERBAL SUPPLEMENT], "
+                    "and flag unintelligible parts with [unclear: \"...\"]."
+                ),
+            },
+        )
+
+
+@login_required
+@require_POST
+@csrf_protect
+def triage_run_api(request):
+    """Run a chosen Triage backend on uploaded audio or text and return raw output."""
+    if not _triage_visible(request.user):
+        return JsonResponse({"ok": False, "error": "Not authorized."}, status=403)
+
+    backend = request.POST.get("backend", "mms")
+    device = request.POST.get("device", dj_settings.TRIAGE_DEFAULT_DEVICE)
+    target_lang = request.POST.get("target_lang", "jam")
+
+    audio = request.FILES.get("audio")
+    text_input = request.POST.get("text_input", "").strip()
+
+    saved_path = None
+    if audio:
+        from datetime import datetime
+        stem = datetime.now().strftime("%Y%m%d-%H%M%S")
+        ext = (audio.name.rsplit(".", 1)[-1] if "." in audio.name else "webm")[:5]
+        saved_path = dj_settings.TRIAGE_AUDIO_DIR / f"{stem}-{request.user.pk}.{ext}"
+        with open(saved_path, "wb") as fh:
+            for chunk in audio.chunks():
+                fh.write(chunk)
+
+    import time
+    started = time.perf_counter()
+    try:
+        if backend == "mms":
+            if not saved_path:
+                return JsonResponse({"ok": False, "error": "MMS requires audio."}, status=400)
+            raw = transcribe_mms(saved_path, device=device, target_lang=target_lang)
+        elif backend == "t5_paraphrase":
+            instruction = request.POST.get(
+                "instruction",
+                "Rewrite the following Jamaican Patois into clear clinical English.",
+            )
+            raw = t5_rewrite(text_input, instruction=instruction, device=device)
+        elif backend == "cloud_interpret":
+            raw = run_interpret_patois(text_input or "")
+        else:
+            return JsonResponse({"ok": False, "error": f"Unknown backend '{backend}'."}, status=400)
+    except TriageDependencyError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=503)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("triage backend failed")
+        return JsonResponse({"ok": False, "error": str(exc)}, status=500)
+    duration_ms = int((time.perf_counter() - started) * 1000)
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "backend": backend,
+            "device": device,
+            "raw_text": raw,
+            "duration_ms": duration_ms,
+            "audio_saved_as": saved_path.name if saved_path else None,
+        }
+    )
+
+
+@login_required
+@require_POST
+@csrf_protect
+def triage_interpret_api(request):
+    """Run cloud LLM interpretation over Patois text using a custom system prompt."""
+    if not _triage_visible(request.user):
+        return JsonResponse({"ok": False, "error": "Not authorized."}, status=403)
+    payload = _json_body(request)
+    raw_text = (payload.get("text") or "").strip()
+    if not raw_text:
+        return JsonResponse({"ok": False, "error": "No text provided."}, status=400)
+    try:
+        clean = run_interpret_patois(raw_text)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("triage interpret failed")
+        return JsonResponse({"ok": False, "error": str(exc)}, status=500)
+    return JsonResponse({"ok": True, "clean_text": clean})
 
 
 # ----- API views -----
@@ -353,6 +473,46 @@ def suggest_improvements_api(request, pk):
         return JsonResponse({"ok": False, "error": str(exc)}, status=500)
     _log(session, "edited", "ai-suggestions requested")
     return JsonResponse({"ok": True, "suggestions": suggestions})
+
+
+@login_required
+@require_POST
+@csrf_protect
+def polish_note_api(request, pk):
+    """Run a grammar/clarity pass over the current note. Updates the note in place."""
+    session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)
+    note = getattr(session, "note", None)
+    if note is None:
+        return JsonResponse({"ok": False, "error": "Generate a note first."}, status=400)
+    source = note.edited_note or note.full_note or note.narrative or ""
+    if not source.strip():
+        return JsonResponse({"ok": False, "error": "Note is empty."}, status=400)
+    try:
+        polished = run_polish_grammar(source)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("polish_grammar failed for session %s", pk)
+        return JsonResponse({"ok": False, "error": str(exc)}, status=500)
+    note.edited_note = polished
+    # If we have S/O/A/P sections in polished output, update the structured fields.
+    from .services.soap_generator import _split_soap  # local import
+    sections = _split_soap(polished)
+    if any(sections.values()):
+        note.subjective = sections["subjective"]
+        note.objective = sections["objective"]
+        note.assessment = sections["assessment"]
+        note.plan = sections["plan"]
+    note.save()
+    _log(session, "edited", "polish-grammar applied")
+    return JsonResponse(
+        {
+            "ok": True,
+            "edited_note": note.edited_note,
+            "subjective": note.subjective,
+            "objective": note.objective,
+            "assessment": note.assessment,
+            "plan": note.plan,
+        }
+    )
 
 
 @login_required

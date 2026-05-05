@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Triage Lab · WellNest Scribe{% endblock %}
+
+{% block content %}
+<div data-screen="triage">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+                <div>
+                    <h4 class="mb-1 fw-semibold">Triage Lab
+                        <span class="badge bg-primary-subtle text-primary ms-1" style="font-size:0.7rem;">internal</span>
+                    </h4>
+                    <p class="text-muted mb-0 small">
+                        Sandbox for testing Patois ASR (MMS) + on-device rewrite models.
+                        Hidden from regular pilot doctors.
+                    </p>
+                </div>
+                <a href="{% url 'scribe:record' %}" class="page-back-btn align-self-start">
+                    <iconify-icon icon="iconamoon:arrow-left-2-light"></iconify-icon>
+                    Back to scribe
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-12 col-xl-8">
+            <div class="card">
+                <div class="card-body p-4">
+                    <h6 class="fw-semibold mb-3">1. Audio in</h6>
+                    <div class="recorder-shell text-center">
+                        <div class="recorder-timer" id="triageTimer">0:00</div>
+                        <div class="waveform-bars" id="triageWaveform"></div>
+                        <div class="d-flex justify-content-center align-items-center mt-3 gap-3 flex-wrap">
+                            <button type="button" class="record-cta" id="triageRecordBtn" aria-label="Record">
+                                <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+                                <span data-record-label>Record</span>
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" id="triageUploadBtn">
+                                <iconify-icon icon="iconamoon:cloud-upload-duotone" class="me-1 align-middle"></iconify-icon>
+                                Upload audio
+                            </button>
+                            <input type="file" id="triageFileInput" accept="audio/*" hidden>
+                        </div>
+                        <p class="text-muted small mt-3 mb-0" id="triageAudioInfo">No audio loaded.</p>
+                        <audio id="triagePlayer" class="mt-2 d-none" controls style="width: 100%;"></audio>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <h6 class="fw-semibold mb-3">2. Pick backend</h6>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted" for="triageBackend">Backend</label>
+                            <select class="form-select" id="triageBackend">
+                                <option value="mms" {% if not env.transformers %}disabled{% endif %}>
+                                    MMS-1b-l1107 (Patois ASR){% if not env.transformers %} — install transformers{% endif %}
+                                </option>
+                                <option value="t5_paraphrase" {% if not env.transformers %}disabled{% endif %}>
+                                    FLAN-T5 base (text rewrite){% if not env.transformers %} — install transformers{% endif %}
+                                </option>
+                                <option value="cloud_interpret">Cloud LLM Patois → English</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted" for="triageDevice">Device</label>
+                            <select class="form-select" id="triageDevice">
+                                <option value="cpu" {% if env.device_default == 'cpu' %}selected{% endif %}>CPU</option>
+                                <option value="cuda" {% if not env.cuda %}disabled{% endif %} {% if env.device_default == 'cuda' %}selected{% endif %}>
+                                    CUDA{% if not env.cuda %} (no GPU){% endif %}
+                                </option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted" for="triageLang">Lang code</label>
+                            <input type="text" class="form-control" id="triageLang" value="jam" maxlength="6">
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <label class="form-label small text-muted" for="triageTextIn">Optional text input (for T5 / cloud-interpret backends)</label>
+                        <textarea class="note-textarea" id="triageTextIn" rows="3"
+                                  placeholder="Paste raw Patois ASR output here…"></textarea>
+                    </div>
+
+                    <div class="mt-3 d-flex justify-content-end">
+                        <button type="button" class="btn btn-primary" id="triageRunBtn">
+                            <iconify-icon icon="iconamoon:player-play-duotone" class="me-1 align-middle"></iconify-icon>
+                            Run backend
+                        </button>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <h6 class="fw-semibold mb-3">3. Raw output</h6>
+                    <textarea class="note-textarea" id="triageRawOut" rows="6"
+                              placeholder="Raw model output appears here…"></textarea>
+                    <p class="small text-muted mt-2" id="triageTimings"></p>
+
+                    <hr class="my-4">
+
+                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                        <h6 class="fw-semibold mb-0">4. Cloud interpretation (optional)</h6>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="triageInterpretBtn">
+                            <iconify-icon icon="iconamoon:lightning-1-duotone" class="me-1 align-middle"></iconify-icon>
+                            Interpret raw → clinical English
+                        </button>
+                    </div>
+                    <textarea class="note-textarea" id="triageCleanOut" rows="6"
+                              placeholder="Clean clinical English will appear here…"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-4">
+            <div class="card">
+                <div class="card-body p-4">
+                    <h6 class="fw-semibold mb-2">Environment probe</h6>
+                    <ul class="list-unstyled small mb-0">
+                        <li>torch: {{ env.torch|yesno:"yes,no" }}{% if env.torch_version %} ({{ env.torch_version }}){% endif %}</li>
+                        <li>CUDA: {{ env.cuda|yesno:"yes,no" }}{% if env.cuda_device %} — {{ env.cuda_device }}{% endif %}</li>
+                        <li>transformers: {{ env.transformers|yesno:"yes,no" }}{% if env.transformers_version %} ({{ env.transformers_version }}){% endif %}</li>
+                        <li>librosa: {{ env.librosa|yesno:"yes,no" }}</li>
+                        <li>MMS cached: {{ env.model_cached_mms|yesno:"yes,no" }}</li>
+                        <li>T5 cached: {{ env.model_cached_t5|yesno:"yes,no" }}</li>
+                    </ul>
+
+                    {% if not env.transformers or not env.torch or not env.librosa %}
+                    <hr class="my-3">
+                    <details>
+                        <summary class="small fw-semibold text-warning">Install instructions</summary>
+                        <pre class="small mt-2 mb-0" style="white-space: pre-wrap;">pip install transformers accelerate torch torchaudio librosa soundfile sentencepiece</pre>
+                        <p class="small text-muted mt-2 mb-0">
+                            For RTX 2060 (CUDA): install the matching CUDA build of torch first, then re-launch the dev server.
+                        </p>
+                    </details>
+                    {% endif %}
+
+                    <hr class="my-3">
+                    <h6 class="fw-semibold mb-2">Patois interpreter prompt</h6>
+                    <p class="text-muted small mb-2">
+                        Used by the cloud LLM to read raw MMS output. Edit live for testing.
+                        Resets on page reload.
+                    </p>
+                    <textarea class="note-textarea" id="triageSysPrompt" rows="8" style="font-size:0.85rem;">{{ default_system_prompt }}</textarea>
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-body p-3">
+                    <details>
+                        <summary class="fw-semibold small">Tips</summary>
+                        <ul class="small text-muted mt-2 mb-0">
+                            <li>MMS works best on 16 kHz mono WAV/MP3, &lt; 30 s per chunk.</li>
+                            <li>First run downloads ~4 GB of weights to the HuggingFace cache.</li>
+                            <li>CPU is fine for batch / post-encounter; CUDA needed for live streaming.</li>
+                            <li>Set <code>SCRIBE_ENABLE_TRIAGE=True</code> in <code>.env</code> to share with non-staff.</li>
+                        </ul>
+                    </details>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

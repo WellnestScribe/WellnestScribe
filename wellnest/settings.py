@@ -147,6 +147,14 @@ SCRIBE_MODE = config("SCRIBE_MODE", default="cloud")
 PILOT_MODE = config("PILOT_MODE", default=True, cast=bool)
 AUTO_DELETE_AUDIO_DAYS = config("AUTO_DELETE_AUDIO_DAYS", default=30, cast=int)
 
+# ---- Triage sandbox (admin/staff only by default) ----
+# Set SCRIBE_ENABLE_TRIAGE=True in .env to expose to all logged-in users.
+# Otherwise visible only to staff / superusers.
+SCRIBE_ENABLE_TRIAGE = config("SCRIBE_ENABLE_TRIAGE", default=False, cast=bool)
+TRIAGE_DEFAULT_DEVICE = config("TRIAGE_DEFAULT_DEVICE", default="cpu")  # cpu | cuda
+TRIAGE_AUDIO_DIR = BASE_DIR / "media" / "triage"
+TRIAGE_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
 # ---- Logging ----
 LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(exist_ok=True)

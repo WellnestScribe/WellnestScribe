@@ -151,6 +151,38 @@
   const recordRoot = document.querySelector("[data-screen='record']");
   if (recordRoot) initRecordScreen(recordRoot);
 
+  // Quick templates for the manual transcript textarea on the record screen.
+  const ENCOUNTER_TEMPLATES = {
+    htn: "Hypertension follow-up. [Age] [sex] returns for routine BP review. " +
+         "Reports compliance with [drug + dose]. [Side effects: yes/no]. " +
+         "[Headache/dizziness/blurred vision: yes/no]. " +
+         "BP today [xxx/xx], HR [xx]. Plan: [continue same / increase dose / add agent]. " +
+         "Recheck BP in [interval]. Lifestyle counselling on salt, exercise.",
+    dm: "Diabetes follow-up. [Age] [sex] with type 2 DM on [metformin / glibenclamide / insulin]. " +
+        "Reports [compliance / missed doses]. [Hypoglycaemia episodes: yes/no]. " +
+        "Recent FBS [x] mmol/L; HbA1c [x%] if known. Foot exam: [findings]. " +
+        "Plan: [continue / adjust dose / add agent]. Recheck in [interval]. " +
+        "Counselled on diet, foot care, and warning signs.",
+    urti: "Acute URTI. [Age] [sex] presents with [cough / sore throat / runny nose] " +
+          "for [duration]. [Fever: yes/no]. [SOB: yes/no]. " +
+          "On exam: T [x], RR [x], SpO2 [x]%. Chest [clear/findings]. " +
+          "Assessment: viral URTI. Plan: paracetamol PRN, fluids, rest. " +
+          "Return if SOB, persistent fever > [duration], chest pain.",
+    gastro: "Acute gastroenteritis. [Age] [sex] with [vomiting / diarrhoea] " +
+            "for [duration]. [Number of episodes]. [Blood/mucus: yes/no]. " +
+            "Hydration status: [findings]. Plan: ORS, paracetamol PRN. " +
+            "Return if persistent vomiting, blood in stool, lethargy.",
+    antenatal: "Antenatal visit. [Age] G[x]P[x] at [GA] weeks. LMP [date]. " +
+               "Reports [fetal movements: yes/no]. No headache, no visual changes, " +
+               "no epigastric pain. BP [xxx/xx]. Fundal height [x cm]. " +
+               "FHR [xxx]. Continue folic acid, iron. Next visit in [interval].",
+    paeds: "Paediatric visit. [Age] [sex] brought by [parent/guardian]. " +
+           "Reports [symptom] for [duration]. Feeding [normal/reduced]. " +
+           "Activity [normal/reduced]. T [x], HR [x], RR [x], SpO2 [x]%. " +
+           "Immunisations [up to date / due]. Plan: [treatment]. " +
+           "Return if fever > [x], reduced feeding, lethargy.",
+  };
+
   function initRecordScreen(root) {
     const recordBtn = $("#recordBtn", root);
     const timerEl = $("#recordTimer", root);
@@ -287,6 +319,20 @@
         await uploadAndProcess(f);
       });
     }
+    $$("[data-template]", root).forEach(function (link) {
+      link.addEventListener("click", function (e) {
+        e.preventDefault();
+        const key = link.getAttribute("data-template");
+        const tpl = ENCOUNTER_TEMPLATES[key];
+        if (!tpl || !transcriptArea) return;
+        transcriptArea.value = (transcriptArea.value
+          ? transcriptArea.value.trim() + "\n\n"
+          : "") + tpl;
+        transcriptArea.focus();
+        if (window.WELLNEST_toast) window.WELLNEST_toast("Template inserted — fill in the brackets");
+      });
+    });
+
     if (generateBtn) generateBtn.addEventListener("click", async function () {
       const transcript = transcriptArea ? transcriptArea.value.trim() : "";
       if (transcript.length < 20) { setStatus(statusEl, "Type at least a couple sentences first.", "error"); return; }
@@ -298,6 +344,142 @@
       if (!res.ok || !res.body.ok) { setStatus(statusEl, (res.body && res.body.error) || "Could not create session.", "error"); return; }
       setStatus(statusEl, "Generating note…");
       await runGeneration(res.body.session_id, transcript);
+    });
+  }
+
+  // ---------- triage sandbox ----------
+  const triageRoot = document.querySelector("[data-screen='triage']");
+  if (triageRoot) initTriageScreen(triageRoot);
+
+  function initTriageScreen(root) {
+    const recordBtn = $("#triageRecordBtn", root);
+    const uploadBtn = $("#triageUploadBtn", root);
+    const fileInput = $("#triageFileInput", root);
+    const player = $("#triagePlayer", root);
+    const audioInfo = $("#triageAudioInfo", root);
+    const timer = $("#triageTimer", root);
+    const waveBars = $("#triageWaveform", root);
+    const backendSel = $("#triageBackend", root);
+    const deviceSel = $("#triageDevice", root);
+    const langInput = $("#triageLang", root);
+    const textIn = $("#triageTextIn", root);
+    const runBtn = $("#triageRunBtn", root);
+    const rawOut = $("#triageRawOut", root);
+    const timings = $("#triageTimings", root);
+    const cleanOut = $("#triageCleanOut", root);
+    const interpretBtn = $("#triageInterpretBtn", root);
+
+    let currentAudioBlob = null;
+    let recState = { rec: null, stream: null, ctx: null, started: 0, ts: 0 };
+
+    const BARS = 36;
+    if (waveBars) {
+      waveBars.innerHTML = "";
+      for (let i = 0; i < BARS; i++) waveBars.appendChild(document.createElement("span"));
+    }
+
+    function attachBlob(blob) {
+      currentAudioBlob = blob;
+      const url = URL.createObjectURL(blob);
+      if (player) { player.src = url; player.classList.remove("d-none"); }
+      if (audioInfo) audioInfo.textContent = "Loaded " + (blob.size / 1024 | 0) + " KB · " + blob.type;
+    }
+
+    if (uploadBtn && fileInput) {
+      uploadBtn.addEventListener("click", function () { fileInput.click(); });
+      fileInput.addEventListener("change", function () {
+        const f = fileInput.files && fileInput.files[0];
+        if (f) attachBlob(f);
+      });
+    }
+
+    if (recordBtn) recordBtn.addEventListener("click", async function () {
+      if (recordBtn.classList.contains("is-recording")) {
+        if (recState.rec && recState.rec.state !== "inactive") recState.rec.stop();
+        clearInterval(recState.ts);
+        if (recState.stream) recState.stream.getTracks().forEach(function (t) { t.stop(); });
+        if (recState.ctx && recState.ctx.state !== "closed") recState.ctx.close();
+        recordBtn.classList.remove("is-recording");
+        recordBtn.querySelector("[data-record-label]").textContent = "Record";
+        return;
+      }
+      try { recState.stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+      catch (err) { showToast("Mic permission denied"); return; }
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus" : "";
+      const chunks = [];
+      recState.rec = mime ? new MediaRecorder(recState.stream, { mimeType: mime }) : new MediaRecorder(recState.stream);
+      recState.rec.ondataavailable = function (e) { if (e.data && e.data.size > 0) chunks.push(e.data); };
+      recState.rec.onstop = function () {
+        const blob = new Blob(chunks, { type: chunks[0]?.type || "audio/webm" });
+        attachBlob(blob);
+      };
+      recState.rec.start(250);
+      recState.started = Date.now();
+      recState.ts = setInterval(function () {
+        if (timer) timer.textContent = fmtTime((Date.now() - recState.started) / 1000);
+      }, 250);
+      recordBtn.classList.add("is-recording");
+      recordBtn.querySelector("[data-record-label]").textContent = "Stop";
+    });
+
+    if (runBtn) runBtn.addEventListener("click", async function () {
+      const fd = new FormData();
+      fd.append("backend", backendSel.value);
+      fd.append("device", deviceSel.value);
+      fd.append("target_lang", langInput.value || "jam");
+      fd.append("text_input", textIn.value || "");
+      if (currentAudioBlob) {
+        const ext = currentAudioBlob.type.indexOf("ogg") >= 0 ? "ogg" : (currentAudioBlob.type.indexOf("mpeg") >= 0 ? "mp3" : "webm");
+        fd.append("audio", currentAudioBlob, "triage." + ext);
+      }
+      runBtn.disabled = true;
+      const orig = runBtn.innerHTML;
+      runBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Running…';
+      let r;
+      try { r = await postForm("/scribe/api/triage/run/", fd); }
+      catch (err) { runBtn.disabled = false; runBtn.innerHTML = orig; showToast("Network error"); return; }
+      runBtn.disabled = false;
+      runBtn.innerHTML = orig;
+      if (!r.ok || !r.body || !r.body.ok) {
+        rawOut.value = "";
+        timings.textContent = "";
+        showToast((r.body && r.body.error) || "Run failed.");
+        if (r.body && r.body.error) rawOut.value = "[error] " + r.body.error;
+        return;
+      }
+      rawOut.value = r.body.raw_text || "";
+      timings.textContent = r.body.backend + " · " + r.body.device + " · " + r.body.duration_ms + " ms"
+        + (r.body.audio_saved_as ? " · saved " + r.body.audio_saved_as : "");
+      if (typeof autoGrowAny === "function") autoGrowAny(rawOut);
+    });
+
+    if (interpretBtn) interpretBtn.addEventListener("click", async function () {
+      const text = (rawOut.value || textIn.value || "").trim();
+      if (!text) { showToast("Run a backend first or paste raw text."); return; }
+      interpretBtn.disabled = true;
+      const orig = interpretBtn.innerHTML;
+      interpretBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Interpreting…';
+      let r;
+      try { r = await postJSON("/scribe/api/triage/interpret/", { text: text }); }
+      catch (err) { interpretBtn.disabled = false; interpretBtn.innerHTML = orig; showToast("Network error"); return; }
+      interpretBtn.disabled = false;
+      interpretBtn.innerHTML = orig;
+      if (!r.ok || !r.body || !r.body.ok) {
+        showToast((r.body && r.body.error) || "Interpretation failed.");
+        return;
+      }
+      cleanOut.value = r.body.clean_text || "";
+    });
+
+    function autoGrowAny(el) {
+      el.style.height = "auto";
+      el.style.height = Math.min(800, el.scrollHeight + 4) + "px";
+    }
+    [rawOut, cleanOut, textIn].forEach(function (el) {
+      if (!el) return;
+      autoGrowAny(el);
+      el.addEventListener("input", function () { autoGrowAny(el); });
     });
   }
 
@@ -571,6 +753,49 @@
         e.preventDefault(); if (copyBtn) copyBtn.click();
       }
     });
+
+    // Polish grammar
+    const polishBtn = $("#polishBtn", root);
+    if (polishBtn) polishBtn.addEventListener("click", async function () {
+      polishBtn.disabled = true;
+      const originalLabel = polishBtn.innerHTML;
+      polishBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Polishing…';
+      await autosave();
+      let r;
+      try { r = await postJSON("/scribe/api/sessions/" + sessionId + "/polish/", {}); }
+      catch (err) { polishBtn.disabled = false; polishBtn.innerHTML = originalLabel; showToast("Network error: " + err.message); return; }
+      polishBtn.disabled = false;
+      polishBtn.innerHTML = originalLabel;
+      if (!r.ok || !r.body || !r.body.ok) {
+        showToast((r.body && r.body.error) || "Polish failed.");
+        return;
+      }
+      // Apply returned text to fields + narrative.
+      fields.forEach(function (el) {
+        const k = el.getAttribute("data-note-field");
+        if (k && k in r.body) { el.value = r.body[k] || ""; autoGrow(el); }
+      });
+      if (fullNoteArea) {
+        fullNoteArea.value = r.body.edited_note || "";
+        delete fullNoteArea.dataset.manualEdit;
+        autoGrow(fullNoteArea);
+      }
+      updateWordCount();
+      showToast("Grammar polished");
+    });
+
+    // Auto-grow all editable textareas in this view.
+    function autoGrow(el) {
+      el.style.height = "auto";
+      el.style.height = Math.min(800, el.scrollHeight + 4) + "px";
+    }
+    function attachAutoGrow(el) {
+      autoGrow(el);
+      el.addEventListener("input", function () { autoGrow(el); });
+    }
+    fields.forEach(attachAutoGrow);
+    if (fullNoteArea) attachAutoGrow(fullNoteArea);
+    if (transcriptArea) attachAutoGrow(transcriptArea);
 
     initQuickEditMics(root);
     updateWordCount();

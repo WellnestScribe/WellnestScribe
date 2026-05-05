@@ -14,6 +14,18 @@
     </a>
 </li>
 
+{% if triage_visible %}
+{% url 'scribe:triage' as triage_url %}
+<li class="nav-item">
+    <a class="nav-link {% if request.path == triage_url %}active{% endif %}" href="{{ triage_url }}" data-bs-dismiss="offcanvas">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:lab-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">Triage <span class="badge bg-primary-subtle text-primary ms-1" style="font-size:0.62rem;">Lab</span></span>
+    </a>
+</li>
+{% endif %}
+
 <li class="nav-item">
     <a class="nav-link {% if request.path == history_url %}active{% endif %}" href="{{ history_url }}" data-bs-dismiss="offcanvas">
         <span class="nav-icon">

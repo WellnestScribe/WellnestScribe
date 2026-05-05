@@ -65,14 +65,30 @@
 
                     <hr class="my-4">
 
-                    <h6 class="fw-semibold mb-2">Or type the encounter</h6>
+                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                        <h6 class="fw-semibold mb-0">Or type the encounter</h6>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                <iconify-icon icon="iconamoon:file-light" class="me-1 align-middle"></iconify-icon>
+                                Quick template
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" href="#" data-template="htn">Hypertension follow-up</a></li>
+                                <li><a class="dropdown-item" href="#" data-template="dm">Diabetes follow-up</a></li>
+                                <li><a class="dropdown-item" href="#" data-template="urti">Acute URTI / cold</a></li>
+                                <li><a class="dropdown-item" href="#" data-template="gastro">Gastroenteritis</a></li>
+                                <li><a class="dropdown-item" href="#" data-template="antenatal">Antenatal visit</a></li>
+                                <li><a class="dropdown-item" href="#" data-template="paeds">Paediatric general</a></li>
+                            </ul>
+                        </div>
+                    </div>
                     <p class="text-muted small mb-2">
-                        Useful when you don&rsquo;t want to record audio. Paste or type what
-                        happened, then generate the structured note.
+                        Templates pre-fill the typical structure for common health-centre
+                        encounters. Replace the bracketed placeholders with this patient&rsquo;s details — the AI fills in only what you state.
                     </p>
                     <textarea id="manualTranscript"
                               class="note-textarea"
-                              rows="5"
+                              rows="6"
                               placeholder="e.g. 58 y/o female, hypertension follow-up. Reports compliance with amlodipine 5mg OD…"></textarea>
                     <div class="d-flex justify-content-end mt-3">
                         <button type="button" class="btn btn-primary" id="generateBtn">

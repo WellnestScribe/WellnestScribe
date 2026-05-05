@@ -207,6 +207,34 @@ def generate_note(
         ]
     )
 
+    # Refusal-pattern retry: when a SOAP comes back as "Not documented" in
+    # 3+ sections but the transcript clearly has clinical content, the
+    # model is being too conservative. Re-prompt with a stricter extraction
+    # nudge that overrides its caution.
+    if note_format == "soap" and _looks_like_refusal(full_note) and len(transcript) > 60:
+        logger.warning("SOAP looks like a refusal — retrying with stricter extraction prompt.")
+        push = (
+            "Your previous attempt was too conservative — most sections came back as "
+            "'Not documented' even though the transcript contains clinical content. "
+            "Re-read the transcript and EXTRACT every fact present (symptoms, history, "
+            "vitals, exam findings, diagnoses, plan items). Use 'Not documented' ONLY "
+            "for an entire section that genuinely has zero relevant content.\n\n"
+            "PREVIOUS ATTEMPT (over-conservative):\n"
+            f"{full_note}\n\n"
+            "Now produce a correct SOAP note from the transcript:\n"
+            f"{transcript}"
+        )
+        retry_text = _chat(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user},
+                {"role": "assistant", "content": full_note},
+                {"role": "user", "content": push},
+            ]
+        )
+        if retry_text and not _looks_like_refusal(retry_text):
+            full_note = retry_text
+
     note = GeneratedNote(note_format=note_format, full_note=full_note)
     note.flags = _extract_flags(full_note)
     if note_format == "soap":
@@ -305,4 +333,81 @@ def suggest_improvements(note_text: str, *, specialty: str = "general") -> str:
             {"role": "user", "content": IMPROVE_PROMPT.format(note=note_text)},
         ],
         max_tokens=1200,
+    )
+
+
+POLISH_PROMPT = """Clean up the grammar, spelling, and clinical phrasing of
+the note below. PRESERVE every clinical fact exactly. Do not add or remove
+findings, diagnoses, doses, or vitals.
+
+Keep the existing S:/O:/A:/P: section labels (or the existing structure if
+there are no labels). Output the polished note in the same plain-text
+format. End with: AI-generated draft — review and edit required before
+clinical use.
+
+NOTE TO POLISH:
+{note}
+"""
+
+
+def polish_grammar(note_text: str) -> str:
+    note_text = (note_text or "").strip()
+    if not note_text:
+        return ""
+    return _chat(
+        [
+            {"role": "system", "content": MASTER_SYSTEM_PROMPT},
+            {"role": "user", "content": POLISH_PROMPT.format(note=note_text)},
+        ]
+    )
+
+
+# ---- Patois ASR post-processor ----
+# Used by the Triage sandbox to interpret raw MMS / Patois output and
+# convert it into clean clinical English the SOAP pipeline can consume.
+
+PATOIS_INTERPRETER_SYSTEM_PROMPT = """You are a Jamaican Patois-to-clinical-English
+interpreter for a medical scribe. The text below is a raw transcript from
+an ASR model that captured a Jamaican Creole (Patwa) speaker. The
+spelling is non-standard and inconsistent — that is normal for Patwa.
+
+Your job:
+1. Read the Patwa carefully. Patwa is mostly intelligible to English
+   speakers if read phonetically. Examples:
+   "yu nuo se" = "you know that"
+   "fram maan iin" = "from morning"
+   "mi beli a kil mi" / "mi beli-batam a kil mi" = "my belly / lower abdomen
+       is killing me" → severe abdominal/lower-abdominal pain
+   "mi tek som serasi bush" = "I drank some cerasee tea" (herbal remedy)
+   "mi staat vamit" = "I started vomiting"
+   "mi ed a ap mi" = "my head is hammering me / pounding"
+   "mi ai dem torn red" = "my eyes turned red"
+   "mi fingga dem a wan piis a pien" = "my fingers are intensely painful"
+   "knife mi" / "naip mi" = sharp/stabbing sensation
+   "mi go jringk som bizni" = "I drank some bissy/kola-nut tea" (often used
+       after suspected poisoning or as a tonic)
+   "dem gaa mi bed" = "they put me to bed"
+   "pikni" = "child"; "di pikni sik" = "the child is sick"
+2. Rewrite the content as clean, neutral clinical English in third person
+   ("Patient reports..."). Capture every symptom, time course, herbal
+   remedy, and self-treatment.
+3. Tag herbs with [HERBAL SUPPLEMENT] (cerasee, fever grass, bissy,
+   soursop leaf, jackass bitters, noni, turmeric, aloe vera).
+4. Do NOT invent symptoms, diagnoses, doses, or vitals.
+5. If a phrase is genuinely unintelligible, write [unclear: "<phrase>"].
+
+Output ONLY the rewritten clinical English. No commentary, no markdown.
+"""
+
+
+def interpret_patois(patois_text: str) -> str:
+    """Convert raw MMS Patois transcript into clean clinical English."""
+    text = (patois_text or "").strip()
+    if not text:
+        return ""
+    return _chat(
+        [
+            {"role": "system", "content": PATOIS_INTERPRETER_SYSTEM_PROMPT},
+            {"role": "user", "content": f"PATWA TRANSCRIPT:\n{text}"},
+        ]
     )

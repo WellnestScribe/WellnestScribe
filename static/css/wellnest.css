@@ -206,6 +206,10 @@ a { color: var(--wellnest-blue); }
   box-shadow: 0 0 0 4px var(--wellnest-blue-soft);
 }
 .note-textarea.narrative { min-height: 320px; }
+.note-textarea {
+  overflow: hidden;
+  height: auto;
+}
 .note-textarea.flagged { border-color: #e89c1d; box-shadow: 0 0 0 3px rgba(232,156,29,0.18); }
 
 .quick-mic-btn {

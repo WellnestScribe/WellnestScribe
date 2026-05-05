@@ -15,6 +15,8 @@ from .soap_generator import (
     GeneratedNote,
     generate_modular_soap,
     generate_note,
+    interpret_patois,
+    polish_grammar,
     suggest_improvements,
 )
 from .stub import fake_generate_note, fake_transcribe
@@ -96,3 +98,23 @@ def run_suggest_improvements(note_text: str, *, specialty: str = "general") -> s
     except AIConfigError as exc:
         logger.warning("Improvements stub: %s", exc)
         return "- AI not configured. Add SCRIBE_AZURE_OPENAI_KEY to .env."
+
+
+def run_polish_grammar(note_text: str) -> str:
+    if not _use_real_ai():
+        return note_text  # No-op in stub mode.
+    try:
+        return polish_grammar(note_text)
+    except AIConfigError as exc:
+        logger.warning("Polish stub: %s", exc)
+        return note_text
+
+
+def run_interpret_patois(patois_text: str) -> str:
+    if not _use_real_ai():
+        return patois_text
+    try:
+        return interpret_patois(patois_text)
+    except AIConfigError as exc:
+        logger.warning("Interpret patois stub: %s", exc)
+        return patois_text
