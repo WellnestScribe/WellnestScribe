@@ -1,19 +1,27 @@
 from .settings import *
 import os
+import socket
 
 # Production overrides
 DEBUG = False
-
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
+# Build allowed hosts
 ALLOWED_HOSTS = [
     "wellnestscribe.com",
-    "www.wellnestscribe.com",
-    os.environ.get("WEBSITE_HOSTNAME", ""),  # Azure sets this automatically
-    "169.254.129.2",  # Azure internal health probe IP from your logs
+    "www.wellnestscribe.com",  # fixed - removed markdown link formatting
+    os.environ.get("WEBSITE_HOSTNAME", ""),
     "localhost",
     "127.0.0.1",
 ]
+
+# Dynamically add Azure internal health probe IP
+try:
+    ALLOWED_HOSTS.append(socket.gethostname())
+    ALLOWED_HOSTS.append(socket.gethostbyname(socket.gethostname()))
+except Exception:
+    pass
+
 ALLOWED_HOSTS = [h for h in ALLOWED_HOSTS if h]  # remove empty strings
 
 CSRF_TRUSTED_ORIGINS = [
@@ -53,6 +61,8 @@ DATABASES = {
         "PORT": os.environ.get("AZURE_MYSQL_PORT", "3306"),
         "OPTIONS": {
             "charset": "utf8mb4",
+            "ssl": {"ca": "/etc/ssl/certs/ca-certificates.crt"},  # required for Azure MySQL SSL
         },
+        "CONN_MAX_AGE": 60,  # connection pooling - prevents dropped connections
     }
 }
