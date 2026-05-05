@@ -19,6 +19,8 @@ from django.conf import settings
 from .clients import get_chat_client
 from .prompts import (
     CHART_USER_PROMPT,
+    IMPROVE_PROMPT,
+    JAMAICAN_CONTEXT_ADDENDUM,
     MASTER_SYSTEM_PROMPT,
     NARRATIVE_USER_PROMPT,
     SECTION_PROMPTS,
@@ -52,16 +54,33 @@ def _is_reasoning_deployment() -> bool:
 
 
 def _system_prompt(specialty: str, custom_instructions: str = "") -> str:
-    parts: list[str] = [MASTER_SYSTEM_PROMPT]
+    parts: list[str] = [MASTER_SYSTEM_PROMPT, JAMAICAN_CONTEXT_ADDENDUM]
     addendum = specialty_addendum(specialty)
     if addendum:
         parts.append(addendum)
     if custom_instructions:
         parts.append(
-            "DOCTOR-SPECIFIC PREFERENCES (apply throughout):\n"
-            + custom_instructions.strip()
+            "DOCTOR PREFERENCES (apply throughout):\n" + custom_instructions.strip()
         )
     return "\n\n".join(parts)
+
+
+def _looks_like_refusal(text: str) -> bool:
+    """Detect when the model wrote 'Not documented' for almost everything.
+
+    True when 3+ of the 4 SOAP sections are exactly 'Not documented' (or
+    similar minimal content). Signals an over-conservative response we
+    should retry with a more explicit extraction prompt.
+    """
+    if not text:
+        return True
+    sections = _split_soap(text)
+    empties = 0
+    for k, v in sections.items():
+        clean = (v or "").strip().lower()
+        if not clean or clean in {"not documented.", "not documented", "n/a", "none"}:
+            empties += 1
+    return empties >= 3
 
 
 def _chat(messages: list[dict], *, max_tokens: int | None = None) -> str:
