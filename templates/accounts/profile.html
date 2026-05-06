@@ -14,6 +14,25 @@
     </div>
 </div>
 
+{% if bootstrap_admin_available %}
+<div class="alert alert-info d-flex align-items-start gap-3 flex-wrap">
+    <iconify-icon icon="iconamoon:lock-duotone" class="fs-3 mt-1"></iconify-icon>
+    <div class="flex-grow-1">
+        <strong class="d-block">First-run setup</strong>
+        <span class="small">
+            No administrators exist on this WellNest instance yet. As the
+            first signed-in user you can claim the admin role — this enables
+            <code>/admin/</code>, the Triage Lab sidebar entry, and the
+            Patois ASR sandbox. Disappears once any admin is set.
+        </span>
+    </div>
+    <form method="post" action="{% url 'accounts:bootstrap_admin' %}" class="m-0">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary">Make me the first admin</button>
+    </form>
+</div>
+{% endif %}
+
 <div class="row g-4">
     <div class="col-12 col-xl-8">
         <div class="card">
@@ -96,6 +115,35 @@
                 <p class="text-muted small mb-0">
                     Update your specialty above and the AI adapts on the next note.
                 </p>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-body p-4">
+                <h6 class="fw-semibold mb-2">Access</h6>
+                <p class="text-muted small mb-2">
+                    Role: <span class="badge bg-primary-subtle text-primary">{{ profile.get_role_display }}</span>
+                    {% if user.is_staff %} · <span class="badge bg-warning-subtle text-warning">Django staff</span>{% endif %}
+                    {% if user.is_superuser %} · <span class="badge bg-danger-subtle text-danger">Superuser</span>{% endif %}
+                </p>
+                {% if triage_visible %}
+                    <p class="text-muted small mb-0">
+                        Triage Lab is enabled for your account.
+                        <a href="{% url 'scribe:triage' %}">Open Triage →</a>
+                    </p>
+                {% else %}
+                    <p class="text-muted small mb-2">
+                        Triage Lab (Patois ASR sandbox) is hidden from clinicians by default.
+                    </p>
+                    <details>
+                        <summary class="small fw-semibold">How to enable it (dev / project owner only)</summary>
+                        <pre class="small mt-2 mb-0" style="white-space: pre-wrap;">python manage.py promote {{ user.username }} --role admin --staff</pre>
+                        <p class="small text-muted mt-2 mb-0">
+                            Or set <code>SCRIBE_ENABLE_TRIAGE=True</code> in <code>.env</code>
+                            to enable for everyone (not recommended for the pilot).
+                        </p>
+                    </details>
+                {% endif %}
             </div>
         </div>
     </div>

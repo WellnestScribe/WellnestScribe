@@ -18,7 +18,9 @@
     <link href="{% static 'css/vendor.min.css' %}" rel="stylesheet">
     <link href="{% static 'css/icons.min.css' %}" rel="stylesheet">
     <link href="{% static 'css/app.min.css' %}" rel="stylesheet">
-    <link href="{% static 'css/wellnest.css' %}" rel="stylesheet">
+    {# Cache-bust on every dev reload so JS/CSS edits show up without Ctrl+Shift+R. #}
+    {% if debug %}{% now "U" as cachebust %}{% endif %}
+    <link href="{% static 'css/wellnest.css' %}{% if debug %}?v={{ cachebust }}{% endif %}" rel="stylesheet">
 
     <script src="{% static 'js/config.js' %}"></script>
     {% block extra_head %}{% endblock %}
@@ -73,7 +75,7 @@
     </script>
     <script src="{% static 'js/vendor.js' %}"></script>
     <script src="{% static 'js/app.js' %}"></script>
-    <script src="{% static 'js/wellnest.js' %}"></script>
+    <script src="{% static 'js/wellnest.js' %}{% if debug %}?v={{ cachebust }}{% endif %}"></script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

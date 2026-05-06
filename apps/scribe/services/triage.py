@@ -147,7 +147,26 @@ def transcribe_mms(audio_path: str | Path, *, device: str = "cpu", target_lang: 
 
     processor, model, dev = _load_mms(device=device, target_lang=target_lang)
 
-    audio, _ = librosa.load(str(audio_path), sr=16000, mono=True)
+    #audio, _ = librosa.load(str(audio_path), sr=16000, mono=True)
+
+    import av
+    import numpy as np
+
+    container = av.open(str(audio_path))
+    samples = []
+    for frame in container.decode(audio=0):
+        arr = frame.to_ndarray()
+        if arr.ndim > 1:
+            arr = arr.mean(axis=0)
+        samples.append(arr)
+    audio = np.concatenate(samples).astype(np.float32)
+    # resample to 16kHz if needed
+    import librosa
+    audio = librosa.resample(audio, orig_sr=container.streams.audio[0].sample_rate, target_sr=16000)
+
+
+
+
     # Chunk anything > 28s — MMS performs best on <30s clips.
     chunk_size = 25 * 16000
     chunks = (
@@ -195,6 +214,92 @@ def _load_t5(device: str = "cpu", model_id: str = "google/flan-t5-base"):
     mdl.eval()
     _T5_CACHE[key] = (tok, mdl, device)
     return _T5_CACHE[key]
+
+
+# ---- Omni-ASR (Meta omnilingual / generic Whisper-style ASR) ---------------
+
+_OMNI_CACHE: dict[str, Any] = {}
+
+
+def _load_omni(device: str = "cpu", model_id: str = "facebook/omnilingual-asr-7b-ctc"):
+    """Load any HuggingFace seq2seq or CTC ASR model lazily.
+
+    `model_id` is configurable so you can test multiple Meta releases
+    (omnilingual-asr 7B / 3B / 700M variants, seamless-m4t, voxtral, etc.).
+    """
+    key = f"{device}|{model_id}"
+    if key in _OMNI_CACHE:
+        return _OMNI_CACHE[key]
+
+    try:
+        import torch  # type: ignore
+        from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq, AutoModelForCTC  # type: ignore
+    except ImportError as exc:  # noqa: BLE001
+        raise TriageDependencyError(
+            "transformers + torch not installed.\n"
+            "    pip install transformers torch torchaudio librosa soundfile"
+        ) from exc
+
+    if device == "cuda" and not torch.cuda.is_available():
+        raise TriageDependencyError(
+            "CUDA requested but no CUDA-capable GPU is visible to PyTorch."
+        )
+
+    logger.info("Loading omni model %s on %s …", model_id, device)
+    processor = AutoProcessor.from_pretrained(model_id)
+    # Try seq2seq (Whisper-style) first; fall back to CTC (Wav2Vec-style).
+    try:
+        model = AutoModelForSpeechSeq2Seq.from_pretrained(model_id)
+        kind = "seq2seq"
+    except Exception:  # noqa: BLE001
+        model = AutoModelForCTC.from_pretrained(model_id)
+        kind = "ctc"
+    model = model.to(device)
+    model.eval()
+    _OMNI_CACHE[key] = (processor, model, device, kind)
+    return _OMNI_CACHE[key]
+
+
+def transcribe_omni(audio_path: str | Path, *, device: str = "cpu",
+                    model_id: str = "facebook/omnilingual-asr-7b-ctc",
+                    language: str | None = None) -> str:
+    try:
+        import librosa  # type: ignore
+        import torch  # type: ignore
+    except ImportError as exc:  # noqa: BLE001
+        raise TriageDependencyError(
+            "Missing audio libs. Run: pip install librosa soundfile torchaudio"
+        ) from exc
+
+    processor, model, dev, kind = _load_omni(device=device, model_id=model_id)
+    audio, _ = librosa.load(str(audio_path), sr=16000, mono=True)
+
+    chunk_size = 25 * 16000
+    chunks = (
+        [audio[i:i + chunk_size] for i in range(0, len(audio), chunk_size)]
+        if len(audio) > chunk_size
+        else [audio]
+    )
+    out: list[str] = []
+    for ch in chunks:
+        inputs = processor(ch, sampling_rate=16000, return_tensors="pt")
+        if hasattr(inputs, "input_values"):
+            input_tensor = inputs.input_values.to(dev)
+        else:
+            input_tensor = inputs.input_features.to(dev)
+        with torch.no_grad():
+            if kind == "seq2seq":
+                gen_kwargs = {"max_new_tokens": 444}
+                if language:
+                    gen_kwargs["language"] = language
+                ids = model.generate(input_tensor, **gen_kwargs)
+                text = processor.batch_decode(ids, skip_special_tokens=True)[0]
+            else:
+                logits = model(input_tensor).logits
+                ids = torch.argmax(logits, dim=-1)
+                text = processor.batch_decode(ids)[0]
+        out.append(text)
+    return " ".join(out).strip()
 
 
 def t5_rewrite(text: str, *, instruction: str, device: str = "cpu",

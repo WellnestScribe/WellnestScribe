@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Compliance · WellNest Scribe{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex flex-column gap-2 mb-3">
+            <a href="{% url 'scribe:record' %}" class="page-back-btn align-self-start">
+                <iconify-icon icon="iconamoon:arrow-left-2-light"></iconify-icon>
+                Back to scribe
+            </a>
+            <div>
+                <h4 class="mb-1 fw-semibold">Compliance dashboard</h4>
+                <p class="text-muted mb-0 small">
+                    HIPAA / GDPR / Jamaica Data Protection Act 2020 controls active in this instance.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card h-100"><div class="card-body p-3">
+            <p class="text-muted small mb-1 text-uppercase" style="letter-spacing:0.06em;">Sessions</p>
+            <h3 class="fw-semibold mb-0">{{ metrics.total_sessions }}</h3>
+            <p class="small text-muted mb-0">{{ metrics.finalized_sessions }} finalized</p>
+        </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100"><div class="card-body p-3">
+            <p class="text-muted small mb-1 text-uppercase" style="letter-spacing:0.06em;">Doctors</p>
+            <h3 class="fw-semibold mb-0">{{ metrics.total_doctors }}</h3>
+        </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100"><div class="card-body p-3">
+            <p class="text-muted small mb-1 text-uppercase" style="letter-spacing:0.06em;">Audit events</p>
+            <h3 class="fw-semibold mb-0">{{ metrics.total_audit_events }}</h3>
+            <p class="small text-muted mb-0"><a href="{% url 'scribe:audit_log' %}">View log →</a></p>
+        </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card h-100"><div class="card-body p-3">
+            <p class="text-muted small mb-1 text-uppercase" style="letter-spacing:0.06em;">Audio purge pending</p>
+            <h3 class="fw-semibold mb-0 {% if metrics.purge_pending %}text-warning{% endif %}">{{ metrics.purge_pending }}</h3>
+            <p class="small text-muted mb-0">> {{ metrics.auto_delete_days }} days</p>
+        </div></div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-xl-8">
+        <div class="card">
+            <div class="card-body p-4">
+                <h6 class="fw-semibold mb-3">Active controls</h6>
+                <table class="table table-sm align-middle mb-0">
+                    <tbody>
+                        {% for name, detail in controls %}
+                        <tr>
+                            <td class="fw-semibold" style="width: 200px;">{{ name }}</td>
+                            <td class="text-muted small">{{ detail }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-4">
+        <div class="card mb-3">
+            <div class="card-body p-4">
+                <h6 class="fw-semibold mb-2">Environment flags</h6>
+                <ul class="list-unstyled small mb-0">
+                    <li>DEBUG: <span class="badge {% if metrics.debug %}bg-warning-subtle text-warning{% else %}bg-success-subtle text-success{% endif %}">{{ metrics.debug|yesno:"yes,no" }}</span></li>
+                    <li>Pilot mode: <span class="badge {% if metrics.pilot_mode %}bg-primary-subtle text-primary{% else %}bg-secondary-subtle text-secondary{% endif %}">{{ metrics.pilot_mode|yesno:"yes,no" }}</span></li>
+                </ul>
+                {% if metrics.debug %}
+                <p class="small text-warning mt-2 mb-0">
+                    DEBUG is on — secure-cookie and HSTS headers are relaxed for local dev. Set <code>DEBUG=False</code> before production.
+                </p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body p-4">
+                <h6 class="fw-semibold mb-2">Run retention purge</h6>
+                <p class="text-muted small mb-2">From a terminal on the host:</p>
+                <pre class="small mb-0" style="white-space: pre-wrap;">python manage.py purge_audio --dry-run
+python manage.py purge_audio</pre>
+                <p class="small text-muted mt-2 mb-0">
+                    Schedule weekly via Windows Task Scheduler or cron.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

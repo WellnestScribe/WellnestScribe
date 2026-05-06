@@ -58,6 +58,9 @@
                                 <option value="mms" {% if not env.transformers %}disabled{% endif %}>
                                     MMS-1b-l1107 (Patois ASR){% if not env.transformers %} — install transformers{% endif %}
                                 </option>
+                                <option value="omni" {% if not env.transformers %}disabled{% endif %}>
+                                    Omni-ASR (Meta omnilingual / configurable){% if not env.transformers %} — install transformers{% endif %}
+                                </option>
                                 <option value="t5_paraphrase" {% if not env.transformers %}disabled{% endif %}>
                                     FLAN-T5 base (text rewrite){% if not env.transformers %} — install transformers{% endif %}
                                 </option>
@@ -77,6 +80,14 @@
                             <label class="form-label small text-muted" for="triageLang">Lang code</label>
                             <input type="text" class="form-control" id="triageLang" value="jam" maxlength="6">
                         </div>
+                    </div>
+
+                    <div class="mt-3" id="triageOmniRow" style="display:none;">
+                        <label class="form-label small text-muted" for="triageModelId">Omni-ASR model id (HuggingFace)</label>
+                        <input type="text" class="form-control" id="triageModelId"
+                               value="facebook/omnilingual-asr-7b-ctc"
+                               placeholder="e.g. facebook/omnilingual-asr-7b-ctc">
+                        <small class="text-muted">Try the 7B-CTC. For the 700M variant try <code>facebook/omnilingual-asr-700m-ctc</code> if available, or any speech-to-text model id from HuggingFace.</small>
                     </div>
 
                     <div class="mt-3">
@@ -118,25 +129,104 @@
             <div class="card">
                 <div class="card-body p-4">
                     <h6 class="fw-semibold mb-2">Environment probe</h6>
-                    <ul class="list-unstyled small mb-0">
+                    <ul class="list-unstyled small mb-0" id="triageEnvList">
                         <li>torch: {{ env.torch|yesno:"yes,no" }}{% if env.torch_version %} ({{ env.torch_version }}){% endif %}</li>
                         <li>CUDA: {{ env.cuda|yesno:"yes,no" }}{% if env.cuda_device %} — {{ env.cuda_device }}{% endif %}</li>
                         <li>transformers: {{ env.transformers|yesno:"yes,no" }}{% if env.transformers_version %} ({{ env.transformers_version }}){% endif %}</li>
                         <li>librosa: {{ env.librosa|yesno:"yes,no" }}</li>
-                        <li>MMS cached: {{ env.model_cached_mms|yesno:"yes,no" }}</li>
-                        <li>T5 cached: {{ env.model_cached_t5|yesno:"yes,no" }}</li>
+                        <li>MMS cached: <span data-env-mms>{{ env.model_cached_mms|yesno:"yes,no" }}</span></li>
+                        <li>T5 cached: <span data-env-t5>{{ env.model_cached_t5|yesno:"yes,no" }}</span></li>
                     </ul>
 
-                    {% if not env.transformers or not env.torch or not env.librosa %}
                     <hr class="my-3">
-                    <details>
-                        <summary class="small fw-semibold text-warning">Install instructions</summary>
+                    <p class="small text-muted mb-2">
+                        Access:
+                        {% if is_triage_admin %}
+                            <span class="badge bg-success-subtle text-success">admin</span>
+                            you can install deps + download models from here
+                        {% else %}
+                            <span class="badge bg-secondary-subtle text-secondary">read-only</span>
+                            install/download requires admin
+                        {% endif %}
+                    </p>
+
+                    {% if not is_triage_admin %}
+                    <div class="alert alert-info small mt-2 mb-3 p-2">
+                        <strong>Become admin to install:</strong>
+                        {% if no_admins_exist %}
+                            no admin exists yet — click below to claim.
+                            <form method="post" action="{% url 'accounts:bootstrap_admin' %}" class="m-0 mt-2">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-primary btn-sm w-100">
+                                    Make me the first admin
+                                </button>
+                            </form>
+                        {% else %}
+                            from a terminal:
+                            <pre class="small mt-1 mb-0" style="white-space: pre-wrap;">python manage.py promote {{ user.username }} --role admin --staff --superuser</pre>
+                            then refresh this page.
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
+                    {% if env.torch and not env.cuda and is_triage_admin %}
+                    <div class="alert alert-info small mt-3 mb-2 p-2">
+                        torch is installed but no CUDA — likely the CPU-only build. To
+                        unlock your RTX 2060, force-reinstall the CUDA build:
+                        <button type="button"
+                                class="btn btn-outline-primary btn-sm mt-2"
+                                id="reinstallCudaBtn"
+                                onclick="window.WELLNEST_triage_install &amp;&amp; window.WELLNEST_triage_install('cuda', true)">
+                            <iconify-icon icon="iconamoon:restart-duotone" class="me-1 align-middle"></iconify-icon>
+                            Reinstall torch with CUDA 12.1 (force)
+                        </button>
+                    </div>
+                    {% endif %}
+
+                    {% if not env.transformers or not env.torch or not env.librosa %}
+                    <div class="alert alert-warning small mt-3 mb-2 p-2">
+                        Some Python libs missing. Install installs into the active venv
+                        (the same Python that runs <code>manage.py runserver</code>).
+                    </div>
+                    <div class="d-grid gap-2">
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-outline-warning btn-sm" id="installDepsCpuBtn"
+                                    {% if not is_triage_admin %}disabled title="Admin only"{% endif %}
+                                    onclick="window.WELLNEST_triage_install &amp;&amp; window.WELLNEST_triage_install('cpu')">
+                                <iconify-icon icon="iconamoon:cloud-download-duotone" class="me-1 align-middle"></iconify-icon>
+                                Install (CPU)
+                            </button>
+                            <button type="button" class="btn btn-outline-warning btn-sm" id="installDepsCudaBtn"
+                                    {% if not is_triage_admin %}disabled title="Admin only"{% endif %}
+                                    onclick="window.WELLNEST_triage_install &amp;&amp; window.WELLNEST_triage_install('cuda')">
+                                <iconify-icon icon="iconamoon:cloud-download-duotone" class="me-1 align-middle"></iconify-icon>
+                                Install (CUDA 12.1)
+                            </button>
+                        </div>
+                        <p class="small text-muted mb-0" id="installStatus"></p>
+                    </div>
+                    <details class="mt-2">
+                        <summary class="small fw-semibold">Or install from a terminal</summary>
                         <pre class="small mt-2 mb-0" style="white-space: pre-wrap;">pip install transformers accelerate torch torchaudio librosa soundfile sentencepiece</pre>
                         <p class="small text-muted mt-2 mb-0">
-                            For RTX 2060 (CUDA): install the matching CUDA build of torch first, then re-launch the dev server.
+                            For RTX 2060 with CUDA 12.1, prepend:
+                            <code>pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121</code>
                         </p>
                     </details>
                     {% endif %}
+
+                    <hr class="my-3">
+                    <div class="d-grid gap-2">
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="downloadModelsBtn"
+                                onclick="window.WELLNEST_triage_download &amp;&amp; window.WELLNEST_triage_download()"
+                                {% if not env.transformers or not is_triage_admin %}disabled
+                                    title="{% if not is_triage_admin %}Admin only{% else %}Install Python deps first{% endif %}"
+                                {% endif %}>
+                            <iconify-icon icon="iconamoon:cloud-download-duotone" class="me-1 align-middle"></iconify-icon>
+                            Download MMS + T5 models
+                        </button>
+                        <p class="small text-muted mb-0" id="downloadStatus"></p>
+                    </div>
 
                     <hr class="my-3">
                     <h6 class="fw-semibold mb-2">Patois interpreter prompt</h6>

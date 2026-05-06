@@ -1,0 +1,105 @@
+{% extends "base_auth.html" %}
+{% load static %}
+
+{% block title %}WellNest — AI clinical notes for Caribbean healthcare{% endblock %}
+
+{% block content %}
+<div class="landing-shell">
+    <nav class="landing-nav">
+        <a href="/" class="d-flex align-items-center gap-2 text-decoration-none">
+            <img src="{% static 'images/wellnest-logo.png' %}" alt="WellNest" height="32">
+            <span class="fw-semibold fs-5 text-body">WellNest</span>
+        </a>
+        <div class="d-flex align-items-center gap-2">
+            <a href="{% url 'accounts:signin' %}" class="btn btn-outline-secondary btn-sm">Sign in</a>
+            <a href="{% url 'accounts:signup' %}" class="btn btn-primary btn-sm">Create account</a>
+        </div>
+    </nav>
+
+    <header class="landing-hero">
+        <span class="badge bg-primary-subtle text-primary mb-3">Built in Jamaica · Pilot edition</span>
+        <h1 class="fw-semibold display-5">AI medical scribe for Caribbean clinics.</h1>
+        <p class="lead text-muted mx-auto" style="max-width: 640px;">
+            Voice-to-SOAP notes in seconds. Built around how Jamaican
+            doctors actually work — long shifts, slow internet, code-switching
+            between English and Patois.
+        </p>
+        <div class="d-flex justify-content-center gap-2 mt-4 flex-wrap">
+            <a href="{% url 'accounts:signup' %}" class="btn btn-primary btn-lg">Start a free pilot</a>
+            <a href="{% url 'accounts:signin' %}" class="btn btn-outline-secondary btn-lg">Sign in</a>
+        </div>
+    </header>
+
+    <section class="landing-features">
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="card h-100"><div class="card-body p-4">
+                    <div class="feature-icon"><iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon></div>
+                    <h6 class="fw-semibold mt-3">Dictate naturally</h6>
+                    <p class="text-muted small mb-0">
+                        Tap record, speak the encounter. Or type. Long-form supported for
+                        anaesthesia, surgery, and antenatal cases.
+                    </p>
+                </div></div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100"><div class="card-body p-4">
+                    <div class="feature-icon"><iconify-icon icon="iconamoon:file-document-duotone"></iconify-icon></div>
+                    <h6 class="fw-semibold mt-3">SOAP, narrative, or chart</h6>
+                    <p class="text-muted small mb-0">
+                        Three note styles. Specialty-aware prompts. Quick templates for
+                        hypertension, diabetes, antenatal, paediatric, gastro, URTI.
+                    </p>
+                </div></div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100"><div class="card-body p-4">
+                    <div class="feature-icon"><iconify-icon icon="iconamoon:scan-duotone"></iconify-icon></div>
+                    <h6 class="fw-semibold mt-3">Phone → desktop EHR</h6>
+                    <p class="text-muted small mb-0">
+                        QR-code share to move the note from your phone to the hospital
+                        computer in one scan. Copy-paste straight into the EHR.
+                    </p>
+                </div></div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100"><div class="card-body p-4">
+                    <div class="feature-icon"><iconify-icon icon="iconamoon:shield-duotone"></iconify-icon></div>
+                    <h6 class="fw-semibold mt-3">Compliance-aware</h6>
+                    <p class="text-muted small mb-0">
+                        Jamaica Data Protection Act 2020. HIPAA-leaning controls.
+                        Audio auto-purged after 30 days. Full audit log per session.
+                    </p>
+                </div></div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100"><div class="card-body p-4">
+                    <div class="feature-icon"><iconify-icon icon="iconamoon:edit-duotone"></iconify-icon></div>
+                    <h6 class="fw-semibold mt-3">Doctor-controlled edit</h6>
+                    <p class="text-muted small mb-0">
+                        Inline edit any section. Quick-mic dictation per field. Optional
+                        AI grammar polish + missing-detail check.
+                    </p>
+                </div></div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100"><div class="card-body p-4">
+                    <div class="feature-icon"><iconify-icon icon="iconamoon:lab-duotone"></iconify-icon></div>
+                    <h6 class="fw-semibold mt-3">Patois pipeline (research)</h6>
+                    <p class="text-muted small mb-0">
+                        On-device Patois ASR research sandbox running internally. The
+                        long-term Caribbean moat no foreign vendor can build.
+                    </p>
+                </div></div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="landing-footer">
+        <small class="text-muted">
+            &copy; <script>document.write(new Date().getFullYear())</script>
+            WellNest Scribe. AI-generated drafts must be reviewed before clinical use.
+        </small>
+    </footer>
+</div>
+{% endblock %}

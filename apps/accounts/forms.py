@@ -68,6 +68,8 @@ class DoctorProfileForm(forms.ModelForm):
             "theme",
             "custom_instructions",
         )
+        # `role` is excluded — only admins / superusers can change roles, and
+        # they do so via /admin/ or the manage.py promote command.
         widgets = {
             "full_name": forms.TextInput(attrs={"class": "form-control"}),
             "title": forms.TextInput(attrs={"class": "form-control"}),

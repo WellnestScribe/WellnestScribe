@@ -1,4 +1,8 @@
-{# Shared nav items used in both desktop sidebar and mobile bottom-sheet. #}
+{% comment %}
+Shared nav items used in both desktop sidebar and mobile bottom-sheet.
+No data-bs-dismiss on links — page navigation closes the offcanvas naturally
+and the dismiss attribute can interfere with click handling on desktop.
+{% endcomment %}
 {% url 'scribe:record' as record_url %}
 {% url 'scribe:history' as history_url %}
 {% url 'accounts:profile' as profile_url %}
@@ -6,7 +10,7 @@
 <li class="menu-title">Workspace</li>
 
 <li class="nav-item">
-    <a class="nav-link {% if request.path == record_url %}active{% endif %}" href="{{ record_url }}" data-bs-dismiss="offcanvas">
+    <a class="nav-link {% if request.path == record_url %}active{% endif %}" href="{{ record_url }}">
         <span class="nav-icon">
             <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
         </span>
@@ -14,10 +18,19 @@
     </a>
 </li>
 
+<li class="nav-item">
+    <a class="nav-link {% if request.path == history_url %}active{% endif %}" href="{{ history_url }}">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:folder-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">Sessions</span>
+    </a>
+</li>
+
 {% if triage_visible %}
 {% url 'scribe:triage' as triage_url %}
 <li class="nav-item">
-    <a class="nav-link {% if request.path == triage_url %}active{% endif %}" href="{{ triage_url }}" data-bs-dismiss="offcanvas">
+    <a class="nav-link {% if request.path == triage_url %}active{% endif %}" href="{{ triage_url }}">
         <span class="nav-icon">
             <iconify-icon icon="iconamoon:lab-duotone"></iconify-icon>
         </span>
@@ -26,19 +39,44 @@
 </li>
 {% endif %}
 
+{% if is_admin %}
+{% url 'scribe:audit_log' as audit_url %}
+{% url 'scribe:compliance' as compliance_url %}
+
+<li class="menu-title">Admin</li>
+
 <li class="nav-item">
-    <a class="nav-link {% if request.path == history_url %}active{% endif %}" href="{{ history_url }}" data-bs-dismiss="offcanvas">
+    <a class="nav-link {% if request.path == audit_url %}active{% endif %}" href="{{ audit_url }}">
         <span class="nav-icon">
-            <iconify-icon icon="iconamoon:folder-duotone"></iconify-icon>
+            <iconify-icon icon="iconamoon:eye-duotone"></iconify-icon>
         </span>
-        <span class="nav-text">Sessions</span>
+        <span class="nav-text">Audit log</span>
     </a>
 </li>
+
+<li class="nav-item">
+    <a class="nav-link {% if request.path == compliance_url %}active{% endif %}" href="{{ compliance_url }}">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:shield-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">Compliance</span>
+    </a>
+</li>
+
+<li class="nav-item">
+    <a class="nav-link" href="/admin/">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:settings-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">Django admin</span>
+    </a>
+</li>
+{% endif %}
 
 <li class="menu-title">Account</li>
 
 <li class="nav-item">
-    <a class="nav-link {% if request.path == profile_url %}active{% endif %}" href="{{ profile_url }}" data-bs-dismiss="offcanvas">
+    <a class="nav-link {% if request.path == profile_url %}active{% endif %}" href="{{ profile_url }}">
         <span class="nav-icon">
             <iconify-icon icon="iconamoon:profile-duotone"></iconify-icon>
         </span>

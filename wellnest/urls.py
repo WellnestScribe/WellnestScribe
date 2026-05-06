@@ -1,11 +1,19 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
+from django.shortcuts import redirect, render
 from django.urls import include, path
-from django.views.generic import RedirectView
+
+
+def root_view(request):
+    """Authenticated users go straight to the scribe; everyone else sees the landing page."""
+    if request.user.is_authenticated:
+        return redirect("scribe:record")
+    return render(request, "landing.html")
+
 
 urlpatterns = [
-    path("", RedirectView.as_view(pattern_name="scribe:record", permanent=False)),
+    path("", root_view, name="root"),
     path("admin/", admin.site.urls),
     path("accounts/", include("accounts.urls")),
     path("scribe/", include("scribe.urls")),

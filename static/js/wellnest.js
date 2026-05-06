@@ -319,7 +319,7 @@
         await uploadAndProcess(f);
       });
     }
-    $$("[data-template]", root).forEach(function (link) {
+    $$("[data-template]").forEach(function (link) {
       link.addEventListener("click", function (e) {
         e.preventDefault();
         const key = link.getAttribute("data-template");
@@ -329,6 +329,9 @@
           ? transcriptArea.value.trim() + "\n\n"
           : "") + tpl;
         transcriptArea.focus();
+        // Mark this pill as applied + clear other pills.
+        $$("[data-template]").forEach(function (other) { other.classList.remove("is-applied"); });
+        link.classList.add("is-applied");
         if (window.WELLNEST_toast) window.WELLNEST_toast("Template inserted — fill in the brackets");
       });
     });
@@ -423,35 +426,96 @@
       recordBtn.querySelector("[data-record-label]").textContent = "Stop";
     });
 
+    // Backend dropdown shows the model_id row only for omni.
+    const omniRow = $("#triageOmniRow", root);
+    const modelIdInput = $("#triageModelId", root);
+    function syncOmniRow() {
+      if (!omniRow) return;
+      omniRow.style.display = backendSel.value === "omni" ? "block" : "none";
+    }
+    if (backendSel) backendSel.addEventListener("change", syncOmniRow);
+    syncOmniRow();
+
+    let pollJobTimer = 0;
+    function stopJobPoll() { clearInterval(pollJobTimer); pollJobTimer = 0; }
+
+    async function pollJob(jobId, runStartMs) {
+      try {
+        const res = await fetch("/scribe/api/triage/jobs/" + jobId + "/", { credentials: "same-origin" });
+        const j = await res.json();
+        if (!j.ok) { showToast(j.error || "Job poll failed"); stopJobPoll(); resetRunBtn(); return; }
+        const job = j.job;
+        const elapsed = Date.now() - runStartMs;
+        if (job.status === "running" || job.status === "pending") {
+          if (timings) {
+            timings.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> '
+              + job.backend + " · " + job.device + " · " + job.stage
+              + " · elapsed " + fmtElapsed(elapsed);
+          }
+          return;
+        }
+        stopJobPoll();
+        resetRunBtn();
+        if (job.status === "error") {
+          rawOut.value = "[error] " + (job.error || "unknown error");
+          if (timings) timings.textContent = job.backend + " · " + job.device + " · failed in " + fmtElapsed(elapsed);
+          showToast(job.error || "Run failed");
+          return;
+        }
+        // status = done
+        rawOut.value = (job.result && job.result.raw_text) || "";
+        if (timings) {
+          timings.textContent = job.backend + " · " + job.device + " · " + job.elapsed_ms + " ms"
+            + (job.result && job.result.audio_saved_as ? " · saved " + job.result.audio_saved_as : "");
+        }
+        if (typeof autoGrowAny === "function") autoGrowAny(rawOut);
+      } catch (err) {
+        // network blip — keep polling
+      }
+    }
+
+    function resetRunBtn() {
+      if (!runBtn) return;
+      runBtn.disabled = false;
+      runBtn.innerHTML = '<iconify-icon icon="iconamoon:player-play-duotone" class="me-1 align-middle"></iconify-icon> Run backend';
+    }
+
     if (runBtn) runBtn.addEventListener("click", async function () {
       const fd = new FormData();
       fd.append("backend", backendSel.value);
       fd.append("device", deviceSel.value);
       fd.append("target_lang", langInput.value || "jam");
       fd.append("text_input", textIn.value || "");
+      if (modelIdInput) fd.append("model_id", modelIdInput.value || "facebook/omnilingual-asr-7b-ctc");
       if (currentAudioBlob) {
-        const ext = currentAudioBlob.type.indexOf("ogg") >= 0 ? "ogg" : (currentAudioBlob.type.indexOf("mpeg") >= 0 ? "mp3" : "webm");
+        const ext = currentAudioBlob.type.indexOf("ogg") >= 0 ? "ogg" :
+                    (currentAudioBlob.type.indexOf("mpeg") >= 0 ? "mp3" : "webm");
         fd.append("audio", currentAudioBlob, "triage." + ext);
       }
       runBtn.disabled = true;
-      const orig = runBtn.innerHTML;
-      runBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Running…';
+      runBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Submitting…';
+      rawOut.value = "";
+      if (timings) timings.textContent = "";
+
       let r;
       try { r = await postForm("/scribe/api/triage/run/", fd); }
-      catch (err) { runBtn.disabled = false; runBtn.innerHTML = orig; showToast("Network error"); return; }
-      runBtn.disabled = false;
-      runBtn.innerHTML = orig;
+      catch (err) {
+        resetRunBtn();
+        showToast("Network error: " + err.message);
+        return;
+      }
       if (!r.ok || !r.body || !r.body.ok) {
-        rawOut.value = "";
-        timings.textContent = "";
-        showToast((r.body && r.body.error) || "Run failed.");
+        resetRunBtn();
+        showToast((r.body && r.body.error) || "Run could not start.");
         if (r.body && r.body.error) rawOut.value = "[error] " + r.body.error;
         return;
       }
-      rawOut.value = r.body.raw_text || "";
-      timings.textContent = r.body.backend + " · " + r.body.device + " · " + r.body.duration_ms + " ms"
-        + (r.body.audio_saved_as ? " · saved " + r.body.audio_saved_as : "");
-      if (typeof autoGrowAny === "function") autoGrowAny(rawOut);
+      const jobId = r.body.job_id;
+      const startMs = Date.now();
+      runBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Running… (cancel = leave page)';
+      stopJobPoll();
+      pollJob(jobId, startMs);  // immediate first poll
+      pollJobTimer = setInterval(function () { pollJob(jobId, startMs); }, 2000);
     });
 
     if (interpretBtn) interpretBtn.addEventListener("click", async function () {
@@ -481,6 +545,158 @@
       autoGrowAny(el);
       el.addEventListener("input", function () { autoGrowAny(el); });
     });
+
+    // ---- env probe + install + download wiring ----
+    const downloadBtn = $("#downloadModelsBtn", root);
+    const downloadStatus = $("#downloadStatus", root);
+    const installCpuBtn = $("#installDepsCpuBtn", root);
+    const installCudaBtn = $("#installDepsCudaBtn", root);
+    const installStatus = $("#installStatus", root);
+    let installPollTimer = 0;
+    let downloadPollTimer = 0;
+    let installStartedAt = 0;
+
+    function fmtElapsed(ms) {
+      const s = Math.round(ms / 1000);
+      if (s < 60) return s + "s";
+      return Math.floor(s / 60) + "m " + (s % 60) + "s";
+    }
+
+    async function probe() {
+      try {
+        const res = await fetch("/scribe/api/triage/probe/", { credentials: "same-origin" });
+        const j = await res.json();
+        if (!j.ok) return j;
+        const env = j.env;
+        // Update visible env list cells.
+        const mmsEl = root.querySelector("[data-env-mms]");
+        const t5El = root.querySelector("[data-env-t5]");
+        if (mmsEl) mmsEl.textContent = env.model_cached_mms ? "yes" : "no";
+        if (t5El) t5El.textContent = env.model_cached_t5 ? "yes" : "no";
+        return j;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function startInstall(profile, forceReinstall) {
+      const reinstallBtn = $("#reinstallCudaBtn", root);
+      const btn = reinstallBtn && forceReinstall ? reinstallBtn :
+                  (profile === "cuda" ? installCudaBtn : installCpuBtn);
+      const otherBtn = profile === "cuda" ? installCpuBtn : installCudaBtn;
+      if (!btn) return;
+      const orig = btn.innerHTML;
+      btn.disabled = true;
+      if (otherBtn) otherBtn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Installing…';
+      if (installStatus) installStatus.textContent = "Starting pip install (" + profile +
+        (forceReinstall ? ", force-reinstall" : "") + ")…";
+
+      let r;
+      try {
+        r = await postJSON("/scribe/api/triage/install/",
+                           { profile: profile, force_reinstall: !!forceReinstall });
+      } catch (err) {
+        btn.disabled = false;
+        if (otherBtn) otherBtn.disabled = false;
+        btn.innerHTML = orig;
+        if (installStatus) installStatus.textContent = "Network error: " + err.message;
+        return;
+      }
+      if (!r.ok || !r.body || !r.body.ok) {
+        btn.disabled = false;
+        if (otherBtn) otherBtn.disabled = false;
+        btn.innerHTML = orig;
+        if (installStatus) installStatus.textContent = (r.body && r.body.error) || "Install did not start.";
+        return;
+      }
+
+      installStartedAt = Date.now();
+      if (installStatus) {
+        installStatus.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> '
+          + 'Install running in background (' + profile + '). This typically takes 2–6 minutes for torch + transformers. Elapsed: 0s';
+      }
+      // Poll the env probe every 5s; flip UI when transformers + torch + librosa appear.
+      clearInterval(installPollTimer);
+      installPollTimer = setInterval(async function () {
+        const j = await probe();
+        const elapsed = Date.now() - installStartedAt;
+        if (installStatus) {
+          installStatus.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> '
+            + 'Installing (' + profile + '). Elapsed: ' + fmtElapsed(elapsed)
+            + '. The page reloads once deps are ready.';
+        }
+        if (j && j.ok && j.env.transformers && j.env.torch && j.env.librosa) {
+          clearInterval(installPollTimer);
+          if (installStatus) {
+            installStatus.innerHTML = '<span class="text-success fw-semibold">'
+              + '✓ Deps installed in ' + fmtElapsed(elapsed)
+              + '. Reloading page so the Download button unlocks…</span>';
+          }
+          setTimeout(function () { window.location.reload(); }, 1500);
+        }
+      }, 5000);
+    }
+
+    // Expose to window so inline onclick attributes can call them too — defensive
+    // against any case where the addEventListener binding races or is missed.
+    window.WELLNEST_triage_install = startInstall;
+    console.log("[wellnest] triage init OK", {
+      installCpuBtn: !!installCpuBtn,
+      installCudaBtn: !!installCudaBtn,
+      downloadBtn: !!downloadBtn,
+    });
+    if (installCpuBtn) installCpuBtn.addEventListener("click", function () { startInstall("cpu"); });
+    if (installCudaBtn) installCudaBtn.addEventListener("click", function () { startInstall("cuda"); });
+
+    async function startDownload() {
+      if (!downloadBtn) return;
+      if (downloadBtn.disabled) return;
+      downloadBtn.disabled = true;
+      const orig = downloadBtn.innerHTML;
+      downloadBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Downloading… (~5 GB)';
+      if (downloadStatus) {
+        downloadStatus.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> '
+          + 'Started in the background. Polling cache status…';
+      }
+      let r;
+      try { r = await postJSON("/scribe/api/triage/download/", { target: "all" }); }
+      catch (err) {
+        downloadBtn.disabled = false;
+        downloadBtn.innerHTML = orig;
+        if (downloadStatus) downloadStatus.textContent = "Network error: " + err.message;
+        return;
+      }
+      if (!r.ok || !r.body || !r.body.ok) {
+        downloadBtn.disabled = false;
+        downloadBtn.innerHTML = orig;
+        if (downloadStatus) downloadStatus.textContent = (r.body && r.body.error) || "Download could not start.";
+        return;
+      }
+      const startedAt = Date.now();
+      clearInterval(downloadPollTimer);
+      downloadPollTimer = setInterval(async function () {
+        const j = await probe();
+        const elapsed = Date.now() - startedAt;
+        if (downloadStatus) {
+          downloadStatus.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> '
+            + 'Downloading. Elapsed: ' + fmtElapsed(elapsed)
+            + '. ~5 GB total — first run takes 5–15 min depending on your link.';
+        }
+        if (j && j.ok && j.env.model_cached_mms && j.env.model_cached_t5) {
+          clearInterval(downloadPollTimer);
+          if (downloadStatus) {
+            downloadStatus.innerHTML = '<span class="text-success fw-semibold">'
+              + '✓ Both models cached in ' + fmtElapsed(elapsed) + '. Ready to run.</span>';
+          }
+          downloadBtn.classList.add("btn-success");
+          downloadBtn.classList.remove("btn-outline-primary");
+          downloadBtn.innerHTML = '<iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon> Models ready';
+        }
+      }, 8000);
+    }
+    window.WELLNEST_triage_download = startDownload;
+    if (downloadBtn) downloadBtn.addEventListener("click", startDownload);
   }
 
   // ---------- review screen ----------

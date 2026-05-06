@@ -9,4 +9,5 @@ urlpatterns = [
     path("signup/", views.signup_view, name="signup"),
     path("signout/", views.signout_view, name="signout"),
     path("profile/", views.profile_view, name="profile"),
+    path("bootstrap-admin/", views.bootstrap_admin_view, name="bootstrap_admin"),
 ]

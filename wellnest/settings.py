@@ -14,11 +14,16 @@ SECRET_KEY = config(
     default="django-insecure-change-me-in-production-please-im-begging-you",
 )
 DEBUG = config("DEBUG", default=True, cast=bool)
+
 ALLOWED_HOSTS = config(
     "ALLOWED_HOSTS",
-    default="localhost,127.0.0.1,0.0.0.0",
+    default="localhost,127.0.0.1,0.0.0.0,cffd-72-27-119-146.ngrok-free.app",
     cast=Csv(),
 )
+CSRF_TRUSTED_ORIGINS = [
+    "https://cffd-72-27-119-146.ngrok-free.app",
+]
+
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -62,12 +67,42 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "wellnest.wsgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+DATABASE_URL = config("DATABASE_URL", default="")
+if DATABASE_URL:
+    # Lazy parse so projects without psycopg2 still load with sqlite default.
+    from urllib.parse import urlparse
+    parsed = urlparse(DATABASE_URL)
+    if parsed.scheme.startswith("postgres"):
+        DATABASES = {
+            "default": {
+                "ENGINE": "django.db.backends.postgresql",
+                "NAME": (parsed.path or "/").lstrip("/") or "wellnest",
+                "USER": parsed.username or "",
+                "PASSWORD": parsed.password or "",
+                "HOST": parsed.hostname or "",
+                "PORT": str(parsed.port) if parsed.port else "",
+                "CONN_MAX_AGE": 60,
+            }
+        }
+    else:
+        DATABASES = {
+            "default": {
+                "ENGINE": "django.db.backends.sqlite3",
+                "NAME": BASE_DIR / "db.sqlite3",
+            }
+        }
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
     }
-}
+
+AUTHENTICATION_BACKENDS = [
+    "accounts.backends.EmailOrUsernameBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

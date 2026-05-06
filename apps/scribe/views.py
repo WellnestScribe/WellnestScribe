@@ -35,14 +35,37 @@ from .services.triage import (
     TriageDependencyError,
     probe_environment,
     transcribe_mms,
+    transcribe_omni,
     t5_rewrite,
 )
+from .services.triage_jobs import get as get_triage_job, reap_old, submit as submit_triage_job
 
 
 def _triage_visible(user) -> bool:
+    """Can the user see the Triage page at all? Controlled by env flag too."""
+    if not user.is_authenticated:
+        return False
     if dj_settings.SCRIBE_ENABLE_TRIAGE:
-        return user.is_authenticated
-    return user.is_authenticated and (user.is_staff or user.is_superuser)
+        return True
+    profile = DoctorProfile.objects.filter(user=user).first()
+    if profile and profile.can_access_triage():
+        return True
+    return bool(user.is_staff or user.is_superuser)
+
+
+def _triage_admin(user) -> bool:
+    """Can the user perform privileged Triage actions (install pip, download
+    models, etc.)? Admin-only regardless of SCRIBE_ENABLE_TRIAGE.
+
+    pip install runs arbitrary code on the host — never let a regular doctor
+    trigger that even if you've opened Triage to the whole pilot for testing.
+    """
+    if not user.is_authenticated:
+        return False
+    if user.is_staff or user.is_superuser:
+        return True
+    profile = DoctorProfile.objects.filter(user=user).first()
+    return bool(profile and profile.is_admin)
 
 
 logger = logging.getLogger(__name__)
@@ -137,6 +160,99 @@ class SessionDetailView(LoginRequiredMixin, View):
         return redirect("scribe:review", pk=pk)
 
 
+class AuditLogView(LoginRequiredMixin, View):
+    """Admin-only view of recent SessionEvents, paginated, with filters."""
+
+    template_name = "scribe/audit_log.html"
+
+    def get(self, request):
+        profile = DoctorProfile.objects.filter(user=request.user).first()
+        is_admin = (profile and profile.is_admin) or request.user.is_staff or request.user.is_superuser
+        if not is_admin:
+            return redirect("scribe:record")
+
+        events = (
+            SessionEvent.objects
+            .select_related("session", "session__doctor")
+            .order_by("-created_at")
+        )
+        event_type = request.GET.get("type", "").strip()
+        username = request.GET.get("user", "").strip()
+        if event_type:
+            events = events.filter(event_type=event_type)
+        if username:
+            events = events.filter(session__doctor__username__icontains=username)
+
+        events = events[:200]
+
+        return render(
+            request,
+            self.template_name,
+            {
+                "events": events,
+                "event_type_filter": event_type,
+                "user_filter": username,
+                "event_choices": SessionEvent.EVENT_CHOICES,
+            },
+        )
+
+
+class ComplianceView(LoginRequiredMixin, View):
+    """Admin-only compliance dashboard summarising HIPAA/GDPR controls."""
+
+    template_name = "scribe/compliance.html"
+
+    def get(self, request):
+        profile = DoctorProfile.objects.filter(user=request.user).first()
+        is_admin = (profile and profile.is_admin) or request.user.is_staff or request.user.is_superuser
+        if not is_admin:
+            return redirect("scribe:record")
+
+        from django.conf import settings as cfg
+        from django.utils import timezone
+        from datetime import timedelta
+
+        cutoff = timezone.now() - timedelta(days=cfg.AUTO_DELETE_AUDIO_DAYS)
+        purge_pending = (
+            ScribeSession.objects
+            .exclude(audio_file="")
+            .filter(created_at__lt=cutoff)
+            .count()
+        )
+        total_sessions = ScribeSession.objects.count()
+        finalized_sessions = ScribeSession.objects.filter(status="finalized").count()
+        total_doctors = DoctorProfile.objects.count()
+        total_audit_events = SessionEvent.objects.count()
+
+        return render(
+            request,
+            self.template_name,
+            {
+                "metrics": {
+                    "total_sessions": total_sessions,
+                    "finalized_sessions": finalized_sessions,
+                    "total_doctors": total_doctors,
+                    "total_audit_events": total_audit_events,
+                    "purge_pending": purge_pending,
+                    "auto_delete_days": cfg.AUTO_DELETE_AUDIO_DAYS,
+                    "pilot_mode": cfg.PILOT_MODE,
+                    "debug": cfg.DEBUG,
+                },
+                "controls": [
+                    ("Cookies", "Secure + HttpOnly + SameSite, rolling 8h session lifetime"),
+                    ("Headers", "X-Frame-Options DENY, no-sniff, strict referrer policy"),
+                    ("Transport", "HSTS + SSL redirect when DEBUG is False"),
+                    ("Auth", "Email-or-username login, role-based access (clinician/lead/admin)"),
+                    ("Audit", "Every session create/edit/generate/export/finalize logged with actor"),
+                    ("Retention", f"Audio auto-purge after {cfg.AUTO_DELETE_AUDIO_DAYS} days via management command"),
+                    ("Encryption at rest", "TLS in transit; storage encryption depends on host (recommend disk-level)"),
+                    ("PHI handling", "No patient names required; encounter IDs only during pilot"),
+                    ("AI usage", "Drafts only; explicit 'review required before clinical use' on every note"),
+                ],
+            },
+        )
+
+
 class TriageView(LoginRequiredMixin, View):
     """Admin/staff sandbox for testing Patois ASR (MMS) + T5 rewrites locally."""
 
@@ -145,17 +261,19 @@ class TriageView(LoginRequiredMixin, View):
     def get(self, request):
         if not _triage_visible(request.user):
             return redirect("scribe:record")
+
+        # Detect "no admin exists yet" so the page can offer one-click bootstrap.
+        from accounts.views import _no_admins_exist
         return render(
             request,
             self.template_name,
             {
                 "env": probe_environment(),
+                "is_triage_admin": _triage_admin(request.user),
+                "no_admins_exist": _no_admins_exist(),
                 "default_system_prompt": (
-                    "You are a Jamaican Patois-to-clinical-English interpreter. "
-                    "Read the raw Patwa transcript phonetically, rewrite it as "
-                    "neutral clinical English in third person, capture every "
-                    "symptom and herbal remedy, tag herbs as [HERBAL SUPPLEMENT], "
-                    "and flag unintelligible parts with [unclear: \"...\"]."
+                    ""
+                  
                 ),
             },
         )
@@ -165,16 +283,28 @@ class TriageView(LoginRequiredMixin, View):
 @require_POST
 @csrf_protect
 def triage_run_api(request):
-    """Run a chosen Triage backend on uploaded audio or text and return raw output."""
+    """Spawn a background Triage job and return its job_id immediately.
+
+    Why background? MMS / Omni-ASR on CPU can take 30 s to several minutes
+    (model load + inference) and would tie up the request thread + browser.
+    The client polls /api/triage/jobs/<id>/ for progress.
+    """
     if not _triage_visible(request.user):
         return JsonResponse({"ok": False, "error": "Not authorized."}, status=403)
+    reap_old()
 
     backend = request.POST.get("backend", "mms")
     device = request.POST.get("device", dj_settings.TRIAGE_DEFAULT_DEVICE)
     target_lang = request.POST.get("target_lang", "jam")
-
-    audio = request.FILES.get("audio")
     text_input = request.POST.get("text_input", "").strip()
+    instruction = request.POST.get(
+        "instruction",
+        "Rewrite the following Jamaican Patois into clear clinical English.",
+    )
+    model_id = request.POST.get(
+        "model_id", "facebook/omnilingual-asr-7b-ctc"
+    )
+    audio = request.FILES.get("audio")
 
     saved_path = None
     if audio:
@@ -186,40 +316,169 @@ def triage_run_api(request):
             for chunk in audio.chunks():
                 fh.write(chunk)
 
-    import time
-    started = time.perf_counter()
-    try:
-        if backend == "mms":
-            if not saved_path:
-                return JsonResponse({"ok": False, "error": "MMS requires audio."}, status=400)
-            raw = transcribe_mms(saved_path, device=device, target_lang=target_lang)
-        elif backend == "t5_paraphrase":
-            instruction = request.POST.get(
-                "instruction",
-                "Rewrite the following Jamaican Patois into clear clinical English.",
-            )
-            raw = t5_rewrite(text_input, instruction=instruction, device=device)
-        elif backend == "cloud_interpret":
-            raw = run_interpret_patois(text_input or "")
-        else:
-            return JsonResponse({"ok": False, "error": f"Unknown backend '{backend}'."}, status=400)
-    except TriageDependencyError as exc:
-        return JsonResponse({"ok": False, "error": str(exc)}, status=503)
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("triage backend failed")
-        return JsonResponse({"ok": False, "error": str(exc)}, status=500)
-    duration_ms = int((time.perf_counter() - started) * 1000)
+    if backend in ("mms", "omni") and not saved_path:
+        return JsonResponse({"ok": False, "error": f"{backend} requires audio."}, status=400)
 
+    def _run(job):
+        try:
+            if backend == "mms":
+                job.stage = "loading MMS model (first run ≈ 60–120 s on CPU)…"
+                job.stage = "transcribing with MMS…"
+                raw = transcribe_mms(saved_path, device=device, target_lang=target_lang)
+            elif backend == "omni":
+                job.stage = f"loading Omni-ASR ({model_id}) …"
+                job.stage = "transcribing with Omni-ASR…"
+                raw = transcribe_omni(saved_path, device=device, model_id=model_id)
+            elif backend == "t5_paraphrase":
+                job.stage = "loading FLAN-T5…"
+                raw = t5_rewrite(text_input, instruction=instruction, device=device)
+            elif backend == "cloud_interpret":
+                job.stage = "calling cloud LLM…"
+                raw = run_interpret_patois(text_input or "")
+            else:
+                raise ValueError(f"Unknown backend '{backend}'.")
+            job.result = {
+                "raw_text": raw,
+                "audio_saved_as": saved_path.name if saved_path else None,
+            }
+            job.stage = "done"
+        except TriageDependencyError as exc:
+            job.status = "error"
+            job.error = str(exc)
+        # Re-raise other exceptions so submit() catches them.
+
+    job = submit_triage_job(backend, device, _run)
+    return JsonResponse({"ok": True, "job_id": job.job_id})
+
+
+@login_required
+def triage_job_status_api(request, job_id):
+    if not _triage_visible(request.user):
+        return JsonResponse({"ok": False, "error": "Not authorized."}, status=403)
+    job = get_triage_job(job_id)
+    if job is None:
+        return JsonResponse({"ok": False, "error": "Unknown job_id."}, status=404)
+    return JsonResponse({"ok": True, "job": job.to_dict()})
+
+
+@login_required
+@require_POST
+@csrf_protect
+def triage_install_deps_api(request):
+    """Run pip install for the Triage stack (transformers + torch + audio libs)
+    in a background thread. ADMIN-ONLY — pip install is arbitrary code execution,
+    must never be triggerable by a clinician even if Triage is generally visible.
+    """
+    if not _triage_admin(request.user):
+        return JsonResponse({"ok": False, "error": "Admin only."}, status=403)
+
+    payload = _json_body(request)
+    profile = (request.POST.get("profile") if request.method == "POST" else None) or payload.get("profile", "cpu")
+
+    pkgs_common = [
+        "transformers",
+        "accelerate",
+        "librosa",
+        "soundfile",
+        "sentencepiece",
+    ]
+    if profile == "cuda":
+        torch_args = [
+            "torch",
+            "torchaudio",
+            "--index-url",
+            "https://download.pytorch.org/whl/cu121",
+        ]
+    else:
+        torch_args = ["torch", "torchaudio"]
+
+    import subprocess
+    import sys
+    import threading
+
+    def _runner():
+        cmd_torch = [sys.executable, "-m", "pip", "install", *torch_args]
+        cmd_common = [sys.executable, "-m", "pip", "install", *pkgs_common]
+        try:
+            logger.info("triage install: %s", " ".join(cmd_torch))
+            subprocess.run(cmd_torch, check=False, capture_output=True, text=True)
+            logger.info("triage install: %s", " ".join(cmd_common))
+            subprocess.run(cmd_common, check=False, capture_output=True, text=True)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("triage install failed: %s", exc)
+
+    threading.Thread(target=_runner, daemon=True).start()
     return JsonResponse(
         {
             "ok": True,
-            "backend": backend,
-            "device": device,
-            "raw_text": raw,
-            "duration_ms": duration_ms,
-            "audio_saved_as": saved_path.name if saved_path else None,
+            "started": True,
+            "profile": profile,
+            "note": (
+                "Install started in the background. Refresh the page in a "
+                "couple of minutes — the env probe will turn green when "
+                "deps are ready. Then click 'Download MMS + T5 models'."
+            ),
         }
     )
+
+
+@login_required
+@require_POST
+@csrf_protect
+def triage_download_api(request):
+    """Trigger the model download in a background thread so the UI stays responsive.
+
+    Status is observable by re-running probe_environment() (the page can poll).
+    Note: this requires `transformers` to already be installed. If it isn't,
+    we return a 503 with the pip command. ADMIN-ONLY.
+    """
+    if not _triage_admin(request.user):
+        return JsonResponse({"ok": False, "error": "Admin only."}, status=403)
+
+    payload = _json_body(request)
+    target = payload.get("target", "all")  # all | mms | t5
+
+    try:
+        import transformers  # noqa: F401
+    except ImportError:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": (
+                    "transformers is not installed. From a terminal, run:\n"
+                    "  pip install transformers accelerate torch torchaudio "
+                    "librosa soundfile sentencepiece"
+                ),
+            },
+            status=503,
+        )
+
+    import threading
+    from django.core.management import call_command
+
+    def _runner():
+        kwargs: dict = {}
+        if target == "mms":
+            kwargs["skip_t5"] = True
+        elif target == "t5":
+            kwargs["skip_mms"] = True
+        try:
+            call_command("download_triage_models", **kwargs)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("download_triage_models failed: %s", exc)
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    return JsonResponse({"ok": True, "started": target})
+
+
+@login_required
+@csrf_protect
+def triage_probe_api(request):
+    """Return the current env probe so the UI can refresh without a full reload."""
+    if not _triage_visible(request.user):
+        return JsonResponse({"ok": False, "error": "Not authorized."}, status=403)
+    return JsonResponse({"ok": True, "env": probe_environment()})
 
 
 @login_required

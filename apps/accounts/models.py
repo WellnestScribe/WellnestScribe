@@ -26,6 +26,15 @@ class DoctorProfile(models.Model):
         ("chart", "Chart / progress note"),
     ]
 
+    ROLE_CLINICIAN = "clinician"
+    ROLE_LEAD = "lead"
+    ROLE_ADMIN = "admin"
+    ROLE_CHOICES = [
+        (ROLE_CLINICIAN, "Clinician"),
+        (ROLE_LEAD, "Clinical lead"),
+        (ROLE_ADMIN, "Administrator"),
+    ]
+
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -51,6 +60,10 @@ class DoctorProfile(models.Model):
 
     custom_instructions = models.TextField(blank=True)
 
+    role = models.CharField(
+        max_length=20, choices=ROLE_CHOICES, default=ROLE_CLINICIAN
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -62,3 +75,15 @@ class DoctorProfile(models.Model):
         if self.full_name:
             return f"{self.title} {self.full_name}".strip()
         return self.user.get_username()
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == self.ROLE_ADMIN or self.user.is_staff or self.user.is_superuser
+
+    @property
+    def is_lead(self) -> bool:
+        return self.is_admin or self.role == self.ROLE_LEAD
+
+    def can_access_triage(self) -> bool:
+        """Triage Lab access: admins, leads, or staff/superuser."""
+        return self.is_lead

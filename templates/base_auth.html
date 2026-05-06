@@ -1,0 +1,57 @@
+{% load static %}
+<!doctype html>
+<html lang="en"
+      data-bs-theme="{% if ui_theme == 'dark' %}dark{% else %}light{% endif %}">
+<head>
+    <meta charset="utf-8">
+    <title>{% block title %}WellNest Scribe{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="description" content="WellNest Scribe — voice to clinical notes for Caribbean healthcare.">
+    <meta name="theme-color" content="#0c7ec2">
+
+    <link rel="shortcut icon" href="{% static 'images/favicon.ico' %}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <link href="{% static 'css/vendor.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/icons.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/app.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/wellnest.css' %}" rel="stylesheet">
+</head>
+<body class="auth-body">
+    <button type="button"
+            class="auth-theme-toggle"
+            id="light-dark-mode"
+            aria-label="Toggle theme">
+        <iconify-icon icon="iconamoon:mode-dark-duotone" class="fs-4"></iconify-icon>
+    </button>
+
+    {% if messages %}
+        <div class="auth-messages">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+
+    <script>
+      // Minimal theme toggle for auth pages — persists in localStorage so the
+      // choice survives the redirect to the app.
+      (function () {
+        const html = document.documentElement;
+        const stored = localStorage.getItem("wellnest_theme");
+        if (stored === "dark" || stored === "light") html.setAttribute("data-bs-theme", stored);
+        const btn = document.getElementById("light-dark-mode");
+        if (btn) btn.addEventListener("click", function () {
+          const next = html.getAttribute("data-bs-theme") === "dark" ? "light" : "dark";
+          html.setAttribute("data-bs-theme", next);
+          localStorage.setItem("wellnest_theme", next);
+        });
+      })();
+    </script>
+    <script src="{% static 'js/vendor.js' %}"></script>
+</body>
+</html>

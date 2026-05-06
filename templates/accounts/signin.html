@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base_auth.html" %}
 {% load static %}
 
 {% block title %}Sign in · WellNest Scribe{% endblock %}
@@ -18,7 +18,7 @@
                 <div class="alert alert-danger small">{{ form.non_field_errors }}</div>
             {% endif %}
             <div class="mb-3">
-                <label class="form-label small text-muted" for="id_username">Username</label>
+                <label class="form-label small text-muted" for="id_username">Username or email</label>
                 {{ form.username }}
                 {% if form.username.errors %}<small class="text-danger">{{ form.username.errors|join:" " }}</small>{% endif %}
             </div>

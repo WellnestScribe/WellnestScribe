@@ -12,11 +12,38 @@
                     <h4 class="mb-1 fw-semibold">New session</h4>
                     <p class="text-muted mb-0 small">
                         Welcome back{% if profile.full_name %}, {{ profile.title }} {{ profile.full_name }}{% endif %}.
-                        Record a dictation, upload audio, or type the encounter directly.
+                        Record a dictation, upload audio, or pick a template.
                     </p>
                 </div>
                 <span class="status-pill" id="recordStatus">Ready</span>
             </div>
+        </div>
+    </div>
+
+    <div class="quick-templates-bar mb-4">
+        <div class="quick-templates-label">
+            <iconify-icon icon="iconamoon:file-light" class="me-1 align-middle"></iconify-icon>
+            Quick start template
+        </div>
+        <div class="quick-templates-pills">
+            <button type="button" class="quick-pill" data-template="htn">
+                <iconify-icon icon="iconamoon:heart-duotone"></iconify-icon> Hypertension f/u
+            </button>
+            <button type="button" class="quick-pill" data-template="dm">
+                <iconify-icon icon="iconamoon:activity-duotone"></iconify-icon> Diabetes f/u
+            </button>
+            <button type="button" class="quick-pill" data-template="urti">
+                <iconify-icon icon="iconamoon:lungs-duotone"></iconify-icon> URTI / cold
+            </button>
+            <button type="button" class="quick-pill" data-template="gastro">
+                <iconify-icon icon="iconamoon:warning-2-duotone"></iconify-icon> Gastro
+            </button>
+            <button type="button" class="quick-pill" data-template="antenatal">
+                <iconify-icon icon="iconamoon:baby-duotone"></iconify-icon> Antenatal
+            </button>
+            <button type="button" class="quick-pill" data-template="paeds">
+                <iconify-icon icon="iconamoon:profile-duotone"></iconify-icon> Paediatric
+            </button>
         </div>
     </div>
 
@@ -65,26 +92,11 @@
 
                     <hr class="my-4">
 
-                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                        <h6 class="fw-semibold mb-0">Or type the encounter</h6>
-                        <div class="dropdown">
-                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                                <iconify-icon icon="iconamoon:file-light" class="me-1 align-middle"></iconify-icon>
-                                Quick template
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                <li><a class="dropdown-item" href="#" data-template="htn">Hypertension follow-up</a></li>
-                                <li><a class="dropdown-item" href="#" data-template="dm">Diabetes follow-up</a></li>
-                                <li><a class="dropdown-item" href="#" data-template="urti">Acute URTI / cold</a></li>
-                                <li><a class="dropdown-item" href="#" data-template="gastro">Gastroenteritis</a></li>
-                                <li><a class="dropdown-item" href="#" data-template="antenatal">Antenatal visit</a></li>
-                                <li><a class="dropdown-item" href="#" data-template="paeds">Paediatric general</a></li>
-                            </ul>
-                        </div>
-                    </div>
+                    <h6 class="fw-semibold mb-2">Or type the encounter</h6>
                     <p class="text-muted small mb-2">
-                        Templates pre-fill the typical structure for common health-centre
-                        encounters. Replace the bracketed placeholders with this patient&rsquo;s details — the AI fills in only what you state.
+                        Pick a template above to scaffold the note, or type free-form. Replace
+                        bracketed placeholders with this patient&rsquo;s details — the AI fills
+                        in only what you actually state.
                     </p>
                     <textarea id="manualTranscript"
                               class="note-textarea"

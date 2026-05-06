@@ -80,6 +80,47 @@ If a key is missing or `SCRIBE_USE_REAL_AI=False`, the pipeline falls back to a 
 - Edge / hurricane mode (`SCRIBE_MODE=edge`) — settings flag is present, implementation is future work.
 - Background jobs / Celery — transcription + generation run synchronously inside the request for simplicity.
 
+## Roles & access (RBAC)
+
+WellNest has three roles stored on `DoctorProfile.role`:
+
+| Role | Sees Triage Lab | Use case |
+|---|---|---|
+| `clinician` (default) | no | Pilot doctors. Just record + review notes. |
+| `lead` | yes | Clinical leads who help moderate the pilot. |
+| `admin` | yes | Project owner / dev. Usually combined with Django `is_staff` for /admin/ access. |
+
+**Promote yourself to admin from the terminal:**
+
+```powershell
+python manage.py promote your_username --role admin --staff --superuser
+```
+
+Then refresh the app — the Triage Lab item appears in the sidebar, and `/admin/` is accessible. To put someone back to a regular clinician:
+
+```powershell
+python manage.py demote their_username
+```
+
+You can also flip roles inline in `/admin/` → Doctor profiles. The role column is editable in the list view.
+
+To make Triage visible to *everyone* (not recommended for pilot doctors), set `SCRIBE_ENABLE_TRIAGE=True` in `.env`.
+
+## Triage Lab models
+
+Triage uses two ML models that aren't downloaded by default (~5 GB combined). When you first hit `/scribe/triage/` the env probe will show what's missing. Two ways to fetch:
+
+1. **Inside the app:** Triage page → "Download MMS + T5 models" button. Runs in the background; the page polls until the models are cached.
+2. **From the terminal** (recommended for the first download so you can see progress):
+   ```powershell
+   .\.venv\Scripts\Activate.ps1
+   pip install transformers accelerate librosa soundfile sentencepiece
+   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121  # for RTX 2060
+   python manage.py download_triage_models
+   ```
+
+Models are cached under `~/.cache/huggingface/hub/`.
+
 ## Useful URLs
 
 | Path | Purpose |
