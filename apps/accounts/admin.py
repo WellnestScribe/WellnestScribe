@@ -12,8 +12,9 @@ class DoctorProfileAdmin(admin.ModelAdmin):
         "specialty",
         "facility",
         "default_note_style",
+        "suggestive_assist",
     )
-    list_filter = ("role", "specialty", "default_note_style", "theme")
+    list_filter = ("role", "specialty", "default_note_style", "suggestive_assist", "theme")
     search_fields = ("user__username", "user__email", "full_name", "facility")
     list_editable = ("role",)
     fieldsets = (
@@ -21,7 +22,10 @@ class DoctorProfileAdmin(admin.ModelAdmin):
         ("Access control", {"fields": ("role",)}),
         ("Note preferences", {
             "fields": (
-                "default_note_style", "long_form_default", "custom_instructions",
+                "default_note_style",
+                "long_form_default",
+                "suggestive_assist",
+                "custom_instructions",
             )
         }),
         ("Display", {"fields": ("font_scale", "theme")}),

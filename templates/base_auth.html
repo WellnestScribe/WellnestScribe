@@ -13,7 +13,7 @@
     <meta name="apple-mobile-web-app-title" content="WellNest">
 
     <link rel="shortcut icon" href="{% static 'images/favicon.ico' %}">
-    <link rel="manifest" href="{% url 'manifest' %}">
+    <link rel="manifest" href="{% url 'manifest' %}?v={{ ui_asset_version }}">
     <link rel="apple-touch-icon" href="{% static 'images/pwa/icon-192x192.png' %}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,7 +22,7 @@
     <link href="{% static 'css/vendor.min.css' %}" rel="stylesheet">
     <link href="{% static 'css/icons.min.css' %}" rel="stylesheet">
     <link href="{% static 'css/app.min.css' %}" rel="stylesheet">
-    <link href="{% static 'css/wellnest.css' %}" rel="stylesheet">
+    <link href="{% static 'css/wellnest.css' %}?v={{ ui_asset_version }}" rel="stylesheet">
 </head>
 <body class="auth-body">
     <button type="button"
@@ -62,7 +62,7 @@
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", function () {
-          navigator.serviceWorker.register("{% url 'service_worker' %}").catch(function (err) {
+          navigator.serviceWorker.register("{% url 'service_worker' %}?v={{ ui_asset_version }}").catch(function (err) {
             console.warn("Service worker registration failed", err);
           });
         });

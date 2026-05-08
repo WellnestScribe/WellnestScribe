@@ -73,6 +73,16 @@
                                 <label class="form-check-label small" for="id_long_form_default">Default to long-form mode</label>
                             </div>
                         </div>
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                {{ form.suggestive_assist }}
+                                <label class="form-check-label small" for="id_suggestive_assist">Allow suggestive assist in assessment / plan</label>
+                            </div>
+                            <p class="text-muted small mb-0 mt-2">
+                                When on, WellNest can add cautious "rule out", "consider", or generic workup wording when the transcript strongly implies it.
+                                When off, it stays strictly documentary unless you explicitly say those phrases.
+                            </p>
+                        </div>
                     </div>
 
                     <h6 class="fw-semibold">Display</h6>

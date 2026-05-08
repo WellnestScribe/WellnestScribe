@@ -1,12 +1,14 @@
 {% load static %}
-const CACHE_NAME = "wellnest-shell-v1";
+const CACHE_NAME = "wellnest-shell-v{{ ui_asset_version|default:'1' }}";
 const APP_SHELL = [
   "/",
-  "{% url 'manifest' %}",
+  "{% url 'manifest' %}?v={{ ui_asset_version|default:'1' }}",
   "{% static 'images/favicon.ico' %}",
   "{% static 'images/wellnest-logo.png' %}",
   "{% static 'images/pwa/icon-192x192.png' %}",
-  "{% static 'images/pwa/icon-512x512.png' %}"
+  "{% static 'images/pwa/icon-512x512.png' %}",
+  "{% static 'css/wellnest.css' %}?v={{ ui_asset_version|default:'1' }}",
+  "{% static 'js/wellnest.js' %}?v={{ ui_asset_version|default:'1' }}"
 ];
 
 self.addEventListener("install", (event) => {

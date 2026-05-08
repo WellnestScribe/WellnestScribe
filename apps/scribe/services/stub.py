@@ -35,6 +35,7 @@ def fake_generate_note(
     specialty: str = "general",
     length_mode: str = "normal",
     custom_instructions: str = "",
+    suggestive_assist: bool = False,
 ) -> GeneratedNote:
     if note_format == "narrative":
         narrative = _wrap(
