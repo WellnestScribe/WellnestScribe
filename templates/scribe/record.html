@@ -51,6 +51,51 @@
         <div class="col-12 col-xl-7">
             <div class="card h-100">
                 <div class="card-body p-4">
+                    <select id="noteFormatSelect" class="d-none" aria-hidden="true" tabindex="-1">
+                        {% for value, label in format_choices %}
+                            <option value="{{ value }}" {% if value == profile.default_note_style %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+
+                    <div class="record-toolbar mb-3">
+                        <div class="record-toolbar-group">
+                            <span class="record-toolbar-label">Note style</span>
+                            <div class="note-style-tabs" role="tablist" aria-label="Note style">
+                                <button type="button"
+                                        class="note-style-pill {% if profile.default_note_style == 'soap' %}is-active{% endif %}"
+                                        data-note-style="soap"
+                                        aria-pressed="{% if profile.default_note_style == 'soap' %}true{% else %}false{% endif %}">
+                                    SOAP
+                                </button>
+                                <button type="button"
+                                        class="note-style-pill {% if profile.default_note_style == 'narrative' %}is-active{% endif %}"
+                                        data-note-style="narrative"
+                                        aria-pressed="{% if profile.default_note_style == 'narrative' %}true{% else %}false{% endif %}">
+                                    Narrative
+                                </button>
+                                <button type="button"
+                                        class="note-style-pill {% if profile.default_note_style == 'chart' %}is-active{% endif %}"
+                                        data-note-style="chart"
+                                        aria-pressed="{% if profile.default_note_style == 'chart' %}true{% else %}false{% endif %}">
+                                    Chart
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="record-toolbar-group record-toolbar-group-compact">
+                            <span class="record-toolbar-label">AI mode</span>
+                            <label class="suggestive-assist-chip" for="suggestiveAssistToggle" title="When on, WellNest can add cautious rule-out or workup wording when the transcript strongly implies it.">
+                                <input type="checkbox"
+                                       id="suggestiveAssistToggle"
+                                       {% if profile.suggestive_assist %}checked{% endif %}>
+                                <span class="suggestive-assist-chip-body">
+                                    <iconify-icon icon="iconamoon:idea-duotone" class="me-1"></iconify-icon>
+                                    Suggestive assist
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+
                     <div class="recorder-shell text-center">
                         <div class="recorder-timer" id="recordTimer">0:00</div>
                         <div class="waveform-bars" id="recordWaveform"></div>
@@ -66,22 +111,14 @@
                     </div>
 
                     <div class="row g-3 mt-3">
-                        <div class="col-12 col-sm-6 col-md-4">
-                            <label class="form-label small text-muted" for="noteFormatSelect">Note style</label>
-                            <select id="noteFormatSelect" class="form-select">
-                                {% for value, label in format_choices %}
-                                    <option value="{{ value }}" {% if value == profile.default_note_style %}selected{% endif %}>{{ label }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-12 col-sm-6 col-md-4">
+                        <div class="col-12 col-sm-6">
                             <label class="form-label small text-muted">Length</label>
                             <div class="form-check form-switch mt-2">
                                 <input class="form-check-input" type="checkbox" id="lengthModeSwitch" {% if profile.long_form_default %}checked{% endif %}>
                                 <label class="form-check-label" for="lengthModeSwitch">Long-form mode</label>
                             </div>
                         </div>
-                        <div class="col-12 col-md-4 d-flex align-items-end">
+                        <div class="col-12 col-sm-6 d-flex align-items-end">
                             <button type="button" class="btn btn-outline-secondary w-100" id="audioUploadBtn">
                                 <iconify-icon icon="iconamoon:cloud-upload-duotone" class="me-1 align-middle"></iconify-icon>
                                 Upload audio

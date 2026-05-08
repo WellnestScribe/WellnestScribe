@@ -1,8 +1,25 @@
 """Inject doctor UI preferences + feature flags into every template."""
 
+from pathlib import Path
+
 from django.conf import settings
 
 from accounts.models import DoctorProfile
+
+
+def _ui_asset_version() -> str:
+    candidates = (
+        settings.BASE_DIR / "static" / "css" / "wellnest.css",
+        settings.BASE_DIR / "static" / "js" / "wellnest.js",
+        settings.BASE_DIR / "templates" / "service-worker.js",
+        settings.BASE_DIR / "wellnest" / "pwa.py",
+    )
+    mtimes = [
+        int(path.stat().st_mtime)
+        for path in candidates
+        if isinstance(path, Path) and path.exists()
+    ]
+    return str(max(mtimes) if mtimes else 1)
 
 
 def ui_preferences(request):
@@ -25,6 +42,7 @@ def ui_preferences(request):
         "doctor_profile": profile,
         "ui_font_scale": profile.font_scale if profile else 100,
         "ui_theme": profile.theme if profile else "light",
+        "ui_asset_version": _ui_asset_version(),
         "triage_visible": triage_visible,
         "is_admin": is_admin,
     }

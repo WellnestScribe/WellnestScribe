@@ -9,8 +9,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="description" content="WellNest Scribe — voice to clinical notes for Jamaican healthcare.">
     <meta name="theme-color" content="#0c7ec2">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="WellNest">
 
     <link rel="shortcut icon" href="{% static 'images/favicon.ico' %}">
+    <link rel="manifest" href="{% url 'manifest' %}?v={{ ui_asset_version }}">
+    <link rel="apple-touch-icon" href="{% static 'images/pwa/icon-192x192.png' %}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -18,9 +23,7 @@
     <link href="{% static 'css/vendor.min.css' %}" rel="stylesheet">
     <link href="{% static 'css/icons.min.css' %}" rel="stylesheet">
     <link href="{% static 'css/app.min.css' %}" rel="stylesheet">
-    {# Cache-bust on every dev reload so JS/CSS edits show up without Ctrl+Shift+R. #}
-    {% if debug %}{% now "U" as cachebust %}{% endif %}
-    <link href="{% static 'css/wellnest.css' %}{% if debug %}?v={{ cachebust }}{% endif %}" rel="stylesheet">
+    <link href="{% static 'css/wellnest.css' %}?v={{ ui_asset_version }}" rel="stylesheet">
 
     <script src="{% static 'js/config.js' %}"></script>
     {% block extra_head %}{% endblock %}
@@ -76,7 +79,16 @@
     <script src="https://code.iconify.design/iconify-icon/2.3.0/iconify-icon.min.js"></script>
     <script src="{% static 'js/vendor.js' %}"></script>
     <script src="{% static 'js/app.js' %}"></script>
-    <script src="{% static 'js/wellnest.js' %}{% if debug %}?v={{ cachebust }}{% endif %}"></script>
+    <script src="{% static 'js/wellnest.js' %}?v={{ ui_asset_version }}"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker.register("{% url 'service_worker' %}?v={{ ui_asset_version }}").catch(function (err) {
+            console.warn("Service worker registration failed", err);
+          });
+        });
+      }
+    </script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

@@ -25,7 +25,10 @@ from .prompts import (
     MASTER_SYSTEM_PROMPT,
     NARRATIVE_USER_PROMPT,
     SECTION_PROMPTS,
+    SECTION_PROMPTS_SUGGESTIVE,
     SINGLE_SOAP_USER_PROMPT,
+    SINGLE_SOAP_USER_PROMPT_SUGGESTIVE,
+    SUGGESTIVE_ASSIST_ADDENDUM,
     VERIFICATION_PROMPT,
     specialty_addendum,
 )
@@ -55,11 +58,18 @@ def _is_reasoning_deployment() -> bool:
     return any(h in name for h in _REASONING_HINTS)
 
 
-def _system_prompt(specialty: str, custom_instructions: str = "") -> str:
+def _system_prompt(
+    specialty: str,
+    custom_instructions: str = "",
+    *,
+    suggestive_assist: bool = False,
+) -> str:
     parts: list[str] = [MASTER_SYSTEM_PROMPT, JAMAICAN_CONTEXT_ADDENDUM]
     addendum = specialty_addendum(specialty)
     if addendum:
         parts.append(addendum)
+    if suggestive_assist:
+        parts.append(SUGGESTIVE_ASSIST_ADDENDUM)
     if custom_instructions:
         parts.append(
             "DOCTOR PREFERENCES (apply throughout):\n" + custom_instructions.strip()
@@ -208,12 +218,17 @@ def generate_note(
     specialty: str = "general",
     length_mode: str = "normal",
     custom_instructions: str = "",
+    suggestive_assist: bool = False,
 ) -> GeneratedNote:
     transcript = (transcript or "").strip()
     if not transcript:
         raise ValueError("Cannot generate a note from an empty transcript.")
 
-    system_prompt = _system_prompt(specialty, custom_instructions)
+    system_prompt = _system_prompt(
+        specialty,
+        custom_instructions,
+        suggestive_assist=suggestive_assist,
+    )
 
     if note_format == "narrative":
         user = NARRATIVE_USER_PROMPT.format(
@@ -225,7 +240,12 @@ def generate_note(
         )
     else:
         note_format = "soap"
-        user = SINGLE_SOAP_USER_PROMPT.format(
+        soap_prompt = (
+            SINGLE_SOAP_USER_PROMPT_SUGGESTIVE
+            if suggestive_assist
+            else SINGLE_SOAP_USER_PROMPT
+        )
+        user = soap_prompt.format(
             specialty=specialty,
             note_style="SOAP",
             length_mode=length_mode,
@@ -286,16 +306,24 @@ def generate_modular_soap(
     specialty: str = "general",
     length_mode: str = "normal",
     custom_instructions: str = "",
+    suggestive_assist: bool = False,
     sections: Iterable[str] = ("subjective", "objective", "assessment", "plan"),
 ) -> GeneratedNote:
     transcript = (transcript or "").strip()
     if not transcript:
         raise ValueError("Cannot generate a note from an empty transcript.")
 
-    system_prompt = _system_prompt(specialty, custom_instructions)
+    system_prompt = _system_prompt(
+        specialty,
+        custom_instructions,
+        suggestive_assist=suggestive_assist,
+    )
+    section_prompts = (
+        SECTION_PROMPTS_SUGGESTIVE if suggestive_assist else SECTION_PROMPTS
+    )
     out: dict[str, str] = {}
     for name in sections:
-        prompt = SECTION_PROMPTS[name].format(transcript=transcript)
+        prompt = section_prompts[name].format(transcript=transcript)
         out[name] = _chat(
             [
                 {"role": "system", "content": system_prompt},

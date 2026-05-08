@@ -51,6 +51,7 @@ class DoctorProfile(models.Model):
         max_length=20, choices=NOTE_STYLE_CHOICES, default="soap"
     )
     long_form_default = models.BooleanField(default=False)
+    suggestive_assist = models.BooleanField(default=False)
     font_scale = models.PositiveSmallIntegerField(default=100)
     theme = models.CharField(
         max_length=10,

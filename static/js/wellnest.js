@@ -68,6 +68,21 @@
     el.style.height = "auto";
     el.style.height = Math.min(800, Math.max(el.scrollHeight + 4, 120)) + "px";
   }
+  function syncRecordNoteStyle(value) {
+    const recordSel = $("#noteFormatSelect");
+    if (recordSel) recordSel.value = value;
+    $$("[data-note-style]").forEach(function (btn) {
+      const active = btn.getAttribute("data-note-style") === value;
+      btn.classList.toggle("is-active", active);
+      btn.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+  }
+  function syncSuggestiveAssistState(checked) {
+    const prefToggle = $("#prefSuggestiveAssist");
+    const recordToggle = $("#suggestiveAssistToggle");
+    if (prefToggle && prefToggle.checked !== checked) prefToggle.checked = checked;
+    if (recordToggle && recordToggle.checked !== checked) recordToggle.checked = checked;
+  }
 
   // ---------- toast ----------
   let toastEl = null;
@@ -116,8 +131,7 @@
   if (noteStyleSel) {
     noteStyleSel.addEventListener("change", function () {
       postJSON(W.endpoints.updatePreferences, { default_note_style: noteStyleSel.value });
-      const recordSel = $("#noteFormatSelect");
-      if (recordSel) recordSel.value = noteStyleSel.value;
+      syncRecordNoteStyle(noteStyleSel.value);
     });
   }
   const longFormChk = $("#prefLongForm");
@@ -126,6 +140,13 @@
       postJSON(W.endpoints.updatePreferences, { long_form_default: longFormChk.checked });
       const recordToggle = $("#lengthModeSwitch");
       if (recordToggle) recordToggle.checked = longFormChk.checked;
+    });
+  }
+  const suggestiveAssistChk = $("#prefSuggestiveAssist");
+  if (suggestiveAssistChk) {
+    suggestiveAssistChk.addEventListener("change", function () {
+      syncSuggestiveAssistState(suggestiveAssistChk.checked);
+      postJSON(W.endpoints.updatePreferences, { suggestive_assist: suggestiveAssistChk.checked });
     });
   }
 
@@ -223,11 +244,37 @@
     const waveBars = $("#recordWaveform", root);
     const statusEl = $("#recordStatus", root);
     const noteFormatSel = $("#noteFormatSelect", root);
+    const noteStyleBtns = $$("[data-note-style]", root);
+    const suggestiveAssistToggle = $("#suggestiveAssistToggle", root);
     const lengthSwitch = $("#lengthModeSwitch", root);
     const transcriptArea = $("#manualTranscript", root);
     const generateBtn = $("#generateBtn", root);
     const fileInput = $("#audioFileInput", root);
     const uploadBtn = $("#audioUploadBtn", root);
+
+    if (noteFormatSel) syncRecordNoteStyle(noteFormatSel.value);
+    noteStyleBtns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const next = btn.getAttribute("data-note-style");
+        if (!next || !noteFormatSel) return;
+        noteFormatSel.value = next;
+        syncRecordNoteStyle(next);
+      });
+    });
+    if (suggestiveAssistToggle) {
+      syncSuggestiveAssistState(suggestiveAssistToggle.checked);
+      suggestiveAssistToggle.addEventListener("change", function () {
+        syncSuggestiveAssistState(suggestiveAssistToggle.checked);
+        postJSON(W.endpoints.updatePreferences, { suggestive_assist: suggestiveAssistToggle.checked });
+        if (window.WELLNEST_toast) {
+          window.WELLNEST_toast(
+            suggestiveAssistToggle.checked
+              ? "Suggestive assist on"
+              : "Suggestive assist off"
+          );
+        }
+      });
+    }
 
     if (transcriptArea) {
       autoGrow(transcriptArea);
@@ -341,6 +388,7 @@
         transcript: transcript,
         note_format: noteFormatSel ? noteFormatSel.value : "soap",
         length_mode: lengthSwitch && lengthSwitch.checked ? "long_form" : "normal",
+        suggestive_assist: suggestiveAssistToggle ? suggestiveAssistToggle.checked : undefined,
       };
       const gen = await postJSON("/scribe/api/sessions/" + sid + "/generate/", payload);
       if (!gen.ok || !gen.body.ok) { setStatus(statusEl, (gen.body && gen.body.error) || "Note generation failed.", "error"); return; }
@@ -792,7 +840,10 @@
       const generated = renderFromFields(collectFieldValues());
       // If the user manually changed the narrative beyond what we'd render,
       // don't overwrite it. Track a "manually edited" flag.
-      if (!fullNoteArea.dataset.manualEdit) fullNoteArea.value = generated;
+      if (!fullNoteArea.dataset.manualEdit) {
+        fullNoteArea.value = generated;
+        autoGrow(fullNoteArea);
+      }
     }
     function parseSoapFromText(text) {
       const sections = { subjective: "", objective: "", assessment: "", plan: "" };
@@ -814,7 +865,10 @@
       if (!parsed) return;
       fields.forEach(function (el) {
         const k = el.getAttribute("data-note-field");
-        if (k in parsed && parsed[k]) el.value = parsed[k];
+        if (k in parsed && parsed[k]) {
+          el.value = parsed[k];
+          autoGrow(el);
+        }
       });
     }
     function updateWordCount() {
@@ -1048,9 +1102,7 @@
       autoGrow(el);
       el.addEventListener("input", function () { autoGrow(el); });
     }
-    fields.forEach(attachAutoGrow);
-    if (fullNoteArea) attachAutoGrow(fullNoteArea);
-    if (transcriptArea) attachAutoGrow(transcriptArea);
+    $$("textarea", root).forEach(attachAutoGrow);
 
     initQuickEditMics(root);
     updateWordCount();
@@ -1110,9 +1162,11 @@
           if (finalChunk) {
             baseText += finalChunk + " ";
             target.value = baseText + interim;
+            autoGrow(target);
             target.dispatchEvent(new Event("input", { bubbles: true }));
           } else {
             target.value = baseText + interim;
+            autoGrow(target);
           }
         };
         recog.onerror = function (ev) {
@@ -1144,6 +1198,7 @@
           if (res.ok && res.body.ok && res.body.text) {
             const sep = target.value && !target.value.endsWith(" ") && !target.value.endsWith("\n") ? " " : "";
             target.value = target.value + sep + res.body.text;
+            autoGrow(target);
             target.dispatchEvent(new Event("input", { bubbles: true }));
             showToast("Inserted dictation");
           } else if (res.body && res.body.error) {

@@ -86,6 +86,14 @@ def _json_body(request):
         return {}
 
 
+def _coerce_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
 def _log(session: ScribeSession, event_type: str, detail: str = "") -> None:
     SessionEvent.objects.create(
         session=session, event_type=event_type, detail=detail[:2000]
@@ -606,6 +614,11 @@ def generate_note_api(request, pk):
         )
 
     profile = _get_profile(request.user)
+    suggestive_assist = payload.get("suggestive_assist")
+    if suggestive_assist is None:
+        suggestive_assist = profile.suggestive_assist
+    else:
+        suggestive_assist = _coerce_bool(suggestive_assist)
     session.transcript = transcript
     session.note_format = note_format
     session.length_mode = length_mode
@@ -621,6 +634,7 @@ def generate_note_api(request, pk):
             specialty=profile.specialty,
             length_mode=length_mode,
             custom_instructions=profile.custom_instructions,
+            suggestive_assist=suggestive_assist,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("Note generation failed for session %s", pk)
@@ -879,6 +893,8 @@ def update_preferences_api(request):
         profile.default_note_style = payload["default_note_style"]
     if "long_form_default" in payload:
         profile.long_form_default = bool(payload["long_form_default"])
+    if "suggestive_assist" in payload:
+        profile.suggestive_assist = _coerce_bool(payload["suggestive_assist"])
     if payload.get("specialty") in dict(DoctorProfile.SPECIALTY_CHOICES):
         profile.specialty = payload["specialty"]
 
@@ -890,6 +906,7 @@ def update_preferences_api(request):
             "font_scale": profile.font_scale,
             "default_note_style": profile.default_note_style,
             "long_form_default": profile.long_form_default,
+            "suggestive_assist": profile.suggestive_assist,
             "specialty": profile.specialty,
         }
     )

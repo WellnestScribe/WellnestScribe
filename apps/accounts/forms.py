@@ -64,6 +64,7 @@ class DoctorProfileForm(forms.ModelForm):
             "facility",
             "default_note_style",
             "long_form_default",
+            "suggestive_assist",
             "font_scale",
             "theme",
             "custom_instructions",
@@ -76,6 +77,7 @@ class DoctorProfileForm(forms.ModelForm):
             "specialty": forms.Select(attrs={"class": "form-select"}),
             "facility": forms.TextInput(attrs={"class": "form-control"}),
             "default_note_style": forms.Select(attrs={"class": "form-select"}),
+            "suggestive_assist": forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "font_scale": forms.NumberInput(
                 attrs={"class": "form-control", "min": 80, "max": 160, "step": 10}
             ),
