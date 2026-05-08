@@ -157,9 +157,11 @@
                             no admin exists yet — click below to claim.
                             <form method="post" action="{% url 'accounts:bootstrap_admin' %}" class="m-0 mt-2">
                                 {% csrf_token %}
+                                <!--
                                 <button type="submit" class="btn btn-primary btn-sm w-100">
                                     Make me the first admin
                                 </button>
+                                -->
                             </form>
                         {% else %}
                             from a terminal:
