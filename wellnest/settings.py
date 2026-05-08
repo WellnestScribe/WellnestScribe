@@ -2,8 +2,11 @@
 
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
+import certifi
 from decouple import Csv, config
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -67,37 +70,100 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "wellnest.wsgi.application"
 
-DATABASE_URL = config("DATABASE_URL", default="")
-if DATABASE_URL:
-    # Lazy parse so projects without psycopg2 still load with sqlite default.
-    from urllib.parse import urlparse
-    parsed = urlparse(DATABASE_URL)
-    if parsed.scheme.startswith("postgres"):
-        DATABASES = {
-            "default": {
-                "ENGINE": "django.db.backends.postgresql",
-                "NAME": (parsed.path or "/").lstrip("/") or "wellnest",
-                "USER": parsed.username or "",
-                "PASSWORD": parsed.password or "",
-                "HOST": parsed.hostname or "",
-                "PORT": str(parsed.port) if parsed.port else "",
-                "CONN_MAX_AGE": 60,
-            }
+
+def _mysql_ssl_options(host: str) -> dict:
+    if "mysql.database.azure.com" not in (host or ""):
+        return {}
+    return {
+        "charset": "utf8mb4",
+        "ssl": {"ca": certifi.where()},
+    }
+
+
+def _database_from_url(database_url: str) -> dict:
+    parsed = urlparse(database_url)
+    scheme = parsed.scheme.lower()
+    if scheme.startswith("postgres"):
+        return {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": (parsed.path or "/").lstrip("/") or "wellnest",
+            "USER": parsed.username or "",
+            "PASSWORD": parsed.password or "",
+            "HOST": parsed.hostname or "",
+            "PORT": str(parsed.port) if parsed.port else "",
+            "CONN_MAX_AGE": 60,
         }
-    else:
-        DATABASES = {
-            "default": {
-                "ENGINE": "django.db.backends.sqlite3",
-                "NAME": BASE_DIR / "db.sqlite3",
-            }
+    if scheme.startswith("mysql"):
+        host = parsed.hostname or ""
+        database = {
+            "ENGINE": "django.db.backends.mysql",
+            "NAME": (parsed.path or "/").lstrip("/"),
+            "USER": parsed.username or "",
+            "PASSWORD": parsed.password or "",
+            "HOST": host,
+            "PORT": str(parsed.port) if parsed.port else "3306",
+            "CONN_MAX_AGE": 60,
         }
-else:
-    DATABASES = {
-        "default": {
+        options = _mysql_ssl_options(host)
+        if options:
+            database["OPTIONS"] = options
+        return database
+    return {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
+    }
+
+
+def _database_from_env() -> dict:
+    database_url = config("DATABASE_URL", default="").strip()
+    if database_url:
+        return _database_from_url(database_url)
+
+    use_sqlite = config("DJANGO_USE_SQLITE", default=True, cast=bool)
+    if use_sqlite:
+        return {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": BASE_DIR / "db.sqlite3",
         }
+
+    host = config("AZURE_MYSQL_HOST", default="").strip()
+    name = config("AZURE_MYSQL_NAME", default="").strip()
+    user = config("AZURE_MYSQL_USER", default="").strip()
+    password = config("AZURE_MYSQL_PASSWORD", default="")
+    port = str(config("AZURE_MYSQL_PORT", default="3306")).strip() or "3306"
+
+    missing = [
+        key
+        for key, value in {
+            "AZURE_MYSQL_HOST": host,
+            "AZURE_MYSQL_NAME": name,
+            "AZURE_MYSQL_USER": user,
+            "AZURE_MYSQL_PASSWORD": password,
+        }.items()
+        if not value
+    ]
+    if missing:
+        raise ImproperlyConfigured(
+            "Azure MySQL is enabled but the following settings are missing: "
+            + ", ".join(missing)
+        )
+
+    database = {
+        "ENGINE": "django.db.backends.mysql",
+        "NAME": name,
+        "USER": user,
+        "PASSWORD": password,
+        "HOST": host,
+        "PORT": port,
+        "CONN_MAX_AGE": 60,
     }
+    options = _mysql_ssl_options(host)
+    if options:
+        database["OPTIONS"] = options
+    return database
+
+
+DATABASES = {"default": _database_from_env()}
 
 AUTHENTICATION_BACKENDS = [
     "accounts.backends.EmailOrUsernameBackend",

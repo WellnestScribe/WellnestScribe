@@ -2,15 +2,18 @@ from .settings import *
 import os
 import socket
 
+from decouple import config as env
+import certifi
+
 # Production overrides
 DEBUG = False
-SECRET_KEY = os.environ.get("SECRET_KEY")
+SECRET_KEY = env("SECRET_KEY", default=SECRET_KEY)
 
 # Build allowed hosts
 ALLOWED_HOSTS = [
     "wellnestscribe.com",
     "www.wellnestscribe.com",  # fixed - removed markdown link formatting
-    os.environ.get("WEBSITE_HOSTNAME", ""),
+    env("WEBSITE_HOSTNAME", default=""),
     "localhost",
     "127.0.0.1",
 ]
@@ -27,7 +30,7 @@ ALLOWED_HOSTS = [h for h in ALLOWED_HOSTS if h]  # remove empty strings
 CSRF_TRUSTED_ORIGINS = [
     "https://wellnestscribe.com",
     "https://www.wellnestscribe.com",
-    f"https://{os.environ.get('WEBSITE_HOSTNAME', '')}",
+    f"https://{env('WEBSITE_HOSTNAME', default='')}",
 ]
 
 # Whitenoise for static files
@@ -54,14 +57,14 @@ CSRF_COOKIE_SECURE = True
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
-        "NAME": os.environ.get("AZURE_MYSQL_NAME"),
-        "USER": os.environ.get("AZURE_MYSQL_USER"),
-        "PASSWORD": os.environ.get("AZURE_MYSQL_PASSWORD"),
-        "HOST": os.environ.get("AZURE_MYSQL_HOST"),
-        "PORT": os.environ.get("AZURE_MYSQL_PORT", "3306"),
+        "NAME": env("AZURE_MYSQL_NAME", default=""),
+        "USER": env("AZURE_MYSQL_USER", default=""),
+        "PASSWORD": env("AZURE_MYSQL_PASSWORD", default=""),
+        "HOST": env("AZURE_MYSQL_HOST", default=""),
+        "PORT": env("AZURE_MYSQL_PORT", default="3306"),
         "OPTIONS": {
             "charset": "utf8mb4",
-            "ssl": {"ca": "/etc/ssl/certs/ca-certificates.crt"},  # required for Azure MySQL SSL
+            "ssl": {"ca": certifi.where()},  # required for Azure MySQL SSL
         },
         "CONN_MAX_AGE": 60,  # connection pooling - prevents dropped connections
     }
