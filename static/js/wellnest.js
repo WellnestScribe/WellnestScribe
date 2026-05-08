@@ -11,13 +11,33 @@
     const m = Math.floor(s / 60), r = Math.floor(s % 60);
     return m + ":" + (r < 10 ? "0" + r : r);
   }
+  function summarizeErrorText(text, status) {
+    const raw = (text || "").trim();
+    if (!raw) return "HTTP " + status;
+    if (raw.startsWith("<!DOCTYPE") || raw.startsWith("<html")) {
+      const titleMatch = raw.match(/<title>(.*?)<\/title>/i);
+      const bodyTitleMatch = raw.match(/<h1[^>]*>(.*?)<\/h1>/i);
+      const title = titleMatch ? titleMatch[1] : (bodyTitleMatch ? bodyTitleMatch[1] : "");
+      return title ? title.replace(/\s+/g, " ").trim() : ("Server error (HTTP " + status + ")");
+    }
+    return raw;
+  }
   function postJSON(url, payload) {
     return fetch(url, {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json", "X-CSRFToken": csrf },
       body: JSON.stringify(payload || {}),
-    }).then((r) => r.json().then((j) => ({ ok: r.ok, body: j })));
+    }).then(async function (r) {
+      const text = await r.text();
+      let body;
+      try {
+        body = text ? JSON.parse(text) : {};
+      } catch (err) {
+        body = { ok: false, error: summarizeErrorText(text, r.status) };
+      }
+      return { ok: r.ok, body: body };
+    });
   }
   function postForm(url, formData) {
     return fetch(url, {
@@ -25,7 +45,16 @@
       credentials: "same-origin",
       headers: { "X-CSRFToken": csrf },
       body: formData,
-    }).then((r) => r.json().then((j) => ({ ok: r.ok, body: j })));
+    }).then(async function (r) {
+      const text = await r.text();
+      let body;
+      try {
+        body = text ? JSON.parse(text) : {};
+      } catch (err) {
+        body = { ok: false, error: summarizeErrorText(text, r.status) };
+      }
+      return { ok: r.ok, body: body };
+    });
   }
   function setStatus(target, text, kind) {
     if (!target) return;
@@ -33,6 +62,11 @@
     target.classList.remove("is-error", "is-success");
     if (kind === "error") target.classList.add("is-error");
     if (kind === "success") target.classList.add("is-success");
+  }
+  function autoGrow(el) {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(800, Math.max(el.scrollHeight + 4, 120)) + "px";
   }
 
   // ---------- toast ----------
@@ -195,6 +229,11 @@
     const fileInput = $("#audioFileInput", root);
     const uploadBtn = $("#audioUploadBtn", root);
 
+    if (transcriptArea) {
+      autoGrow(transcriptArea);
+      transcriptArea.addEventListener("input", function () { autoGrow(transcriptArea); });
+    }
+
     let mediaRecorder = null;
     let recordedChunks = [];
     let stream = null;
@@ -290,7 +329,10 @@
       setStatus(statusEl, "Transcribing audio…");
       const tr = await postJSON("/scribe/api/sessions/" + sid + "/transcribe/", {});
       if (!tr.ok || !tr.body.ok) { setStatus(statusEl, (tr.body && tr.body.error) || "Transcription failed.", "error"); return; }
-      if (transcriptArea) transcriptArea.value = tr.body.transcript || "";
+      if (transcriptArea) {
+        transcriptArea.value = tr.body.transcript || "";
+        autoGrow(transcriptArea);
+      }
       setStatus(statusEl, "Generating note…");
       await runGeneration(sid, tr.body.transcript || "");
     }
@@ -328,6 +370,7 @@
         transcriptArea.value = (transcriptArea.value
           ? transcriptArea.value.trim() + "\n\n"
           : "") + tpl;
+        autoGrow(transcriptArea);
         transcriptArea.focus();
         // Mark this pill as applied + clear other pills.
         $$("[data-template]").forEach(function (other) { other.classList.remove("is-applied"); });
@@ -1001,10 +1044,6 @@
     });
 
     // Auto-grow all editable textareas in this view.
-    function autoGrow(el) {
-      el.style.height = "auto";
-      el.style.height = Math.min(800, el.scrollHeight + 4) + "px";
-    }
     function attachAutoGrow(el) {
       autoGrow(el);
       el.addEventListener("input", function () { autoGrow(el); });

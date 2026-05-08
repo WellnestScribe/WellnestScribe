@@ -73,6 +73,7 @@
         idleTimeoutMs: {% if user.is_authenticated %}900000{% else %}0{% endif %},
       };
     </script>
+    <script src="https://code.iconify.design/iconify-icon/2.3.0/iconify-icon.min.js"></script>
     <script src="{% static 'js/vendor.js' %}"></script>
     <script src="{% static 'js/app.js' %}"></script>
     <script src="{% static 'js/wellnest.js' %}{% if debug %}?v={{ cachebust }}{% endif %}"></script>

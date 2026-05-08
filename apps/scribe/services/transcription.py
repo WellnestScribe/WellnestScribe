@@ -28,10 +28,13 @@ MEDICAL_PRIMING_PROMPT = (
 def transcribe_audio(file_path: str | Path, *, language: str = "en") -> str:
     """Send an audio file to gpt-4o-transcribe and return the transcript text."""
     client = get_transcription_client()
+    model_name = settings.SCRIBE_OPENAI_TRANSCRIBE_MODEL
+    if settings.SCRIBE_AZURE_OPENAI_TRANSCRIBE_DEPLOYMENT:
+        model_name = settings.SCRIBE_AZURE_OPENAI_TRANSCRIBE_DEPLOYMENT
     path = Path(file_path)
     with path.open("rb") as audio:
         response = client.audio.transcriptions.create(
-            model=settings.SCRIBE_OPENAI_TRANSCRIBE_MODEL,
+            model=model_name,
             file=audio,
             language=language,
             prompt=MEDICAL_PRIMING_PROMPT,

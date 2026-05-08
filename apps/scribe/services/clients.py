@@ -1,8 +1,4 @@
-"""Lazy-initialized OpenAI / Azure OpenAI clients.
-
-We split transcription (OpenAI direct, gpt-4o-transcribe family) from
-chat completion (Azure OpenAI deployment) so each can fail independently.
-"""
+"""Lazy-initialized OpenAI / Azure OpenAI clients."""
 
 from functools import lru_cache
 
@@ -15,12 +11,25 @@ class AIConfigError(RuntimeError):
 
 
 @lru_cache(maxsize=1)
-def get_transcription_client() -> OpenAI:
-    if not settings.SCRIBE_OPENAI_API_KEY:
-        raise AIConfigError(
-            "SCRIBE_OPENAI_API_KEY not set. Cannot transcribe audio."
+def get_transcription_client() -> AzureOpenAI | OpenAI:
+    if (
+        settings.SCRIBE_AZURE_OPENAI_TRANSCRIBE_KEY
+        and settings.SCRIBE_AZURE_OPENAI_TRANSCRIBE_ENDPOINT
+        and settings.SCRIBE_AZURE_OPENAI_TRANSCRIBE_DEPLOYMENT
+    ):
+        return AzureOpenAI(
+            api_key=settings.SCRIBE_AZURE_OPENAI_TRANSCRIBE_KEY,
+            azure_endpoint=settings.SCRIBE_AZURE_OPENAI_TRANSCRIBE_ENDPOINT,
+            api_version=settings.SCRIBE_AZURE_OPENAI_TRANSCRIBE_API_VERSION,
         )
-    return OpenAI(api_key=settings.SCRIBE_OPENAI_API_KEY)
+
+    if settings.SCRIBE_OPENAI_API_KEY:
+        return OpenAI(api_key=settings.SCRIBE_OPENAI_API_KEY)
+
+    raise AIConfigError(
+        "No transcription provider configured. Set Azure transcription vars "
+        "or SCRIBE_OPENAI_API_KEY."
+    )
 
 
 @lru_cache(maxsize=1)
