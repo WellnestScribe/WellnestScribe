@@ -519,22 +519,27 @@ def create_session_api(request):
 
     valid_formats = dict(ScribeSession.NOTE_FORMAT_CHOICES)
     valid_lengths = dict(ScribeSession.LENGTH_MODE_CHOICES)
+    duration_seconds = int(duration_raw) if duration_raw.isdigit() else (0 if audio else None)
 
-    session = ScribeSession.objects.create(
-        doctor=request.user,
-        title=title,
-        chief_complaint=chief_complaint,
-        note_format=note_format if note_format in valid_formats else "soap",
-        length_mode=length_mode if length_mode in valid_lengths else "normal",
-        session_type="text" if not audio else "dictation",
-        transcript=transcript,
-        status="draft",
-    )
-    if audio:
-        session.audio_file = audio
-    if duration_raw.isdigit():
-        session.duration_seconds = int(duration_raw)
-    session.save()
+    try:
+        session = ScribeSession.objects.create(
+            doctor=request.user,
+            title=title,
+            chief_complaint=chief_complaint,
+            note_format=note_format if note_format in valid_formats else "soap",
+            length_mode=length_mode if length_mode in valid_lengths else "normal",
+            session_type="text" if not audio else "dictation",
+            transcript=transcript,
+            status="draft",
+            duration_seconds=duration_seconds,
+            audio_file=audio if audio else None,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Create session failed for doctor %s", request.user.pk)
+        return JsonResponse(
+            {"ok": False, "error": f"Could not create session: {exc}"},
+            status=500,
+        )
     _log(
         session,
         "created",

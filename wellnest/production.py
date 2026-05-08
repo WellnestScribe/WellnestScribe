@@ -2,7 +2,7 @@ from .settings import *
 import os
 import socket
 
-from decouple import config as env
+from decouple import Csv, config as env
 import certifi
 
 # Production overrides
@@ -16,7 +16,9 @@ ALLOWED_HOSTS = [
     env("WEBSITE_HOSTNAME", default=""),
     "localhost",
     "127.0.0.1",
+    ".ngrok-free.app",
 ]
+ALLOWED_HOSTS.extend(env("ALLOWED_HOSTS", default="", cast=Csv()))
 
 # Dynamically add Azure internal health probe IP
 try:
@@ -31,6 +33,7 @@ CSRF_TRUSTED_ORIGINS = [
     "https://wellnestscribe.com",
     "https://www.wellnestscribe.com",
     f"https://{env('WEBSITE_HOSTNAME', default='')}",
+    "https://*.ngrok-free.app",
 ]
 
 # Whitenoise for static files

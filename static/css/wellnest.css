@@ -381,6 +381,8 @@ a { color: var(--wellnest-blue); }
   flex: 1;
 }
 .quick-pill {
+  appearance: none;
+  -webkit-appearance: none;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -393,6 +395,8 @@ a { color: var(--wellnest-blue); }
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  box-shadow: none;
+  outline: none;
 }
 .quick-pill iconify-icon { font-size: 1rem; color: var(--wellnest-blue); }
 .quick-pill:hover {

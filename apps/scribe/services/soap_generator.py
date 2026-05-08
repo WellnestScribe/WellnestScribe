@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Iterable
 
 from django.conf import settings
+from openai import BadRequestError
 
 from .clients import get_chat_client
 from .prompts import (
@@ -46,6 +47,7 @@ class GeneratedNote:
 
 
 _REASONING_HINTS = ("gpt-5", "o1", "o3", "o4", "reasoning")
+_reasoning_effort_supported: bool | None = None
 
 
 def _is_reasoning_deployment() -> bool:
@@ -83,11 +85,19 @@ def _looks_like_refusal(text: str) -> bool:
     return empties >= 3
 
 
+def _is_reasoning_effort_error(exc: BadRequestError) -> bool:
+    message = str(exc).lower()
+    return "reasoning_effort" in message and "unrecognized request argument" in message
+
+
 def _chat(messages: list[dict], *, max_tokens: int | None = None) -> str:
     """Call the chat deployment, with retry-on-empty for reasoning models."""
+    global _reasoning_effort_supported
+
     client = get_chat_client()
     deployment = settings.SCRIBE_AZURE_OPENAI_DEPLOYMENT
     is_reasoning = _is_reasoning_deployment()
+    supports_reasoning_effort = _reasoning_effort_supported is not False
 
     base_budget = max_tokens or settings.SCRIBE_MAX_COMPLETION_TOKENS
     if is_reasoning and base_budget < 4000:
@@ -95,8 +105,18 @@ def _chat(messages: list[dict], *, max_tokens: int | None = None) -> str:
 
     attempts = []
     if is_reasoning:
-        attempts.append({"max_completion_tokens": base_budget, "reasoning_effort": "minimal"})
-        attempts.append({"max_completion_tokens": max(base_budget * 2, 8000), "reasoning_effort": "low"})
+        attempts.append(
+            {
+                "max_completion_tokens": base_budget,
+                "reasoning_effort": "minimal" if supports_reasoning_effort else None,
+            }
+        )
+        attempts.append(
+            {
+                "max_completion_tokens": max(base_budget * 2, 8000),
+                "reasoning_effort": "low" if supports_reasoning_effort else None,
+            }
+        )
     else:
         attempts.append({"max_completion_tokens": base_budget})
         attempts.append({"max_completion_tokens": max(base_budget * 2, 4000)})
@@ -111,7 +131,19 @@ def _chat(messages: list[dict], *, max_tokens: int | None = None) -> str:
         if effort is not None:
             kwargs["extra_body"] = {"reasoning_effort": effort}
 
-        response = client.chat.completions.create(**kwargs)
+        try:
+            response = client.chat.completions.create(**kwargs)
+        except BadRequestError as exc:
+            if effort is not None and _is_reasoning_effort_error(exc):
+                _reasoning_effort_supported = False
+                logger.warning(
+                    "Deployment %s rejected reasoning_effort; retrying without it.",
+                    deployment,
+                )
+                kwargs.pop("extra_body", None)
+                response = client.chat.completions.create(**kwargs)
+            else:
+                raise
         last_response = response
         text = (response.choices[0].message.content or "").strip()
         usage = getattr(response, "usage", None)

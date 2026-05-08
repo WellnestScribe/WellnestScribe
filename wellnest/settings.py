@@ -20,12 +20,15 @@ DEBUG = config("DEBUG", default=True, cast=bool)
 
 ALLOWED_HOSTS = config(
     "ALLOWED_HOSTS",
-    default="localhost,127.0.0.1,0.0.0.0,cffd-72-27-119-146.ngrok-free.app",
+    default="localhost,127.0.0.1,0.0.0.0,.ngrok-free.app",
     cast=Csv(),
 )
-CSRF_TRUSTED_ORIGINS = [
-    "https://cffd-72-27-119-146.ngrok-free.app",
-]
+
+CSRF_TRUSTED_ORIGINS = config(
+    "CSRF_TRUSTED_ORIGINS",
+    default="https://*.ngrok-free.app,http://localhost:9093,http://127.0.0.1:9093",
+    cast=Csv(),
+)
 
 
 INSTALLED_APPS = [
@@ -233,12 +236,33 @@ SCRIBE_OPENAI_API_KEY = config("SCRIBE_OPENAI_API_KEY", default="")
 SCRIBE_OPENAI_TRANSCRIBE_MODEL = config(
     "SCRIBE_OPENAI_TRANSCRIBE_MODEL", default="gpt-4o-transcribe"
 )
+SCRIBE_AZURE_OPENAI_TRANSCRIBE_ENDPOINT = config(
+    "SCRIBE_AZURE_OPENAI_TRANSCRIBE_ENDPOINT",
+    default=config("AZURE_OPENAI_ENDPOINT", default=""),
+)
+SCRIBE_AZURE_OPENAI_TRANSCRIBE_KEY = config(
+    "SCRIBE_AZURE_OPENAI_TRANSCRIBE_KEY",
+    default=config("AZURE_OPENAI_KEY", default=""),
+)
+SCRIBE_AZURE_OPENAI_TRANSCRIBE_DEPLOYMENT = config(
+    "SCRIBE_AZURE_OPENAI_TRANSCRIBE_DEPLOYMENT", default=""
+)
+SCRIBE_AZURE_OPENAI_TRANSCRIBE_API_VERSION = config(
+    "SCRIBE_AZURE_OPENAI_TRANSCRIBE_API_VERSION", default="2024-06-01"
+)
 
 # SOAP generation is Azure OpenAI deployment.
-SCRIBE_AZURE_OPENAI_ENDPOINT = config("SCRIBE_AZURE_OPENAI_ENDPOINT", default="")
-SCRIBE_AZURE_OPENAI_KEY = config("SCRIBE_AZURE_OPENAI_KEY", default="")
+SCRIBE_AZURE_OPENAI_ENDPOINT = config(
+    "SCRIBE_AZURE_OPENAI_ENDPOINT",
+    default=config("AZURE_OPENAI_ENDPOINT", default=""),
+)
+SCRIBE_AZURE_OPENAI_KEY = config(
+    "SCRIBE_AZURE_OPENAI_KEY",
+    default=config("AZURE_OPENAI_KEY", default=""),
+)
 SCRIBE_AZURE_OPENAI_DEPLOYMENT = config(
-    "SCRIBE_AZURE_OPENAI_DEPLOYMENT", default="gpt-4o-mini"
+    "SCRIBE_AZURE_OPENAI_DEPLOYMENT",
+    default=config("AZURE_OPENAI_DEPLOYMENT_NAME", default="gpt-4o-mini"),
 )
 SCRIBE_AZURE_OPENAI_API_VERSION = config(
     "SCRIBE_AZURE_OPENAI_API_VERSION", default="2024-12-01-preview"
