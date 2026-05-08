@@ -792,7 +792,10 @@
       const generated = renderFromFields(collectFieldValues());
       // If the user manually changed the narrative beyond what we'd render,
       // don't overwrite it. Track a "manually edited" flag.
-      if (!fullNoteArea.dataset.manualEdit) fullNoteArea.value = generated;
+      if (!fullNoteArea.dataset.manualEdit) {
+        fullNoteArea.value = generated;
+        autoGrow(fullNoteArea);
+      }
     }
     function parseSoapFromText(text) {
       const sections = { subjective: "", objective: "", assessment: "", plan: "" };
@@ -814,7 +817,10 @@
       if (!parsed) return;
       fields.forEach(function (el) {
         const k = el.getAttribute("data-note-field");
-        if (k in parsed && parsed[k]) el.value = parsed[k];
+        if (k in parsed && parsed[k]) {
+          el.value = parsed[k];
+          autoGrow(el);
+        }
       });
     }
     function updateWordCount() {
@@ -1048,9 +1054,7 @@
       autoGrow(el);
       el.addEventListener("input", function () { autoGrow(el); });
     }
-    fields.forEach(attachAutoGrow);
-    if (fullNoteArea) attachAutoGrow(fullNoteArea);
-    if (transcriptArea) attachAutoGrow(transcriptArea);
+    $$("textarea", root).forEach(attachAutoGrow);
 
     initQuickEditMics(root);
     updateWordCount();
@@ -1110,9 +1114,11 @@
           if (finalChunk) {
             baseText += finalChunk + " ";
             target.value = baseText + interim;
+            autoGrow(target);
             target.dispatchEvent(new Event("input", { bubbles: true }));
           } else {
             target.value = baseText + interim;
+            autoGrow(target);
           }
         };
         recog.onerror = function (ev) {
@@ -1144,6 +1150,7 @@
           if (res.ok && res.body.ok && res.body.text) {
             const sep = target.value && !target.value.endsWith(" ") && !target.value.endsWith("\n") ? " " : "";
             target.value = target.value + sep + res.body.text;
+            autoGrow(target);
             target.dispatchEvent(new Event("input", { bubbles: true }));
             showToast("Inserted dictation");
           } else if (res.body && res.body.error) {
