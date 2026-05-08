@@ -28,7 +28,9 @@
     </div>
     <form method="post" action="{% url 'accounts:bootstrap_admin' %}" class="m-0">
         {% csrf_token %}
+        <!--
         <button type="submit" class="btn btn-primary">Make me the first admin</button>
+        -->
     </form>
 </div>
 {% endif %}
