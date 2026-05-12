@@ -37,6 +37,18 @@ class ScribeSession(models.Model):
     title = models.CharField(max_length=160, blank=True)
     chief_complaint = models.CharField(max_length=200, blank=True)
 
+    # Patient identity capture (Dr Elizabeth feedback — avoid mix-ups when
+    # seeing many patients per day). Identifier can be DOB, hospital number,
+    # ID number, or any free-text token doctor wants. Pilot rule: keep these
+    # optional; if PILOT_MODE is on we discourage capturing real names.
+    patient_name = models.CharField(max_length=120, blank=True)
+    patient_identifier = models.CharField(max_length=120, blank=True)
+
+    # Active conditions (multi-select checklist on record screen). Stored
+    # as a comma-separated list of short keys: 'dm', 'htn', 'lipids',
+    # 'ckd', 'obesity', etc.
+    active_conditions = models.CharField(max_length=200, blank=True)
+
     audio_file = models.FileField(
         upload_to="scribe_audio/%Y/%m/%d/", null=True, blank=True
     )
@@ -70,11 +82,22 @@ class ScribeSession(models.Model):
 
     @property
     def display_title(self) -> str:
-        return (
-            self.title
-            or self.chief_complaint
-            or f"Session {self.created_at.strftime('%b %d, %Y %I:%M %p')}"
-        )
+        bits = []
+        if self.patient_name:
+            bits.append(self.patient_name)
+        if self.patient_identifier:
+            bits.append(f"({self.patient_identifier})")
+        if self.title:
+            bits.append(self.title)
+        elif self.chief_complaint:
+            bits.append(self.chief_complaint)
+        if not bits:
+            return f"Session {self.created_at.strftime('%b %d, %Y %I:%M %p')}"
+        return " · ".join(bits)
+
+    @property
+    def conditions_list(self) -> list[str]:
+        return [c for c in (self.active_conditions or "").split(",") if c.strip()]
 
 
 class SOAPNote(models.Model):
@@ -94,6 +117,35 @@ class SOAPNote(models.Model):
     edited_note = models.TextField(blank=True)
 
     flags = models.JSONField(default=list, blank=True)
+
+    # Body diagram annotations — Dr Elizabeth feedback + NATVNS wound chart
+    # adaptation. Each marker is a dict with these optional fields:
+    #   x, y           : 0..100, percent of image (survives resizing)
+    #   label          : short tooltip
+    #   wound_type     : leg_ulcer | surgical | diabetic | pressure | other
+    #   duration       : "3 weeks" / free text
+    #   length_cm, width_cm, depth_cm, tracking_cm
+    #   tissue_necrotic, tissue_slough, tissue_granulating,
+    #   tissue_epithelialising, tissue_hypergranulating,
+    #   tissue_haematoma, tissue_bone_tendon   (percent, totals 100%)
+    #   exudate        : dry | wet | saturated  (severity)
+    #   exudate_type   : serous | haemoserous | cloudy | green_brown
+    #   peri_wound     : list of tags (macerated, oedematous, erythema,
+    #                    excoriated, fragile, dry_scaly, healthy)
+    #   infection_signs: list of tags (heat, new_slough, increasing_pain,
+    #                    increasing_exudate, increasing_odour, friable)
+    #   treatment_goal : debridement | absorption | hydration | protection |
+    #                    palliative | reduce_bacterial_load
+    #   analgesia      : regular | predressing | none
+    #   notes          : free text
+    # Old marker dicts (just size_cm + exudate + notes) still load fine —
+    # missing keys are treated as blank.
+    body_markers = models.JSONField(default=list, blank=True)
+
+    # Top-level NATVNS fields that apply to the whole patient, not per-wound:
+    #   factors_delaying_healing : list of codes
+    #   allergies                : free text
+    wound_chart = models.JSONField(default=dict, blank=True)
 
     review_completed = models.BooleanField(default=False)
     export_count = models.PositiveIntegerField(default=0)

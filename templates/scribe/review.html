@@ -4,7 +4,23 @@
 {% block title %}Review note · WellNest Scribe{% endblock %}
 
 {% block content %}
-<div data-screen="review" data-session-id="{{ session.pk }}">
+<div data-screen="review"
+     data-session-id="{{ session.pk }}"
+     data-finalized="{% if session.status == 'finalized' %}1{% else %}0{% endif %}"
+     class="{% if session.status == 'finalized' %}review-finalized{% endif %}">
+
+{% if session.status == 'finalized' %}
+<div class="alert alert-success d-flex align-items-start gap-2 mb-3">
+    <iconify-icon icon="iconamoon:check-circle-1-duotone" class="fs-4 mt-1"></iconify-icon>
+    <div>
+        <strong class="d-block">This note is finalized.</strong>
+        <span class="small">
+            Marked reviewed{% if session.finalized_at %} on {{ session.finalized_at|date:"M j, Y · g:i A" }}{% endif %}.
+            All fields are locked to protect the clinical record. Copy / share / print are still available.
+        </span>
+    </div>
+</div>
+{% endif %}
     <div class="row">
         <div class="col-12">
             <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
@@ -68,6 +84,15 @@
                         <li class="nav-item" role="presentation">
                             <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-transcript" type="button">Transcript</button>
                         </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-bodydiagram" type="button">
+                                <iconify-icon icon="iconamoon:profile-duotone" class="me-1 align-middle"></iconify-icon>
+                                Body diagram
+                                {% if 'dm' in session.conditions_list or 'ckd' in session.conditions_list or note.body_markers %}
+                                    <span class="badge bg-warning-subtle text-warning ms-1" style="font-size:0.6rem;">recommended</span>
+                                {% endif %}
+                            </button>
+                        </li>
                         <li class="nav-item ms-auto d-flex align-items-center small text-muted" id="wordCounter" aria-live="polite"></li>
                     </ul>
 
@@ -124,6 +149,71 @@
                             <p class="text-muted small mb-2">Transcript from the recorded audio. Editable — regenerate the note after changes.</p>
                             <textarea class="note-textarea" rows="14" id="transcriptArea">{{ session.transcript }}</textarea>
                         </div>
+
+                        <div class="tab-pane fade" id="tab-bodydiagram">
+                            <p class="text-muted small mb-2">
+                                Click on the diagram to drop a marker for a wound / ulcer / pain
+                                site. NATVNS-style fields appear below — fill in only what you
+                                need (most encounters only need the basics). Markers auto-save
+                                with the note. Right-click a marker on the diagram to delete it.
+                            </p>
+
+                            {# Factors that delay healing — quick check chips (from NATVNS chart). #}
+                            <div class="mb-3">
+                                <h6 class="fw-semibold mb-1 small text-uppercase text-muted" style="letter-spacing:0.06em;">
+                                    Factors delaying healing
+                                </h6>
+                                <p class="small text-muted mb-2">Tick all that apply to this patient (not per wound).</p>
+                                <div class="quick-templates-pills" id="healingFactors">
+                                    {% for code, label in body_healing_factors %}
+                                        <label class="quick-pill">
+                                            <input type="checkbox" value="{{ code }}" hidden> {{ label }}
+                                        </label>
+                                    {% endfor %}
+                                </div>
+                            </div>
+
+                            {% comment %}
+                            Serialise the marker list + wound_chart as proper JSON so the JS
+                            can parse them safely even when notes contain apostrophes or quotes.
+                            Previously the template used `|stringformat:'s'` which gave Python's
+                            str() of the list — single-quoted, breaks JSON.parse.
+                            {% endcomment %}
+                            {% if note %}
+                                {{ note.body_markers|json_script:"bodyMarkersData" }}
+                                {{ note.wound_chart|json_script:"woundChartData" }}
+                            {% else %}
+                                <script id="bodyMarkersData" type="application/json">[]</script>
+                                <script id="woundChartData" type="application/json">{}</script>
+                            {% endif %}
+
+                            <div class="row g-3">
+                                <div class="col-md-7">
+                                    <div class="body-diagram-wrap" id="bodyDiagramWrap">
+                                        <img src="{% load static %}{% static 'images/body-diagram.png' %}"
+                                             alt="Body diagram" id="bodyDiagramImg" draggable="false">
+                                        <div class="body-diagram-overlay" id="bodyDiagramOverlay"></div>
+                                    </div>
+                                    <div class="d-flex gap-2 mt-2 flex-wrap">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" id="bodyClearAllBtn">
+                                            <iconify-icon icon="iconamoon:trash-duotone" class="me-1 align-middle"></iconify-icon>
+                                            Clear all markers
+                                        </button>
+                                        <span class="small text-muted align-self-center" id="bodyMarkerCount">0 markers</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-5">
+                                    <h6 class="fw-semibold mb-2 small text-uppercase text-muted" style="letter-spacing:0.06em;">Wounds</h6>
+                                    <div id="bodyMarkerCards" class="d-flex flex-column gap-2" style="max-height: 540px; overflow-y: auto;">
+                                        {# JS renders one card per marker. Template here intentionally empty. #}
+                                    </div>
+                                    <p class="small text-muted mt-2 mb-0">
+                                        For multiple wounds, complete one card per wound. Adapted from the
+                                        NATVNS Wound Management Assessment Chart (March 2021).
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -143,10 +233,14 @@
                             <iconify-icon icon="iconamoon:scan-duotone" class="me-1 align-middle"></iconify-icon>
                             Share to desktop (QR)
                         </button>
-                        <button type="button" class="btn btn-outline-secondary" id="improveBtn">
+                        {% if doctor_profile.suggestive_assist %}
+                        <button type="button" class="btn btn-outline-secondary" id="improveBtn"
+                                title="For interns / juniors. Returns 3-6 bullets of things a more senior clinician would have added. Off by default; toggle 'Suggestive assist' on the record screen to enable.">
                             <iconify-icon icon="iconamoon:lightning-1-duotone" class="me-1 align-middle"></iconify-icon>
                             Check for missing details
+                            <span class="text-muted ms-1" style="font-size:0.7rem;">for interns</span>
                         </button>
+                        {% endif %}
                         <button type="button" class="btn btn-outline-secondary" id="polishBtn">
                             <iconify-icon icon="iconamoon:edit-duotone" class="me-1 align-middle"></iconify-icon>
                             Polish grammar

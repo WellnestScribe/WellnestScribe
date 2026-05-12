@@ -59,9 +59,17 @@ def probe_environment() -> dict[str, Any]:
         "transformers": False,
         "transformers_version": None,
         "librosa": False,
+        "noisereduce": False,
+        "deepfilternet": False,
+        "pyannote": False,
+        "diarize_lib": False,
         "device_default": settings.TRIAGE_DEFAULT_DEVICE,
         "model_cached_mms": False,
         "model_cached_t5": False,
+        "model_cached_gemma": False,
+        "model_cached_qwen": False,
+        "model_cached_local_llm": False,
+        "local_llm_dir": "",
     }
     try:
         import torch  # type: ignore
@@ -83,16 +91,36 @@ def probe_environment() -> dict[str, Any]:
         info["librosa"] = True
     except Exception:  # noqa: BLE001
         pass
+    for pkg, key in (
+        ("noisereduce", "noisereduce"),
+        ("df", "deepfilternet"),
+        ("pyannote.audio", "pyannote"),
+        ("diarize", "diarize_lib"),
+    ):
+        try:
+            __import__(pkg)
+            info[key] = True
+        except Exception:  # noqa: BLE001
+            pass
 
     cache = Path.home() / ".cache" / "huggingface" / "hub"
     if cache.exists():
-        info["model_cached_mms"] = any(
-            p.name.startswith("models--facebook--mms") for p in cache.iterdir()
-        )
+        items = list(cache.iterdir())
+        info["model_cached_mms"] = any(p.name.startswith("models--facebook--mms") for p in items)
         info["model_cached_t5"] = any(
             p.name.startswith("models--google--flan-t5") or p.name.startswith("models--google--t5")
-            for p in cache.iterdir()
+            for p in items
         )
+        info["model_cached_gemma"] = any(p.name.startswith("models--google--gemma") for p in items)
+        info["model_cached_qwen"] = any(p.name.startswith("models--Qwen--") for p in items)
+
+    # Local <BASE_DIR>/models/ fallback for any small interpreter LLM.
+    for slug in ("Qwen--Qwen3-1.7B", "Qwen3-1.7B", "google--gemma-4-E2B", "gemma-4-E2B"):
+        p = settings.BASE_DIR / "models" / slug
+        if p.exists() and (p / "config.json").exists():
+            info["local_llm_dir"] = str(p)
+            info["model_cached_local_llm"] = True
+            break
     return info
 
 
@@ -316,3 +344,130 @@ def t5_rewrite(text: str, *, instruction: str, device: str = "cpu",
     with torch.no_grad():
         out = mdl.generate(**inputs, max_new_tokens=max_new_tokens, num_beams=4)
     return tok.decode(out[0], skip_special_tokens=True)
+
+
+# ---- Gemma 4 E2B local (Patois → clinical English on CPU/GPU) --------------
+
+_GEMMA_CACHE: dict[str, Any] = {}
+
+
+def _resolve_local_model_dir(model_id: str) -> Path | None:
+    """If the user manually downloaded the safetensors + tokenizer files into
+    <BASE_DIR>/models/<slug>/  load from there instead of HuggingFace hub.
+
+    Slug = model_id with '/' replaced by '--', matching HF cache convention.
+    Required files in the folder: config.json + tokenizer.json (+ tokenizer_config.json)
+    + model.safetensors (or sharded model-*.safetensors + model.safetensors.index.json).
+    """
+    from django.conf import settings  # local import to avoid django at import-time
+    slug = model_id.replace("/", "--")
+    candidates = [
+        settings.BASE_DIR / "models" / slug,
+        settings.BASE_DIR / "models" / model_id.split("/")[-1],
+    ]
+    for p in candidates:
+        if p.exists() and (p / "config.json").exists():
+            return p
+    return None
+
+
+def _load_gemma(device: str = "cpu", model_id: str = "Qwen/Qwen3-1.7B"):
+    """Lazy-load a small instruction-tuned LLM (Qwen / Gemma / any HF
+    causal LM) on CPU/CUDA. The default is Qwen3-1.7B (~1.7 B params,
+    fast on consumer hardware). Earlier Gemma weights still load if you
+    pass their model id.
+
+    Resolution order:
+      1. <BASE_DIR>/models/<slug>/   (slug = model_id with '/' → '--')
+      2. <BASE_DIR>/models/<short>/  (last path component)
+      3. HuggingFace hub by model_id (downloads to ~/.cache/huggingface/)
+    """
+    key = f"{device}|{model_id}"
+    if key in _GEMMA_CACHE:
+        return _GEMMA_CACHE[key]
+
+    try:
+        import torch  # type: ignore
+        from transformers import AutoModelForCausalLM, AutoTokenizer  # type: ignore
+    except ImportError as exc:  # noqa: BLE001
+        raise TriageDependencyError(
+            "transformers + torch not installed. "
+            "Click 'Install (CPU)' or 'Install (CUDA 12.1)' in the Triage probe panel."
+        ) from exc
+
+    if device == "cuda" and not torch.cuda.is_available():
+        raise TriageDependencyError(
+            "CUDA requested but no CUDA-capable GPU is visible to PyTorch. "
+            "Install a CUDA build of torch — Triage panel has a "
+            "'Reinstall torch with CUDA 12.1 (force)' button."
+        )
+
+    local = _resolve_local_model_dir(model_id)
+    source = str(local) if local else model_id
+    if local:
+        logger.info("Loading %s on %s from local folder %s …", model_id, device, local)
+    else:
+        logger.info("Loading %s on %s from HuggingFace hub …", model_id, device)
+
+    tok = AutoTokenizer.from_pretrained(source)
+    dtype = torch.float16 if device == "cuda" else torch.float32
+    mdl = AutoModelForCausalLM.from_pretrained(source, torch_dtype=dtype)
+    mdl = mdl.to(device)
+    mdl.eval()
+
+    # CPU multi-thread hint — defaults to physical core count, big win on CPU.
+    try:
+        import os
+        if device == "cpu":
+            torch.set_num_threads(max(1, os.cpu_count() or 1))
+    except Exception:  # noqa: BLE001
+        pass
+
+    _GEMMA_CACHE[key] = (tok, mdl, device)
+    return _GEMMA_CACHE[key]
+
+
+_GEMMA_PATOIS_PROMPT = (
+    "You are a Jamaican Patois-to-clinical-English medical interpreter. "
+    "Read the raw Patois transcript phonetically and rewrite it as neutral "
+    "clinical English in third person. Capture every symptom, time course, "
+    "and herbal remedy. Tag herbs as [HERBAL SUPPLEMENT]. Flag unintelligible "
+    "parts with [unclear: \"...\"]. Output ONLY the rewritten clinical English "
+    "— no commentary.\n\n"
+    "Patois transcript:\n{transcript}\n\n"
+    "Clinical English:"
+)
+
+
+def gemma_interpret_patois(text: str, *, device: str = "cpu",
+                           model_id: str = "Qwen/Qwen3-1.7B",
+                           max_new_tokens: int = 400) -> str:
+    """Run a small local Gemma to interpret Patois on the host CPU/GPU."""
+    try:
+        import torch  # type: ignore
+    except ImportError as exc:  # noqa: BLE001
+        raise TriageDependencyError("torch not installed") from exc
+
+    tok, mdl, dev = _load_gemma(device=device, model_id=model_id)
+    prompt = _GEMMA_PATOIS_PROMPT.format(transcript=text or "")
+
+    # Most Gemma checkpoints expose a chat template; fall back to raw prompt.
+    try:
+        messages = [{"role": "user", "content": prompt}]
+        input_ids = tok.apply_chat_template(
+            messages, return_tensors="pt", add_generation_prompt=True
+        ).to(dev)
+    except Exception:  # noqa: BLE001
+        input_ids = tok(prompt, return_tensors="pt").input_ids.to(dev)
+
+    with torch.no_grad():
+        out_ids = mdl.generate(
+            input_ids,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            temperature=0.0,
+            repetition_penalty=1.05,
+        )
+    # Trim the prompt off the front so we only return the completion.
+    completion_ids = out_ids[0][input_ids.shape[-1]:]
+    return tok.decode(completion_ids, skip_special_tokens=True).strip()

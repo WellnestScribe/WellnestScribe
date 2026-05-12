@@ -48,6 +48,7 @@ urlpatterns = [
     path("api/triage/download/", views.triage_download_api, name="api_triage_download"),
     path("api/triage/probe/", views.triage_probe_api, name="api_triage_probe"),
     path("api/triage/install/", views.triage_install_deps_api, name="api_triage_install"),
+    path("api/triage/install-audio/", views.triage_install_audio_api, name="api_triage_install_audio"),
     path(
         "api/sessions/<int:pk>/improve/",
         views.suggest_improvements_api,

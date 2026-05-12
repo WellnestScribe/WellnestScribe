@@ -20,6 +20,22 @@
         </div>
     </div>
 
+    {# Patient identity at the very top — Dr Elizabeth feedback. Optional.
+       Pilot rule: initials + DOB, avoid full names. #}
+    <div class="patient-bar mb-3">
+        <div class="patient-bar-label">
+            <iconify-icon icon="iconamoon:profile-duotone" class="me-1 align-middle"></iconify-icon>
+            Patient
+            <span class="text-muted fw-normal" style="font-size:0.78rem; margin-left:6px;">
+                optional — initials + DOB recommended
+            </span>
+        </div>
+        <input type="text" id="patientName" class="form-control form-control-sm"
+               maxlength="120" placeholder="Name / initials (e.g. M.J.)">
+        <input type="text" id="patientIdentifier" class="form-control form-control-sm"
+               maxlength="120" placeholder="DOB / hospital # (e.g. 1968-04-12)">
+    </div>
+
     <div class="quick-templates-bar mb-4">
         <div class="quick-templates-label">
             <iconify-icon icon="iconamoon:file-light" class="me-1 align-middle"></iconify-icon>

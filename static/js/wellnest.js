@@ -363,6 +363,17 @@
       setStatus(statusEl, "Captured " + fmtTime(recordedDuration) + " of audio. Uploading…");
       await uploadAndProcess(blob);
     }
+    function collectPatientFields(fd) {
+      // Patient bar lives ABOVE the card now (not inside `root`), so query
+      // the whole document — these IDs are unique on the page.
+      const nameEl = document.getElementById("patientName");
+      const idEl = document.getElementById("patientIdentifier");
+      if (nameEl && nameEl.value.trim()) fd.append("patient_name", nameEl.value.trim());
+      if (idEl && idEl.value.trim()) fd.append("patient_identifier", idEl.value.trim());
+      // active_conditions checklist was removed — the AI infers conditions
+      // from the dictation/transcript instead.
+    }
+
     async function uploadAndProcess(blob) {
       const fd = new FormData();
       const ext = blob.type.indexOf("ogg") >= 0 ? "ogg" : "webm";
@@ -370,6 +381,7 @@
       fd.append("note_format", noteFormatSel ? noteFormatSel.value : "soap");
       fd.append("length_mode", lengthSwitch && lengthSwitch.checked ? "long_form" : "normal");
       fd.append("duration_seconds", String(recordedDuration));
+      collectPatientFields(fd);
       const res = await postForm(W.endpoints.createSession, fd);
       if (!res.ok || !res.body.ok) { setStatus(statusEl, (res.body && res.body.error) || "Upload failed.", "error"); return; }
       const sid = res.body.session_id;
@@ -434,6 +446,7 @@
       fd.append("transcript", transcript);
       fd.append("note_format", noteFormatSel ? noteFormatSel.value : "soap");
       fd.append("length_mode", lengthSwitch && lengthSwitch.checked ? "long_form" : "normal");
+      collectPatientFields(fd);
       const res = await postForm(W.endpoints.createSession, fd);
       if (!res.ok || !res.body.ok) { setStatus(statusEl, (res.body && res.body.error) || "Could not create session.", "error"); return; }
       setStatus(statusEl, "Generating note…");
@@ -472,11 +485,31 @@
       for (let i = 0; i < BARS; i++) waveBars.appendChild(document.createElement("span"));
     }
 
+    let waveAnimHandle = 0;
+    function startWavePump(analyser) {
+      if (!analyser || !waveBars) return;
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const spans = waveBars.querySelectorAll("span");
+      function tick() {
+        analyser.getByteFrequencyData(data);
+        spans.forEach(function (sp, idx) {
+          const v = data[idx * 3] || 0;
+          sp.style.height = Math.max(8, (v / 255) * 46) + "px";
+        });
+        waveAnimHandle = requestAnimationFrame(tick);
+      }
+      tick();
+    }
+    function stopWavePump() {
+      cancelAnimationFrame(waveAnimHandle);
+      if (waveBars) waveBars.querySelectorAll("span").forEach(function (sp) { sp.style.height = "8px"; });
+    }
+
     function attachBlob(blob) {
       currentAudioBlob = blob;
       const url = URL.createObjectURL(blob);
       if (player) { player.src = url; player.classList.remove("d-none"); }
-      if (audioInfo) audioInfo.textContent = "Loaded " + (blob.size / 1024 | 0) + " KB · " + blob.type;
+      if (audioInfo) audioInfo.textContent = "Loaded " + (blob.size / 1024 | 0) + " KB · " + (blob.type || "audio");
     }
 
     if (uploadBtn && fileInput) {
@@ -487,12 +520,41 @@
       });
     }
 
+    // Drag + drop audio anywhere on the recorder shell (and on the upload button).
+    const dropTargets = [recordBtn ? recordBtn.closest(".recorder-shell") : null, uploadBtn].filter(Boolean);
+    dropTargets.forEach(function (el) {
+      ["dragenter", "dragover"].forEach(function (evt) {
+        el.addEventListener(evt, function (e) {
+          e.preventDefault(); e.stopPropagation();
+          el.classList.add("is-dropping");
+        });
+      });
+      ["dragleave", "drop"].forEach(function (evt) {
+        el.addEventListener(evt, function (e) {
+          e.preventDefault(); e.stopPropagation();
+          el.classList.remove("is-dropping");
+        });
+      });
+      el.addEventListener("drop", function (e) {
+        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!f) return;
+        // Accept anything audio-ish (mp3, mp4, m4a, wav, ogg, webm, video/* with audio).
+        const ok = /^(audio|video)\//.test(f.type) || /\.(mp3|mp4|m4a|wav|ogg|webm|aac|flac)$/i.test(f.name);
+        if (!ok) { showToast("That file type isn't supported"); return; }
+        attachBlob(f);
+        showToast("Loaded " + f.name);
+      });
+    });
+
     if (recordBtn) recordBtn.addEventListener("click", async function () {
       if (recordBtn.classList.contains("is-recording")) {
         if (recState.rec && recState.rec.state !== "inactive") recState.rec.stop();
         clearInterval(recState.ts);
         if (recState.stream) recState.stream.getTracks().forEach(function (t) { t.stop(); });
-        if (recState.ctx && recState.ctx.state !== "closed") recState.ctx.close();
+        if (recState.ctx && recState.ctx.state !== "closed") {
+          try { recState.ctx.close(); } catch (e) { /* noop */ }
+        }
+        stopWavePump();
         recordBtn.classList.remove("is-recording");
         recordBtn.querySelector("[data-record-label]").textContent = "Record";
         return;
@@ -509,6 +571,19 @@
         attachBlob(blob);
       };
       recState.rec.start(250);
+
+      // Wire AudioContext + analyser so the waveform actually pumps.
+      try {
+        recState.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = recState.ctx.createMediaStreamSource(recState.stream);
+        const analyser = recState.ctx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        startWavePump(analyser);
+      } catch (err) {
+        // AudioContext may be blocked; recording still works, no waveform.
+      }
+
       recState.started = Date.now();
       recState.ts = setInterval(function () {
         if (timer) timer.textContent = fmtTime((Date.now() - recState.started) / 1000);
@@ -517,15 +592,22 @@
       recordBtn.querySelector("[data-record-label]").textContent = "Stop";
     });
 
-    // Backend dropdown shows the model_id row only for omni.
+    // Backend dropdown reveals the relevant model_id row (omni only — Gemma
+    // lives in section 4 now as an interpreter choice).
     const omniRow = $("#triageOmniRow", root);
     const modelIdInput = $("#triageModelId", root);
-    function syncOmniRow() {
-      if (!omniRow) return;
-      omniRow.style.display = backendSel.value === "omni" ? "block" : "none";
+    const gemmaModelIdInput = $("#triageGemmaModelId", root);  // section 4
+    function syncBackendRows() {
+      const v = backendSel.value;
+      if (omniRow) omniRow.style.display = v === "omni" ? "block" : "none";
     }
-    if (backendSel) backendSel.addEventListener("change", syncOmniRow);
-    syncOmniRow();
+    if (backendSel) backendSel.addEventListener("change", syncBackendRows);
+    syncBackendRows();
+
+    // Denoise / diarize toggles + speakers — read at submit time.
+    const denoiseChk = $("#triageDenoise", root);
+    const diarizeChk = $("#triageDiarize", root);
+    const numSpeakersInp = $("#triageNumSpeakers", root);
 
     let pollJobTimer = 0;
     function stopJobPoll() { clearInterval(pollJobTimer); pollJobTimer = 0; }
@@ -554,10 +636,34 @@
           return;
         }
         // status = done
-        rawOut.value = (job.result && job.result.raw_text) || "";
+        const result = job.result || {};
+        rawOut.value = result.raw_text || "";
+        const extras = [];
+        if (result.denoise_applied) extras.push("denoised");
+        if (result.diarize_applied) extras.push("diarized (" + (result.diarize_segments || []).length + " segments)");
+        if (result.audio_saved_as) extras.push("saved " + result.audio_saved_as);
         if (timings) {
           timings.textContent = job.backend + " · " + job.device + " · " + job.elapsed_ms + " ms"
-            + (job.result && job.result.audio_saved_as ? " · saved " + job.result.audio_saved_as : "");
+            + (extras.length ? " · " + extras.join(" · ") : "");
+        }
+        // Diarize panel — only shows when the run actually produced labels.
+        const diarWrap = $("#triageDiarizedWrap", root);
+        const diarOut = $("#triageDiarizedOut", root);
+        if (diarWrap && diarOut) {
+          if (result.diarize_applied && result.diarized_text) {
+            diarOut.value = result.diarized_text;
+            diarWrap.classList.remove("d-none");
+            if (typeof autoGrowAny === "function") autoGrowAny(diarOut);
+          } else if (diarizeChk && diarizeChk.checked && !result.diarize_applied) {
+            // Toggle was on but no labels came back — likely lib not installed.
+            diarOut.value = "[diarization did not run] No speaker labels returned. "
+              + "Check the env probe — pyannote.audio or the 'diarize' lib must be "
+              + "installed. Click 'Install diarize' in the audio-libs panel on the right.";
+            diarWrap.classList.remove("d-none");
+            showToast("Diarize toggle was on but no segments returned — see panel.");
+          } else {
+            diarWrap.classList.add("d-none");
+          }
         }
         if (typeof autoGrowAny === "function") autoGrowAny(rawOut);
       } catch (err) {
@@ -571,18 +677,26 @@
       runBtn.innerHTML = '<iconify-icon icon="iconamoon:player-play-duotone" class="me-1 align-middle"></iconify-icon> Run backend';
     }
 
-    if (runBtn) runBtn.addEventListener("click", async function () {
+    function buildRunForm() {
       const fd = new FormData();
       fd.append("backend", backendSel.value);
       fd.append("device", deviceSel.value);
       fd.append("target_lang", langInput.value || "jam");
       fd.append("text_input", textIn.value || "");
       if (modelIdInput) fd.append("model_id", modelIdInput.value || "facebook/omnilingual-asr-7b-ctc");
+      if (denoiseChk && denoiseChk.checked) fd.append("denoise", "1");
+      if (diarizeChk && diarizeChk.checked) fd.append("diarize", "1");
+      if (numSpeakersInp) fd.append("num_speakers", numSpeakersInp.value || "2");
       if (currentAudioBlob) {
         const ext = currentAudioBlob.type.indexOf("ogg") >= 0 ? "ogg" :
                     (currentAudioBlob.type.indexOf("mpeg") >= 0 ? "mp3" : "webm");
         fd.append("audio", currentAudioBlob, "triage." + ext);
       }
+      return fd;
+    }
+
+    if (runBtn) runBtn.addEventListener("click", async function () {
+      const fd = buildRunForm();
       runBtn.disabled = true;
       runBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Submitting…';
       rawOut.value = "";
@@ -609,14 +723,31 @@
       pollJobTimer = setInterval(function () { pollJob(jobId, startMs); }, 2000);
     });
 
+    // Section 4 — interpreter choice (Azure cloud vs Gemma local).
+    const interpreterSel = $("#triageInterpreter", root);
+    const interpreterDeviceSel = $("#triageInterpreterDevice", root);
+
+    function buildInterpretPayload(textOverride) {
+      const text = (textOverride || rawOut.value || textIn.value || "").trim();
+      return {
+        text: text,
+        interpreter: (interpreterSel && interpreterSel.value) || "azure",
+        device: (interpreterDeviceSel && interpreterDeviceSel.value) || "cpu",
+        gemma_model_id: (gemmaModelIdInput && gemmaModelIdInput.value) || "Qwen/Qwen3-1.7B",
+      };
+    }
+
     if (interpretBtn) interpretBtn.addEventListener("click", async function () {
-      const text = (rawOut.value || textIn.value || "").trim();
-      if (!text) { showToast("Run a backend first or paste raw text."); return; }
+      const payload = buildInterpretPayload();
+      if (!payload.text) { showToast("Run a backend first or paste raw text."); return; }
       interpretBtn.disabled = true;
       const orig = interpretBtn.innerHTML;
-      interpretBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Interpreting…';
+      const stageLabel = payload.interpreter === "gemma_local"
+        ? "Gemma — first run is ~60–120s cold start"
+        : "Azure cloud LLM";
+      interpretBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Interpreting (' + stageLabel + ')…';
       let r;
-      try { r = await postJSON("/scribe/api/triage/interpret/", { text: text }); }
+      try { r = await postJSON("/scribe/api/triage/interpret/", payload); }
       catch (err) { interpretBtn.disabled = false; interpretBtn.innerHTML = orig; showToast("Network error"); return; }
       interpretBtn.disabled = false;
       interpretBtn.innerHTML = orig;
@@ -625,6 +756,11 @@
         return;
       }
       cleanOut.value = r.body.clean_text || "";
+      // Show timing under the box.
+      if (timings && r.body.duration_ms != null) {
+        const tag = (r.body.interpreter || "azure") + (r.body.device ? " · " + r.body.device : "");
+        timings.textContent = "interpret: " + tag + " · " + r.body.duration_ms + " ms";
+      }
     });
 
     function autoGrowAny(el) {
@@ -788,6 +924,189 @@
     }
     window.WELLNEST_triage_download = startDownload;
     if (downloadBtn) downloadBtn.addEventListener("click", startDownload);
+
+    // ---- Audio-libs install (denoise + diarize) ----
+    const installAudioStatus = $("#installAudioStatus", root);
+    const audioBtnIds = ["#installDenoiseBtn", "#installDiarizeBtn", "#installAudioBothBtn"];
+    const audioBtns = audioBtnIds.map(function (sel) { return $(sel, root); }).filter(Boolean);
+
+    async function startAudioInstall(target) {
+      const btn = target === "denoise" ? $("#installDenoiseBtn", root) :
+                  target === "diarize" ? $("#installDiarizeBtn", root) :
+                  $("#installAudioBothBtn", root);
+      const origs = audioBtns.map(function (b) { return [b, b.innerHTML]; });
+      audioBtns.forEach(function (b) { b.disabled = true; });
+      if (btn) btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Installing…';
+      if (installAudioStatus) installAudioStatus.textContent = "Starting pip install (" + target + ")…";
+
+      let r;
+      try {
+        r = await postJSON("/scribe/api/triage/install-audio/", { target: target });
+      } catch (err) {
+        origs.forEach(function (pair) { pair[0].disabled = false; pair[0].innerHTML = pair[1]; });
+        if (installAudioStatus) installAudioStatus.textContent = "Network error: " + err.message;
+        return;
+      }
+      if (!r.ok || !r.body || !r.body.ok) {
+        origs.forEach(function (pair) { pair[0].disabled = false; pair[0].innerHTML = pair[1]; });
+        if (installAudioStatus) installAudioStatus.textContent = (r.body && r.body.error) || "Install did not start.";
+        return;
+      }
+      const startedAt = Date.now();
+      if (installAudioStatus) {
+        installAudioStatus.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> '
+          + "Installing " + (r.body.packages || []).join(", ")
+          + ". Toggle denoise/diarize on the next run once installed. Elapsed: 0s";
+      }
+      const t = setInterval(function () {
+        const elapsed = Math.round((Date.now() - startedAt) / 1000);
+        if (installAudioStatus) {
+          installAudioStatus.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> '
+            + "Installing in background. Elapsed: " + elapsed + "s.";
+        }
+        // Stop after 4 min — keep buttons re-enabled so user can retry.
+        if (elapsed > 240) {
+          clearInterval(t);
+          origs.forEach(function (pair) { pair[0].disabled = false; pair[0].innerHTML = pair[1]; });
+          if (installAudioStatus) {
+            installAudioStatus.innerHTML = '<span class="text-success">Install probably finished. '
+              + 'Try the toggle on the next run; reinstall if it still says "not installed".</span>';
+          }
+        }
+      }, 5000);
+    }
+    window.WELLNEST_triage_install_audio = startAudioInstall;
+
+    // ---- Conversation mode ----
+    // Single record button. Runs the full pipeline end-to-end with the
+    // toggles + backend chosen below. Only the final clinical English is
+    // shown, plus an elapsed counter so the doctor can feel the latency.
+    const convoToggle = $("#triageConversationMode", root);
+    const convoPanel = $("#triageConversationPanel", root);
+    const stepwise = $("#triageStepwise", root);
+    const convoRecordBtn = $("#convoRecordBtn", root);
+    const convoTimerEl = $("#convoTimer", root);
+    const convoStageEl = $("#convoStage", root);
+    const convoFinalOut = $("#convoFinalOut", root);
+    const convoTimingsEl = $("#convoTimings", root);
+
+    function syncConvoVisibility() {
+      const on = !!(convoToggle && convoToggle.checked);
+      if (convoPanel) convoPanel.style.display = on ? "block" : "none";
+      if (stepwise) stepwise.style.display = on ? "none" : "";
+    }
+    if (convoToggle) convoToggle.addEventListener("change", syncConvoVisibility);
+    syncConvoVisibility();
+
+    let convoRecState = { rec: null, stream: null, started: 0, ts: 0, chunks: [] };
+    let convoBlob = null;
+    let convoPollTimer = 0;
+
+    function setConvoStage(text, kind) {
+      if (!convoStageEl) return;
+      convoStageEl.textContent = text;
+      convoStageEl.classList.remove("text-danger", "text-success");
+      if (kind === "error") convoStageEl.classList.add("text-danger");
+      if (kind === "success") convoStageEl.classList.add("text-success");
+    }
+
+    function resetConvoBtn() {
+      if (!convoRecordBtn) return;
+      convoRecordBtn.classList.remove("is-recording");
+      const lbl = convoRecordBtn.querySelector("[data-record-label]");
+      if (lbl) lbl.textContent = "Talk";
+    }
+
+    async function pollConvoJob(jobId, startMs) {
+      try {
+        const res = await fetch("/scribe/api/triage/jobs/" + jobId + "/", { credentials: "same-origin" });
+        const j = await res.json();
+        if (!j.ok) { clearInterval(convoPollTimer); setConvoStage(j.error || "poll failed", "error"); return; }
+        const job = j.job;
+        const elapsed = Date.now() - startMs;
+        if (job.status === "running" || job.status === "pending") {
+          setConvoStage(job.stage + " · elapsed " + fmtElapsed(elapsed));
+          return;
+        }
+        clearInterval(convoPollTimer);
+        if (job.status === "error") {
+          setConvoStage("error: " + (job.error || "unknown"), "error");
+          return;
+        }
+        const raw = (job.result && job.result.raw_text) || "";
+        // Pipe raw output → cloud interpret automatically.
+        setConvoStage("running cloud interpretation… · elapsed " + fmtElapsed(elapsed));
+        let r2;
+        try {
+          r2 = await postJSON("/scribe/api/triage/interpret/", buildInterpretPayload(raw));
+        } catch (err) { setConvoStage("network error: " + err.message, "error"); return; }
+        const finalText = (r2.body && r2.body.ok) ? (r2.body.clean_text || "") : raw;
+        if (convoFinalOut) convoFinalOut.value = finalText || raw;
+        const total = Date.now() - startMs;
+        if (convoTimingsEl) {
+          convoTimingsEl.textContent = job.backend + " · " + job.device + " · total " + fmtElapsed(total);
+        }
+        setConvoStage("done", "success");
+      } catch (err) { /* keep polling */ }
+    }
+
+    async function startConvoRun() {
+      const fd = buildRunForm();
+      // Replace audio with the conversation blob.
+      if (convoBlob) {
+        fd.delete("audio");
+        const ext = convoBlob.type.indexOf("ogg") >= 0 ? "ogg" :
+                    (convoBlob.type.indexOf("mpeg") >= 0 ? "mp3" : "webm");
+        fd.set("audio", convoBlob, "convo." + ext);
+      }
+      setConvoStage("submitting…");
+      let r;
+      try { r = await postForm("/scribe/api/triage/run/", fd); }
+      catch (err) { setConvoStage("network error: " + err.message, "error"); return; }
+      if (!r.ok || !r.body || !r.body.ok) {
+        setConvoStage((r.body && r.body.error) || "could not start", "error");
+        return;
+      }
+      const jobId = r.body.job_id;
+      const startMs = Date.now();
+      pollConvoJob(jobId, startMs);
+      clearInterval(convoPollTimer);
+      convoPollTimer = setInterval(function () { pollConvoJob(jobId, startMs); }, 2000);
+    }
+
+    if (convoRecordBtn) convoRecordBtn.addEventListener("click", async function () {
+      if (convoRecordBtn.classList.contains("is-recording")) {
+        if (convoRecState.rec && convoRecState.rec.state !== "inactive") convoRecState.rec.stop();
+        clearInterval(convoRecState.ts);
+        if (convoRecState.stream) convoRecState.stream.getTracks().forEach(function (t) { t.stop(); });
+        resetConvoBtn();
+        return;
+      }
+      try { convoRecState.stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+      catch (err) { setConvoStage("microphone permission denied", "error"); return; }
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus" : "";
+      convoRecState.chunks = [];
+      convoRecState.rec = mime
+        ? new MediaRecorder(convoRecState.stream, { mimeType: mime })
+        : new MediaRecorder(convoRecState.stream);
+      convoRecState.rec.ondataavailable = function (e) {
+        if (e.data && e.data.size > 0) convoRecState.chunks.push(e.data);
+      };
+      convoRecState.rec.onstop = async function () {
+        convoBlob = new Blob(convoRecState.chunks, { type: convoRecState.chunks[0]?.type || "audio/webm" });
+        await startConvoRun();
+      };
+      convoRecState.rec.start(250);
+      convoRecState.started = Date.now();
+      convoRecState.ts = setInterval(function () {
+        if (convoTimerEl) convoTimerEl.textContent = fmtTime((Date.now() - convoRecState.started) / 1000);
+      }, 250);
+      convoRecordBtn.classList.add("is-recording");
+      const lbl = convoRecordBtn.querySelector("[data-record-label]");
+      if (lbl) lbl.textContent = "Stop";
+      setConvoStage("recording…");
+    });
   }
 
   // ---------- review screen ----------
@@ -796,6 +1115,7 @@
 
   function initReviewScreen(root) {
     const sessionId = root.getAttribute("data-session-id");
+    const isFinalized = root.getAttribute("data-finalized") === "1";
     const saveBtn = $("#saveBtn", root);
     const finalizeBtn = $("#finalizeBtn", root);
     const copyBtn = $("#copyBtn", root);
@@ -809,14 +1129,64 @@
     const transcriptArea = $("#transcriptArea", root);
     const statusEl = $("#reviewStatus", root);
 
+    function renderBodyMarkers() {
+      // Read saved body markers + wound_chart from the json_script blocks
+      // and produce a plain-text summary that can be appended to the note
+      // when copying / sharing / printing.
+      try {
+        const mEl = document.getElementById("bodyMarkersData");
+        const cEl = document.getElementById("woundChartData");
+        const markers = mEl && mEl.textContent.trim() ? JSON.parse(mEl.textContent) : [];
+        const chart = cEl && cEl.textContent.trim() ? JSON.parse(cEl.textContent) : {};
+        const lines = [];
+        const factors = (chart && chart.factors_delaying_healing) || [];
+        if (factors.length) {
+          lines.push("Factors delaying healing: " + factors.join(", ").replace(/_/g, " ") + ".");
+        }
+        if (Array.isArray(markers) && markers.length) {
+          markers.forEach(function (m, idx) {
+            const seg = ["Wound #" + (idx + 1) + (m.date_added ? " (" + m.date_added + ")" : "")];
+            const detail = [];
+            if (m.wound_type) detail.push(m.wound_type.replace(/_/g, " "));
+            if (m.duration) detail.push("dur " + m.duration);
+            const dims = [m.length_cm, m.width_cm, m.depth_cm].filter(Boolean).join("x");
+            if (dims) detail.push(dims + " cm");
+            if (m.tracking_cm) detail.push("tracking " + m.tracking_cm + " cm");
+            if (m.exudate || m.exudate_type) {
+              detail.push("exudate " + [m.exudate, m.exudate_type].filter(Boolean).join("/"));
+            }
+            if (Array.isArray(m.peri_wound) && m.peri_wound.length) {
+              detail.push("peri-wound: " + m.peri_wound.join(", ").replace(/_/g, " "));
+            }
+            if (Array.isArray(m.infection_signs) && m.infection_signs.length) {
+              detail.push("infection: " + m.infection_signs.join(", ").replace(/_/g, " "));
+            }
+            if (m.treatment_goal) detail.push("goal: " + m.treatment_goal.replace(/_/g, " "));
+            if (m.analgesia && m.analgesia !== "none") detail.push("analgesia: " + m.analgesia.replace(/_/g, " "));
+            if (m.referred_to) detail.push("ref: " + m.referred_to);
+            if (m.notes) detail.push("notes: " + m.notes);
+            seg.push("  " + detail.join(" · "));
+            lines.push(seg.join("\n"));
+          });
+        }
+        return lines.length ? "WOUND CHART:\n" + lines.join("\n") : "";
+      } catch (e) { return ""; }
+    }
+
     function renderFromFields(p) {
-      if (p.narrative) return p.narrative;
-      const parts = [];
-      if (p.subjective) parts.push("S:\n" + p.subjective);
-      if (p.objective) parts.push("O:\n" + p.objective);
-      if (p.assessment) parts.push("A:\n" + p.assessment);
-      if (p.plan) parts.push("P:\n" + p.plan);
-      return parts.join("\n\n");
+      let body;
+      if (p.narrative) {
+        body = p.narrative;
+      } else {
+        const parts = [];
+        if (p.subjective) parts.push("S:\n" + p.subjective);
+        if (p.objective) parts.push("O:\n" + p.objective);
+        if (p.assessment) parts.push("A:\n" + p.assessment);
+        if (p.plan) parts.push("P:\n" + p.plan);
+        body = parts.join("\n\n");
+      }
+      const wound = renderBodyMarkers();
+      return wound ? body + "\n\n" + wound : body;
     }
     function collectFieldValues() {
       const payload = {};
@@ -888,9 +1258,25 @@
       updateWordCount();
     }
     async function autosave() {
+      if (isFinalized) return;  // session is locked — never POST edits
       const r = await postJSON("/scribe/api/sessions/" + sessionId + "/save/", collectPayload());
       if (r.ok && r.body.ok) setStatus(statusEl, "Saved", "success");
       else setStatus(statusEl, "Save failed", "error");
+    }
+
+    // Belt-and-braces: when the note is finalized, programmatically lock
+    // every editable surface. CSS hides interaction; this prevents form
+    // submission even if a clever user removes the CSS class.
+    if (isFinalized) {
+      if (titleEl) titleEl.setAttribute("contenteditable", "false");
+      fields.forEach(function (el) { el.readOnly = true; el.disabled = true; });
+      if (fullNoteArea) { fullNoteArea.readOnly = true; fullNoteArea.disabled = true; }
+      if (transcriptArea) { transcriptArea.readOnly = true; transcriptArea.disabled = true; }
+      [saveBtn, finalizeBtn, regenAllBtn, $("#polishBtn", root), $("#improveBtn", root)].forEach(function (b) {
+        if (b) b.disabled = true;
+      });
+      // Block any future per-marker save attempts from the body diagram.
+      window.WELLNEST_finalized = true;
     }
 
     fields.forEach(function (el) {
@@ -941,10 +1327,22 @@
 
     if (saveBtn) saveBtn.addEventListener("click", function () { autosave(); });
     if (finalizeBtn) finalizeBtn.addEventListener("click", async function () {
+      const ok = confirm(
+        "Mark this note as reviewed?\n\n" +
+        "Once reviewed, all fields lock — no further edits allowed " +
+        "(including transcript, body diagram, and SOAP sections).\n\n" +
+        "Make any final tweaks first. This protects the clinical record."
+      );
+      if (!ok) return;
       await autosave();
       const r = await postJSON("/scribe/api/sessions/" + sessionId + "/finalize/", {});
-      if (r.ok && r.body.ok) { setStatus(statusEl, "Finalized.", "success"); showToast("Note marked reviewed"); }
-      else setStatus(statusEl, "Could not finalize.", "error");
+      if (r.ok && r.body.ok) {
+        setStatus(statusEl, "Finalized.", "success");
+        showToast("Note marked reviewed — page will reload locked.");
+        setTimeout(function () { window.location.reload(); }, 900);
+      } else {
+        setStatus(statusEl, "Could not finalize.", "error");
+      }
     });
     if (copyBtn) copyBtn.addEventListener("click", async function () {
       await autosave();
@@ -1105,7 +1503,310 @@
     $$("textarea", root).forEach(attachAutoGrow);
 
     initQuickEditMics(root);
+    initBodyDiagram(root, sessionId);
     updateWordCount();
+  }
+
+  // ---------- body diagram ----------
+  // NATVNS option lists used by the per-marker wound cards.
+  const WOUND_TYPES = [
+    ["", "—"],
+    ["leg_ulcer", "Leg ulcer"],
+    ["surgical", "Surgical"],
+    ["diabetic", "Diabetic ulcer"],
+    ["pressure", "Pressure ulcer"],
+    ["other", "Other"],
+  ];
+  const EXUDATE_LEVELS = [
+    ["", "—"], ["dry", "Dry / moist"], ["wet", "Wet"], ["saturated", "Saturated / leaking *"],
+  ];
+  const EXUDATE_TYPES = [
+    ["", "—"], ["serous", "Serous (straw)"], ["haemoserous", "Haemoserous"],
+    ["cloudy", "Cloudy / milky"], ["green_brown", "Green / brown *"],
+  ];
+  const PERI_WOUND = [
+    ["macerated", "Macerated"], ["oedematous", "Oedematous *"],
+    ["erythema", "Erythema *"], ["excoriated", "Excoriated"],
+    ["fragile", "Fragile"], ["dry_scaly", "Dry / scaly"], ["healthy", "Healthy / intact"],
+  ];
+  const INFECTION_SIGNS = [
+    ["heat", "Heat *"], ["new_slough", "New slough / necrosis *"],
+    ["increasing_pain", "↑ Pain *"], ["increasing_exudate", "↑ Exudate *"],
+    ["increasing_odour", "↑ Odour *"], ["friable", "Friable granulation *"],
+  ];
+  const TREATMENT_GOALS = [
+    ["", "—"], ["debridement", "Debridement"], ["absorption", "Absorption"],
+    ["hydration", "Hydration"], ["protection", "Protect / promote healing"],
+    ["palliative", "Palliative / conservative"], ["reduce_bacterial_load", "Reduce bacterial load"],
+  ];
+
+  function initBodyDiagram(root, sessionId) {
+    const overlay = $("#bodyDiagramOverlay", root);
+    const cardsWrap = $("#bodyMarkerCards", root);
+    const counter = $("#bodyMarkerCount", root);
+    const clearAllBtn = $("#bodyClearAllBtn", root);
+    const factorsBox = $("#healingFactors", root);
+    if (!overlay || !cardsWrap) return;
+
+    // Load saved state from <script type="application/json"> tags injected by
+    // the template's json_script filter. This is the safe way to embed
+    // server-side JSON into a page — handles apostrophes / quotes / unicode.
+    let markers = [];
+    try {
+      const el = document.getElementById("bodyMarkersData");
+      if (el && el.textContent.trim()) {
+        const parsed = JSON.parse(el.textContent);
+        if (Array.isArray(parsed)) markers = parsed;
+      }
+    } catch (e) { markers = []; }
+
+    let factors = [];
+    try {
+      const el = document.getElementById("woundChartData");
+      if (el && el.textContent.trim()) {
+        const chart = JSON.parse(el.textContent) || {};
+        if (Array.isArray(chart.factors_delaying_healing)) {
+          factors = chart.factors_delaying_healing;
+        }
+      }
+    } catch (e) { factors = []; }
+
+    // Pre-check the healing-factor pills from saved chart state.
+    if (factorsBox && factors.length) {
+      factorsBox.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+        if (factors.indexOf(cb.value) >= 0) cb.checked = true;
+      });
+    }
+
+    let saveTimer = 0;
+    function persist() {
+      // Mirror current state back into the json_script blocks so the
+      // export helper (renderBodyMarkers) always reads the latest values
+      // without a page reload.
+      try {
+        const mEl = document.getElementById("bodyMarkersData");
+        const cEl = document.getElementById("woundChartData");
+        if (mEl) mEl.textContent = JSON.stringify(markers);
+        if (cEl) cEl.textContent = JSON.stringify({ factors_delaying_healing: factors });
+      } catch (e) { /* no-op */ }
+      if (window.WELLNEST_finalized) return;  // locked — don't POST edits
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(function () {
+        postJSON("/scribe/api/sessions/" + sessionId + "/save/", {
+          body_markers: markers,
+          wound_chart: { factors_delaying_healing: factors },
+        });
+      }, 600);
+    }
+
+    function escAttr(s) { return String(s || "").replace(/"/g, "&quot;"); }
+    function optionsHtml(opts, selected) {
+      return opts.map(function (o) {
+        const sel = o[0] === (selected || "") ? " selected" : "";
+        return '<option value="' + escAttr(o[0]) + '"' + sel + '>' + o[1] + '</option>';
+      }).join("");
+    }
+    function checkboxRow(name, opts, currentList) {
+      const cur = Array.isArray(currentList) ? currentList : [];
+      return opts.map(function (o) {
+        const checked = cur.indexOf(o[0]) >= 0 ? " checked" : "";
+        return '<label class="quick-pill" style="font-size:0.78rem;padding:4px 9px;">' +
+          '<input type="checkbox" data-bm-list="' + name + '" value="' + escAttr(o[0]) + '" hidden' + checked + '> ' +
+          o[1] + '</label>';
+      }).join(" ");
+    }
+
+    function renderMarkers() {
+      overlay.querySelectorAll(".body-marker").forEach(function (el) { el.remove(); });
+      markers.forEach(function (m, idx) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "body-marker";
+        btn.style.left = m.x + "%";
+        btn.style.top = m.y + "%";
+        btn.textContent = String(idx + 1);
+        const tipParts = [];
+        if (m.wound_type) tipParts.push(m.wound_type.replace(/_/g, " "));
+        if (m.length_cm || m.width_cm) tipParts.push((m.length_cm || "?") + "×" + (m.width_cm || "?") + " cm");
+        btn.setAttribute("data-label", tipParts.join(" · ") || "marker");
+        btn.addEventListener("contextmenu", function (e) {
+          e.preventDefault();
+          markers.splice(idx, 1);
+          renderAll(); persist();
+        });
+        btn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          const card = cardsWrap.querySelector('[data-marker-card="' + idx + '"]');
+          if (card) {
+            card.scrollIntoView({ behavior: "smooth", block: "center" });
+            const inp = card.querySelector("select, input");
+            if (inp) inp.focus();
+          }
+        });
+        overlay.appendChild(btn);
+      });
+    }
+
+    function renderCards() {
+      cardsWrap.innerHTML = "";
+      if (!markers.length) {
+        cardsWrap.innerHTML = '<p class="text-muted small mb-0">No markers yet — click on the diagram to drop one.</p>';
+        if (counter) counter.textContent = "0 markers";
+        return;
+      }
+      markers.forEach(function (m, idx) {
+        const card = document.createElement("div");
+        card.className = "card";
+        card.setAttribute("data-marker-card", String(idx));
+        card.innerHTML =
+          '<div class="card-body p-3">' +
+            '<div class="d-flex align-items-center justify-content-between mb-2">' +
+              '<span class="fw-semibold small">Wound #' + (idx + 1) +
+                (m.date_added ? ' <span class="text-muted fw-normal">· ' + escAttr(m.date_added) + '</span>' : '') +
+                '</span>' +
+              '<button type="button" class="btn btn-link text-danger p-0" data-bm-del title="Delete">' +
+                '<iconify-icon icon="iconamoon:trash-duotone"></iconify-icon></button>' +
+            '</div>' +
+
+            '<div class="row g-2 mb-2">' +
+              '<div class="col-7"><label class="form-label small text-muted mb-1">Type</label>' +
+                '<select class="form-select form-select-sm" data-bm="wound_type">' + optionsHtml(WOUND_TYPES, m.wound_type) + '</select></div>' +
+              '<div class="col-5"><label class="form-label small text-muted mb-1">Duration</label>' +
+                '<input type="text" class="form-control form-control-sm" data-bm="duration" placeholder="3 weeks" value="' + escAttr(m.duration) + '"></div>' +
+            '</div>' +
+
+            '<div class="row g-2 mb-2">' +
+              '<div class="col-3"><label class="form-label small text-muted mb-1">L (cm)</label>' +
+                '<input type="text" class="form-control form-control-sm" data-bm="length_cm" value="' + escAttr(m.length_cm) + '"></div>' +
+              '<div class="col-3"><label class="form-label small text-muted mb-1">W (cm)</label>' +
+                '<input type="text" class="form-control form-control-sm" data-bm="width_cm" value="' + escAttr(m.width_cm) + '"></div>' +
+              '<div class="col-3"><label class="form-label small text-muted mb-1">D (cm)</label>' +
+                '<input type="text" class="form-control form-control-sm" data-bm="depth_cm" value="' + escAttr(m.depth_cm) + '"></div>' +
+              '<div class="col-3"><label class="form-label small text-muted mb-1">Track</label>' +
+                '<input type="text" class="form-control form-control-sm" data-bm="tracking_cm" value="' + escAttr(m.tracking_cm) + '"></div>' +
+            '</div>' +
+
+            '<details class="mb-2">' +
+              '<summary class="small fw-semibold text-muted">Tissue type (% — total 100)</summary>' +
+              '<div class="row g-2 mt-2">' +
+                ['necrotic', 'slough', 'granulating', 'epithelialising', 'hypergranulating', 'haematoma', 'bone_tendon'].map(function (k) {
+                  const lbl = k === 'bone_tendon' ? 'Bone/tendon' : k[0].toUpperCase() + k.slice(1);
+                  return '<div class="col-6 col-md-4"><label class="form-label small text-muted mb-1">' + lbl + ' %</label>' +
+                    '<input type="number" min="0" max="100" class="form-control form-control-sm" data-bm="tissue_' + k + '" value="' + escAttr(m['tissue_' + k]) + '"></div>';
+                }).join("") +
+              '</div>' +
+            '</details>' +
+
+            '<div class="row g-2 mb-2">' +
+              '<div class="col-6"><label class="form-label small text-muted mb-1">Exudate level</label>' +
+                '<select class="form-select form-select-sm" data-bm="exudate">' + optionsHtml(EXUDATE_LEVELS, m.exudate) + '</select></div>' +
+              '<div class="col-6"><label class="form-label small text-muted mb-1">Exudate type</label>' +
+                '<select class="form-select form-select-sm" data-bm="exudate_type">' + optionsHtml(EXUDATE_TYPES, m.exudate_type) + '</select></div>' +
+            '</div>' +
+
+            '<div class="mb-2"><label class="form-label small text-muted mb-1">Peri-wound skin</label>' +
+              '<div class="quick-templates-pills">' + checkboxRow('peri_wound', PERI_WOUND, m.peri_wound) + '</div></div>' +
+
+            '<div class="mb-2"><label class="form-label small text-muted mb-1">Signs of infection (2+ = possible infection)</label>' +
+              '<div class="quick-templates-pills">' + checkboxRow('infection_signs', INFECTION_SIGNS, m.infection_signs) + '</div></div>' +
+
+            '<div class="row g-2 mb-2">' +
+              '<div class="col-7"><label class="form-label small text-muted mb-1">Treatment goal</label>' +
+                '<select class="form-select form-select-sm" data-bm="treatment_goal">' + optionsHtml(TREATMENT_GOALS, m.treatment_goal) + '</select></div>' +
+              '<div class="col-5"><label class="form-label small text-muted mb-1">Analgesia</label>' +
+                '<select class="form-select form-select-sm" data-bm="analgesia">' +
+                  optionsHtml([["", "—"], ["none", "None"], ["predressing", "Pre-dressing only"], ["regular", "Regular / ongoing"]], m.analgesia) +
+                '</select></div>' +
+            '</div>' +
+
+            '<label class="form-label small text-muted mb-1">Notes</label>' +
+            '<textarea class="form-control form-control-sm" rows="2" data-bm="notes">' + (m.notes ? String(m.notes).replace(/</g, "&lt;") : "") + '</textarea>' +
+
+            '<label class="form-label small text-muted mb-1 mt-2">Referred to</label>' +
+            '<input type="text" class="form-control form-control-sm" data-bm="referred_to" ' +
+              'placeholder="TVN / Physio / Podiatrist / Dietician / other" value="' + escAttr(m.referred_to) + '">' +
+          '</div>';
+
+        // Wire per-field change handlers
+        card.querySelectorAll("[data-bm]").forEach(function (el) {
+          const key = el.getAttribute("data-bm");
+          const evt = (el.tagName === "SELECT") ? "change" : "input";
+          el.addEventListener(evt, function () {
+            markers[idx][key] = el.value;
+            persist();
+            // Light tooltip refresh
+            const dot = overlay.querySelectorAll(".body-marker")[idx];
+            if (dot) {
+              const tips = [];
+              if (markers[idx].wound_type) tips.push(markers[idx].wound_type.replace(/_/g, " "));
+              if (markers[idx].length_cm || markers[idx].width_cm)
+                tips.push((markers[idx].length_cm || "?") + "×" + (markers[idx].width_cm || "?") + " cm");
+              dot.setAttribute("data-label", tips.join(" · ") || "marker");
+            }
+          });
+        });
+        // Checkbox-list handlers
+        card.querySelectorAll("[data-bm-list]").forEach(function (cb) {
+          cb.addEventListener("change", function () {
+            const key = cb.getAttribute("data-bm-list");
+            const list = Array.from(card.querySelectorAll('[data-bm-list="' + key + '"]:checked')).map(function (c) { return c.value; });
+            markers[idx][key] = list;
+            persist();
+          });
+        });
+        card.querySelector("[data-bm-del]").addEventListener("click", function () {
+          markers.splice(idx, 1); renderAll(); persist();
+        });
+        cardsWrap.appendChild(card);
+      });
+      if (counter) counter.textContent = markers.length + " marker" + (markers.length === 1 ? "" : "s");
+    }
+
+    function renderAll() {
+      try { renderMarkers(); }
+      catch (e) { console.error("[wellnest] renderMarkers failed:", e); }
+      try { renderCards(); }
+      catch (e) {
+        console.error("[wellnest] renderCards failed:", e);
+        if (cardsWrap) {
+          cardsWrap.innerHTML = '<p class="small text-danger">Could not render wound cards. ' +
+            'Check the browser console for details. Marker count: ' + markers.length + '</p>';
+        }
+      }
+    }
+
+    overlay.addEventListener("click", function (e) {
+      if (e.target !== overlay) return;
+      const rect = overlay.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      const now = new Date();
+      const isoDate = now.getFullYear() + "-" +
+                      String(now.getMonth() + 1).padStart(2, "0") + "-" +
+                      String(now.getDate()).padStart(2, "0");
+      markers.push({ x: x, y: y, date_added: isoDate });
+      renderAll();
+      persist();
+    });
+
+    if (clearAllBtn) clearAllBtn.addEventListener("click", function () {
+      if (!markers.length) return;
+      if (!confirm("Clear all " + markers.length + " markers?")) return;
+      markers = [];
+      renderAll();
+      persist();
+    });
+
+    if (factorsBox) {
+      factorsBox.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+        cb.addEventListener("change", function () {
+          factors = Array.from(factorsBox.querySelectorAll('input:checked')).map(function (c) { return c.value; });
+          persist();
+        });
+      });
+    }
+
+    renderAll();
   }
 
   // ---------- quick-edit mic (with server fallback) ----------

@@ -38,6 +38,48 @@
 
             <textarea id="shareNote" class="note-textarea" rows="20" readonly>{% if note %}{{ note.edited_note|default:note.full_note }}{% else %}{{ session.transcript }}{% endif %}</textarea>
 
+            {% if note and note.body_markers %}
+            <hr class="my-4">
+            <h6 class="fw-semibold mb-2">Body diagram</h6>
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <div class="body-diagram-wrap">
+                        <img src="{% static 'images/body-diagram.png' %}" alt="Body diagram" style="width:100%;">
+                        <div class="body-diagram-overlay" id="shareDiagramOverlay"></div>
+                    </div>
+                </div>
+                <div class="col-md-7">
+                    <table class="table table-sm align-middle small">
+                        <thead>
+                            <tr>
+                                <th>#</th><th>Type</th><th>Size (cm)</th>
+                                <th>Exudate</th><th>Goal</th><th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for m in note.body_markers %}
+                            <tr>
+                                <td class="fw-semibold">{{ forloop.counter }}</td>
+                                <td>{{ m.wound_type|default:"—" }}</td>
+                                <td>{{ m.length_cm|default:"" }}{% if m.width_cm %}×{{ m.width_cm }}{% endif %}{% if m.depth_cm %}×{{ m.depth_cm }}{% endif %}</td>
+                                <td>{{ m.exudate|default:"" }}{% if m.exudate_type %} / {{ m.exudate_type }}{% endif %}</td>
+                                <td>{{ m.treatment_goal|default:"—" }}</td>
+                                <td>{{ m.notes|default:"" }}{% if m.referred_to %}<br><span class="text-muted">→ {{ m.referred_to }}</span>{% endif %}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    {% if note.wound_chart.factors_delaying_healing %}
+                        <p class="small text-muted mb-0">
+                            <strong>Factors delaying healing:</strong>
+                            {{ note.wound_chart.factors_delaying_healing|join:", " }}
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+            {{ note.body_markers|json_script:"shareBodyMarkers" }}
+            {% endif %}
+
             <p class="text-muted small mt-3 mb-0">
                 AI-generated draft — review and edit required before clinical use.
             </p>
@@ -51,6 +93,24 @@ document.getElementById("shareCopy").addEventListener("click", async function ()
     try { await navigator.clipboard.writeText(t); this.textContent = "Copied"; }
     catch (e) { document.getElementById("shareNote").select(); document.execCommand("copy"); }
 });
+
+// Render marker dots on the shared body diagram (read-only).
+(function () {
+    const el = document.getElementById("shareBodyMarkers");
+    const overlay = document.getElementById("shareDiagramOverlay");
+    if (!el || !overlay) return;
+    try {
+        const markers = JSON.parse(el.textContent) || [];
+        markers.forEach(function (m, idx) {
+            const dot = document.createElement("span");
+            dot.className = "body-marker";
+            dot.style.left = m.x + "%";
+            dot.style.top = m.y + "%";
+            dot.textContent = String(idx + 1);
+            overlay.appendChild(dot);
+        });
+    } catch (e) { /* ignore */ }
+})();
 </script>
 </body>
 </html>

@@ -159,6 +159,24 @@ class ReviewView(LoginRequiredMixin, View):
                 "session": session,
                 "note": getattr(session, "note", None),
                 "profile": _get_profile(request.user),
+                # NATVNS Wound Management chart adaptation. Static list of
+                # "factors that could delay healing" — flat checkbox row in
+                # the Body diagram tab.
+                "body_healing_factors": [
+                    ("immobility", "Immobility"),
+                    ("poor_nutrition", "Poor nutrition"),
+                    ("diabetes", "Diabetes"),
+                    ("incontinence", "Incontinence"),
+                    ("resp_circ_disease", "Respiratory / circulatory disease"),
+                    ("anaemia", "Anaemia"),
+                    ("medication", "Medication"),
+                    ("wound_infection", "Wound infection"),
+                    ("inotropes", "Inotropes"),
+                    ("anticoagulants", "Anti-coagulants"),
+                    ("oedema", "Oedema"),
+                    ("steroids", "Steroids"),
+                    ("chemotherapy", "Chemotherapy"),
+                ],
             },
         )
 
@@ -433,6 +451,66 @@ def triage_install_deps_api(request):
 @login_required
 @require_POST
 @csrf_protect
+def triage_install_audio_api(request):
+    """Install denoise / diarization libraries into the active venv.
+
+    target = 'denoise' | 'diarize' | 'all'. Admin only.
+    """
+    if not _triage_admin(request.user):
+        return JsonResponse({"ok": False, "error": "Admin only."}, status=403)
+
+    payload = _json_body(request)
+    target = (payload.get("target") or "all").lower()
+
+    pkg_groups = {
+        "denoise": ["noisereduce", "deepfilternet"],
+        "diarize": ["pyannote.audio"],
+    }
+    if target == "all":
+        pkgs = pkg_groups["denoise"] + pkg_groups["diarize"]
+    elif target in pkg_groups:
+        pkgs = pkg_groups[target]
+    else:
+        return JsonResponse(
+            {"ok": False, "error": f"Unknown target '{target}'."}, status=400
+        )
+
+    import subprocess
+    import sys
+    import threading
+
+    def _runner():
+        # Install one package at a time so a single failure doesn't abort
+        # the others (e.g. deepfilternet wheel unavailable on Windows).
+        for pkg in pkgs:
+            cmd = [sys.executable, "-m", "pip", "install", pkg]
+            try:
+                logger.info("triage audio install: %s", " ".join(cmd))
+                subprocess.run(cmd, check=False, capture_output=True, text=True)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("audio install failed for %s: %s", pkg, exc)
+
+    threading.Thread(target=_runner, daemon=True).start()
+    return JsonResponse(
+        {
+            "ok": True,
+            "started": True,
+            "target": target,
+            "packages": pkgs,
+            "note": (
+                "Install started in the background. Toggle 'Denoise' or "
+                "'Speaker diarization' on the next run once installed. "
+                "noisereduce installs on every platform; DeepFilterNet "
+                "requires Windows wheels — if it fails, denoise still "
+                "works via noisereduce."
+            ),
+        }
+    )
+
+
+@login_required
+@require_POST
+@csrf_protect
 def triage_download_api(request):
     """Trigger the model download in a background thread so the UI stays responsive.
 
@@ -493,19 +571,64 @@ def triage_probe_api(request):
 @require_POST
 @csrf_protect
 def triage_interpret_api(request):
-    """Run cloud LLM interpretation over Patois text using a custom system prompt."""
+    """Interpret raw Patois text into clinical English.
+
+    Accepts:
+      text            — raw Patois transcript (required)
+      interpreter     — 'azure' (default) or 'gemma_local'
+      device          — 'cpu' | 'cuda' (Gemma only)
+      gemma_model_id  — HuggingFace model id (default Qwen/Qwen3-1.7B; param
+                        name kept for backwards compatibility — can pass any
+                        instruction-tuned causal LM id)
+
+    Both backends use the SAME PATOIS_INTERPRETER_SYSTEM_PROMPT so output
+    shape is comparable — only the executor (cloud LLM vs local Gemma) changes.
+    """
     if not _triage_visible(request.user):
         return JsonResponse({"ok": False, "error": "Not authorized."}, status=403)
     payload = _json_body(request)
     raw_text = (payload.get("text") or "").strip()
     if not raw_text:
         return JsonResponse({"ok": False, "error": "No text provided."}, status=400)
+
+    interpreter = (payload.get("interpreter") or "azure").lower()
+    device = (payload.get("device") or "cpu").lower()
+    gemma_model_id = payload.get("gemma_model_id") or "Qwen/Qwen3-1.7B"
+
+    import time
+    started = time.perf_counter()
     try:
-        clean = run_interpret_patois(raw_text)
+        if interpreter == "gemma_local":
+            # Use the same Patois system prompt as Azure by importing it here.
+            from .services.soap_generator import PATOIS_INTERPRETER_SYSTEM_PROMPT
+            from .services.triage import gemma_interpret_patois
+            # Inject the full Patois prompt into the user text — matches the
+            # Azure-side trick that defeats the content filter.
+            combined = (
+                f"{PATOIS_INTERPRETER_SYSTEM_PROMPT.strip()}\n\n"
+                f"=== END OF INSTRUCTIONS — PATOIS INPUT BELOW ===\n\n"
+                f"PATWA TRANSCRIPT:\n{raw_text}"
+            )
+            clean = gemma_interpret_patois(
+                combined, device=device, model_id=gemma_model_id
+            )
+        else:
+            clean = run_interpret_patois(raw_text)
+    except TriageDependencyError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=503)
     except Exception as exc:  # noqa: BLE001
         logger.exception("triage interpret failed")
         return JsonResponse({"ok": False, "error": str(exc)}, status=500)
-    return JsonResponse({"ok": True, "clean_text": clean})
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    return JsonResponse(
+        {
+            "ok": True,
+            "clean_text": clean,
+            "interpreter": interpreter,
+            "device": device if interpreter == "gemma_local" else None,
+            "duration_ms": elapsed_ms,
+        }
+    )
 
 
 # ----- API views -----
@@ -524,6 +647,9 @@ def create_session_api(request):
     chief_complaint = request.POST.get("chief_complaint", "").strip()
     transcript = request.POST.get("transcript", "").strip()
     duration_raw = request.POST.get("duration_seconds", "").strip()
+    patient_name = request.POST.get("patient_name", "").strip()[:120]
+    patient_identifier = request.POST.get("patient_identifier", "").strip()[:120]
+    active_conditions = request.POST.get("active_conditions", "").strip()[:200]
 
     valid_formats = dict(ScribeSession.NOTE_FORMAT_CHOICES)
     valid_lengths = dict(ScribeSession.LENGTH_MODE_CHOICES)
@@ -534,6 +660,9 @@ def create_session_api(request):
             doctor=request.user,
             title=title,
             chief_complaint=chief_complaint,
+            patient_name=patient_name,
+            patient_identifier=patient_identifier,
+            active_conditions=active_conditions,
             note_format=note_format if note_format in valid_formats else "soap",
             length_mode=length_mode if length_mode in valid_lengths else "normal",
             session_type="text" if not audio else "dictation",
@@ -696,6 +825,13 @@ def generate_note_api(request, pk):
 @csrf_protect
 def save_note_api(request, pk):
     session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)
+    # Hard server-side lock on finalized sessions — even if a client bypasses
+    # the disabled inputs, we never mutate a reviewed clinical record.
+    if session.status == "finalized":
+        return JsonResponse(
+            {"ok": False, "error": "Session is finalized and read-only."},
+            status=409,
+        )
     note = getattr(session, "note", None) or SOAPNote.objects.create(session=session)
     payload = _json_body(request)
 
@@ -703,10 +839,60 @@ def save_note_api(request, pk):
         if field in payload:
             setattr(note, field, payload[field] or "")
 
+    if "body_markers" in payload and isinstance(payload["body_markers"], list):
+        # Defensive: cap at 50 markers and strip any non-dict entries.
+        # Whitelist the keys + truncate strings so we never write garbage.
+        STR_KEYS = {
+            "label": 80, "wound_type": 40, "duration": 80,
+            "length_cm": 16, "width_cm": 16, "depth_cm": 16, "tracking_cm": 16,
+            "tissue_necrotic": 8, "tissue_slough": 8, "tissue_granulating": 8,
+            "tissue_epithelialising": 8, "tissue_hypergranulating": 8,
+            "tissue_haematoma": 8, "tissue_bone_tendon": 8,
+            "exudate": 24, "exudate_type": 32, "treatment_goal": 40,
+            "analgesia": 16, "notes": 400,
+            "date_added": 20, "referred_to": 120,
+            # legacy fields from earlier marker shape
+            "type": 40, "size_cm": 20,
+        }
+        LIST_KEYS = {"peri_wound": 12, "infection_signs": 12}
+        cleaned = []
+        for m in payload["body_markers"][:50]:
+            if not isinstance(m, dict):
+                continue
+            row: dict = {
+                "x": float(m.get("x", 0)),
+                "y": float(m.get("y", 0)),
+            }
+            for k, limit in STR_KEYS.items():
+                if k in m and m[k] is not None:
+                    row[k] = str(m[k])[:limit]
+            for k, max_items in LIST_KEYS.items():
+                v = m.get(k)
+                if isinstance(v, list):
+                    row[k] = [str(x)[:40] for x in v[:max_items]]
+            cleaned.append(row)
+        note.body_markers = cleaned
+
+    if "wound_chart" in payload and isinstance(payload["wound_chart"], dict):
+        wc = payload["wound_chart"]
+        factors = wc.get("factors_delaying_healing")
+        chart_cleaned = {}
+        if isinstance(factors, list):
+            chart_cleaned["factors_delaying_healing"] = [str(f)[:40] for f in factors[:20]]
+        if "allergies" in wc:
+            chart_cleaned["allergies"] = str(wc.get("allergies") or "")[:240]
+        note.wound_chart = chart_cleaned
+
     if "title" in payload:
         session.title = payload["title"][:160]
     if "chief_complaint" in payload:
         session.chief_complaint = payload["chief_complaint"][:200]
+    if "patient_name" in payload:
+        session.patient_name = (payload["patient_name"] or "")[:120]
+    if "patient_identifier" in payload:
+        session.patient_identifier = (payload["patient_identifier"] or "")[:120]
+    if "active_conditions" in payload:
+        session.active_conditions = (payload["active_conditions"] or "")[:200]
 
     note.save()
     session.save()
