@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Triage · WellNest{% endblock %}
+
+{% block content %}
+<div class="emr-shell">
+    <div class="page-title-box d-flex align-items-start justify-content-between flex-wrap gap-3">
+        <div>
+            <h4 class="mb-1 fw-semibold">Triage and vitals</h4>
+            <p class="text-muted small mb-0">
+                {{ patient.display_name }} · {{ appointment.get_encounter_type_display }} · {{ appointment.scheduled_for|date:"M j, g:i A" }}
+            </p>
+        </div>
+        <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary btn-sm">Back to chart</a>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-12 col-xl-9">
+            <div class="card">
+                <div class="card-body p-4">
+                    <div class="alert alert-light border small">
+                        Blood glucose is always recorded in <strong>mmol/L</strong> here to avoid unit confusion.
+                    </div>
+                    <form method="post" class="row g-3">
+                        {% csrf_token %}
+                        <div class="col-md-3">{{ form.weight_kg.label_tag }}{{ form.weight_kg }}</div>
+                        <div class="col-md-3">{{ form.height_cm.label_tag }}{{ form.height_cm }}</div>
+                        <div class="col-md-3">{{ form.bp_systolic.label_tag }}{{ form.bp_systolic }}</div>
+                        <div class="col-md-3">{{ form.bp_diastolic.label_tag }}{{ form.bp_diastolic }}</div>
+                        <div class="col-md-3">{{ form.pulse_bpm.label_tag }}{{ form.pulse_bpm }}</div>
+                        <div class="col-md-3">{{ form.respiratory_rate.label_tag }}{{ form.respiratory_rate }}</div>
+                        <div class="col-md-3">{{ form.temperature_celsius.label_tag }}{{ form.temperature_celsius }}</div>
+                        <div class="col-md-3">{{ form.oxygen_saturation.label_tag }}{{ form.oxygen_saturation }}</div>
+                        <div class="col-md-4">
+                            <label class="form-label">Blood glucose (mmol/L)</label>
+                            {{ form.blood_glucose_mmol }}
+                        </div>
+                        <div class="col-md-4">{{ form.muac_cm.label_tag }}{{ form.muac_cm }}</div>
+                        <div class="col-md-4">{{ form.pain_score.label_tag }}{{ form.pain_score }}</div>
+                        <div class="col-md-4">{{ form.head_circumference_cm.label_tag }}{{ form.head_circumference_cm }}</div>
+                        <div class="col-md-4">{{ form.weight_for_age_percentile.label_tag }}{{ form.weight_for_age_percentile }}</div>
+                        <div class="col-md-4">{{ form.height_for_age_percentile.label_tag }}{{ form.height_for_age_percentile }}</div>
+                        <div class="col-md-4">{{ form.bmi_for_age_percentile.label_tag }}{{ form.bmi_for_age_percentile }}</div>
+                        <div class="col-12 d-flex gap-2 mt-3">
+                            <button class="btn btn-primary">Save vitals and continue</button>
+                            <a href="{% url 'emr:dashboard' %}" class="btn btn-outline-secondary">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

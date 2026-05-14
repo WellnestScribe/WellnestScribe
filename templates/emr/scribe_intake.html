@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Attach Scribe Draft · WellNest{% endblock %}
+
+{% block content %}
+<div class="emr-shell">
+    <div class="page-title-box d-flex align-items-start justify-content-between flex-wrap gap-3">
+        <div>
+            <h4 class="mb-1 fw-semibold">Attach scribe draft to a patient</h4>
+            <p class="text-muted small mb-0">
+                {{ session.display_title }} · {{ session.created_at|date:"M j, Y · g:i A" }}
+            </p>
+        </div>
+        <a href="{% url 'emr:patient_create' %}?scribe={{ session.pk }}" class="btn btn-primary btn-sm">Register new patient</a>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body p-4">
+            <form method="get" class="row g-3 align-items-end">
+                <div class="col-lg-9">
+                    <label class="form-label small text-muted">Patient search</label>
+                    <input type="search" class="form-control" name="q" value="{{ query }}" placeholder="Search for the patient this note belongs to">
+                </div>
+                <div class="col-lg-3">
+                    <button class="btn btn-primary w-100">Find patient</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if results %}
+        <div class="row g-3">
+            {% for patient in results %}
+                <div class="col-12 col-lg-6">
+                    <div class="card h-100">
+                        <div class="card-body p-4">
+                            <h6 class="fw-semibold mb-1">{{ patient.display_name }}</h6>
+                            <div class="small text-muted mb-3">
+                                {{ patient.age_display }} years · {{ patient.parish|default:"Parish not set" }} · NHF {{ patient.nhf_card_number|default:"—" }}
+                            </div>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary btn-sm">Open chart</a>
+                                <a href="{% url 'emr:encounter_create' patient.pk %}?scribe={{ session.pk }}" class="btn btn-primary btn-sm">Create encounter from note</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="emr-empty-state">
+            <h6 class="fw-semibold">No matching patient yet</h6>
+            <p class="text-muted small mb-3">
+                Register the patient first, then this scribe note will flow straight into an encounter draft.
+            </p>
+            <a href="{% url 'emr:patient_create' %}?scribe={{ session.pk }}" class="btn btn-primary btn-sm">Register patient</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

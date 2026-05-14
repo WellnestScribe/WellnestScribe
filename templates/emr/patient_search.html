@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Patient Search · WellNest{% endblock %}
+
+{% block content %}
+<div class="emr-shell">
+    <div class="page-title-box d-flex align-items-start justify-content-between flex-wrap gap-3">
+        <div>
+            <h4 class="mb-1 fw-semibold">Patient search</h4>
+            <p class="text-muted mb-0 small">
+                Search by name, NHF number, TRN, phone, district, or parish.
+            </p>
+        </div>
+        <a href="{% url 'emr:patient_create' %}{% if scribe_session_id %}?scribe={{ scribe_session_id }}{% endif %}" class="btn btn-primary btn-sm">
+            Register patient
+        </a>
+    </div>
+
+    <div class="card">
+        <div class="card-body p-4">
+            <form method="get" class="row g-3 align-items-end">
+                {% if scribe_session_id %}
+                    <input type="hidden" name="scribe" value="{{ scribe_session_id }}">
+                {% endif %}
+                <div class="col-lg-9">
+                    <label class="form-label small text-muted">Search term</label>
+                    <input type="search" class="form-control" name="q" value="{{ query }}" placeholder="e.g. Maria Brown, NHF number, or 876-555-1234">
+                </div>
+                <div class="col-lg-3">
+                    <button class="btn btn-primary w-100">Search patients</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if query %}
+        <div class="mt-4">
+            <h5 class="fw-semibold mb-3">Results for “{{ query }}”</h5>
+            {% if results %}
+                <div class="row g-3">
+                    {% for patient in results %}
+                        <div class="col-12 col-lg-6">
+                            <div class="card h-100">
+                                <div class="card-body p-4">
+                                    <div class="d-flex align-items-start justify-content-between gap-2">
+                                        <div>
+                                            <h6 class="fw-semibold mb-1">{{ patient.display_name }}</h6>
+                                            <div class="text-muted small">
+                                                {{ patient.age_display }} years · {{ patient.get_sex_display }} · {{ patient.parish|default:"Parish not set" }}
+                                            </div>
+                                        </div>
+                                        {% if patient.phone_is_whatsapp %}
+                                            <span class="badge rounded-pill bg-success-subtle text-success">WhatsApp</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="small text-muted mt-3">
+                                        NHF: {{ patient.nhf_card_number|default:"—" }} · TRN: {{ patient.trn|default:"—" }}<br>
+                                        Phone: {{ patient.phone_primary|default:"—" }}
+                                    </div>
+                                    <div class="d-flex gap-2 flex-wrap mt-3">
+                                        <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary btn-sm">Open chart</a>
+                                        <a href="{% url 'emr:encounter_create' patient.pk %}" class="btn btn-primary btn-sm">New encounter</a>
+                                        {% if scribe_session_id %}
+                                            <a href="{% url 'emr:encounter_create' patient.pk %}?scribe={{ scribe_session_id }}" class="btn btn-outline-secondary btn-sm">
+                                                Import scribe draft
+                                            </a>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="emr-empty-state">
+                    <h6 class="fw-semibold">No patient matched that search</h6>
+                    <p class="text-muted small mb-3">
+                        Try a phone number, partial surname, or NHF number. If the patient is new, register them first.
+                    </p>
+                    <a href="{% url 'emr:patient_create' %}{% if scribe_session_id %}?scribe={{ scribe_session_id }}{% endif %}" class="btn btn-primary btn-sm">
+                        Register patient
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    {% else %}
+        <div class="mt-4">
+            <h5 class="fw-semibold mb-3">Recently updated charts</h5>
+            <div class="row g-3">
+                {% for patient in recent %}
+                    <div class="col-12 col-lg-4">
+                        <a href="{% url 'emr:patient_detail' patient.pk %}" class="session-row h-100">
+                            <span class="session-icon">
+                                <iconify-icon icon="iconamoon:profile-duotone"></iconify-icon>
+                            </span>
+                            <span class="flex-grow-1">
+                                <span class="d-block fw-semibold">{{ patient.display_name }}</span>
+                                <span class="d-block small text-muted">{{ patient.age_display }} years · {{ patient.parish|default:"Parish not set" }}</span>
+                            </span>
+                        </a>
+                    </div>
+                {% empty %}
+                    <div class="col-12">
+                        <div class="emr-empty-state">
+                            <h6 class="fw-semibold">No patient records yet</h6>
+                            <a href="{% url 'emr:patient_create' %}" class="btn btn-primary btn-sm">Register your first patient</a>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

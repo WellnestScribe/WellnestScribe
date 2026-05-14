@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+
+{% block title %}Encounter · WellNest EMR{% endblock %}
+
+{% block content %}
+<div class="emr-shell">
+    <div class="page-title-box d-flex align-items-start justify-content-between flex-wrap gap-3">
+        <div>
+            <h4 class="mb-1 fw-semibold">Encounter editor</h4>
+            <p class="text-muted small mb-0">
+                {{ patient.display_name }} · {{ patient.age_display }} years · {{ patient.parish|default:"Parish not set" }}
+            </p>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary btn-sm">Back to chart</a>
+            {% if encounter.pk %}
+                <a href="{% url 'emr:prescription_print' encounter.pk %}" class="btn btn-outline-secondary btn-sm">Prescription</a>
+                <a href="{% url 'emr:referral_create' encounter.pk %}" class="btn btn-outline-secondary btn-sm">Referral</a>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if encounter.encounter_status == "signed" %}
+        <div class="alert alert-success small">
+            This encounter is signed and read-only. You can still print the prescription or referral output.
+        </div>
+    {% endif %}
+
+    {% if scribe_session %}
+        <div class="alert alert-info small">
+            This encounter was prefilled from scribe session <strong>{{ scribe_session.display_title }}</strong>.
+            Review every section before signing.
+        </div>
+    {% endif %}
+
+    <datalist id="emr-icd10-catalog">
+        {% for code, label in icd10_catalog %}
+            <option value="{{ code }}">{{ label }}</option>
+        {% endfor %}
+    </datalist>
+    <datalist id="emr-drug-catalog">
+        {% for item in drug_catalog %}
+            <option value="{{ item.generic }}">{{ item.brand }}</option>
+        {% endfor %}
+    </datalist>
+
+    <form method="post" class="row g-4">
+        {% csrf_token %}
+        {% if scribe_session %}
+            <input type="hidden" name="scribe_id" value="{{ scribe_session.pk }}">
+        {% endif %}
+        <div class="col-12 col-xl-8">
+            <fieldset {% if encounter.encounter_status == "signed" %}disabled{% endif %}>
+                <div class="card mb-4">
+                    <div class="card-body p-4">
+                        <h5 class="fw-semibold mb-3">Visit context</h5>
+                        <div class="row g-3">
+                            <div class="col-md-4">{{ form.appointment.label_tag }}{{ form.appointment }}</div>
+                            <div class="col-md-4">{{ form.provider.label_tag }}{{ form.provider }}</div>
+                            <div class="col-md-2">{{ form.encounter_date.label_tag }}{{ form.encounter_date }}</div>
+                            <div class="col-md-2">{{ form.encounter_time.label_tag }}{{ form.encounter_time }}</div>
+                            <div class="col-md-4">{{ form.encounter_type.label_tag }}{{ form.encounter_type }}</div>
+                            <div class="col-md-8">{{ form.scribe_session.label_tag }}{{ form.scribe_session }}</div>
+                            <div class="col-12">{{ form.chief_complaint.label_tag }}{{ form.chief_complaint }}</div>
+                            <div class="col-12">{{ form.history_of_presenting_illness.label_tag }}{{ form.history_of_presenting_illness }}</div>
+                            <div class="col-12">{{ form.review_of_systems.label_tag }}{{ form.review_of_systems }}</div>
+                            <div class="col-12">{{ form.physical_examination.label_tag }}{{ form.physical_examination }}</div>
+                            <div class="col-12">{{ form.assessment_notes.label_tag }}{{ form.assessment_notes }}</div>
+                            <div class="col-12">{{ form.plan_notes.label_tag }}{{ form.plan_notes }}</div>
+                            <div class="col-md-4">{{ form.follow_up_date.label_tag }}{{ form.follow_up_date }}</div>
+                            <div class="col-md-8">{{ form.follow_up_instructions.label_tag }}{{ form.follow_up_instructions }}</div>
+                            <div class="col-md-4">{{ form.sick_leave_start.label_tag }}{{ form.sick_leave_start }}</div>
+                            <div class="col-md-4">{{ form.sick_leave_end.label_tag }}{{ form.sick_leave_end }}</div>
+                            <div class="col-md-4">{{ form.sick_leave_diagnosis.label_tag }}{{ form.sick_leave_diagnosis }}</div>
+                            <div class="col-12">{{ form.herbal_remedies.label_tag }}{{ form.herbal_remedies }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-body p-4">
+                        <h5 class="fw-semibold mb-3">Vitals captured for this encounter</h5>
+                        <div class="row g-3">
+                            <div class="col-md-3">{{ vitals_form.weight_kg.label_tag }}{{ vitals_form.weight_kg }}</div>
+                            <div class="col-md-3">{{ vitals_form.height_cm.label_tag }}{{ vitals_form.height_cm }}</div>
+                            <div class="col-md-3">{{ vitals_form.bp_systolic.label_tag }}{{ vitals_form.bp_systolic }}</div>
+                            <div class="col-md-3">{{ vitals_form.bp_diastolic.label_tag }}{{ vitals_form.bp_diastolic }}</div>
+                            <div class="col-md-3">{{ vitals_form.pulse_bpm.label_tag }}{{ vitals_form.pulse_bpm }}</div>
+                            <div class="col-md-3">{{ vitals_form.respiratory_rate.label_tag }}{{ vitals_form.respiratory_rate }}</div>
+                            <div class="col-md-3">{{ vitals_form.temperature_celsius.label_tag }}{{ vitals_form.temperature_celsius }}</div>
+                            <div class="col-md-3">{{ vitals_form.oxygen_saturation.label_tag }}{{ vitals_form.oxygen_saturation }}</div>
+                            <div class="col-md-4"><label class="form-label">Blood glucose (mmol/L)</label>{{ vitals_form.blood_glucose_mmol }}</div>
+                            <div class="col-md-4">{{ vitals_form.muac_cm.label_tag }}{{ vitals_form.muac_cm }}</div>
+                            <div class="col-md-4">{{ vitals_form.pain_score.label_tag }}{{ vitals_form.pain_score }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-body p-4">
+                        <h5 class="fw-semibold mb-3">Diagnoses</h5>
+                        {{ diagnosis_formset.management_form }}
+                        <div class="table-responsive">
+                            <table class="table align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>ICD-10</th>
+                                        <th>Description</th>
+                                        <th>Status</th>
+                                        <th>Rank</th>
+                                        <th>Notes</th>
+                                        <th>Remove</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for diagnosis_form in diagnosis_formset %}
+                                        <tr>
+                                            <td>{{ diagnosis_form.id }}{{ diagnosis_form.icd10_code }}</td>
+                                            <td>{{ diagnosis_form.icd10_description }}</td>
+                                            <td>{{ diagnosis_form.status }}</td>
+                                            <td>{{ diagnosis_form.diagnosis_rank }}</td>
+                                            <td>{{ diagnosis_form.notes }}</td>
+                                            <td>
+                                                {% if diagnosis_form.instance.pk %}
+                                                    <div class="form-check">{{ diagnosis_form.DELETE }}</div>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-body p-4">
+                        <h5 class="fw-semibold mb-3">Medications / prescriptions</h5>
+                        {{ medication_formset.management_form }}
+                        <div class="table-responsive">
+                            <table class="table align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Drug</th>
+                                        <th>Brand</th>
+                                        <th>Dose</th>
+                                        <th>Route</th>
+                                        <th>Frequency</th>
+                                        <th>Duration</th>
+                                        <th>Instructions</th>
+                                        <th>Remove</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for medication_form in medication_formset %}
+                                        <tr>
+                                            <td>{{ medication_form.id }}{{ medication_form.drug_name_generic }}</td>
+                                            <td>{{ medication_form.drug_name_brand }}</td>
+                                            <td>
+                                                <div class="d-flex gap-2">
+                                                    {{ medication_form.dose_amount }}
+                                                    {{ medication_form.dose_unit }}
+                                                </div>
+                                            </td>
+                                            <td>{{ medication_form.route }}</td>
+                                            <td>{{ medication_form.frequency }}</td>
+                                            <td>{{ medication_form.duration_days }}</td>
+                                            <td>{{ medication_form.pharmacy_instructions }}</td>
+                                            <td>
+                                                {% if medication_form.instance.pk %}
+                                                    <div class="form-check">{{ medication_form.DELETE }}</div>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </fieldset>
+
+            <div class="d-flex gap-2 flex-wrap">
+                {% if encounter.encounter_status != "signed" %}
+                    <button class="btn btn-primary" name="action" value="save">Save draft</button>
+                    <button class="btn btn-success" name="action" value="sign">Sign encounter</button>
+                {% endif %}
+                {% if encounter.pk %}
+                    <a href="{% url 'emr:prescription_print' encounter.pk %}" class="btn btn-outline-secondary">Prescription output</a>
+                    <a href="{% url 'emr:referral_create' encounter.pk %}" class="btn btn-outline-secondary">Referral output</a>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-4">
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Clinical summary</h5>
+                    <div class="small text-muted mb-2">Active problems</div>
+                    {% for item in problem_list %}
+                        <div class="small mb-2">
+                            <strong>{{ item.icd10_code }}</strong> · {{ item.icd10_description|default:item.notes|default:"Diagnosis on file" }}
+                        </div>
+                    {% empty %}
+                        <p class="text-muted small">No active diagnoses yet.</p>
+                    {% endfor %}
+
+                    <hr>
+                    <div class="small text-muted mb-2">Current medications</div>
+                    {% for med in current_medications %}
+                        <div class="small mb-2">
+                            <strong>{{ med.drug_name_generic }}</strong>
+                            {% if med.frequency %} · {{ med.frequency }}{% endif %}
+                        </div>
+                    {% empty %}
+                        <p class="text-muted small">No active medications yet.</p>
+                    {% endfor %}
+
+                    <hr>
+                    <div class="small text-muted mb-2">Allergies</div>
+                    {% for allergy in allergies %}
+                        <div class="small mb-2">
+                            <strong>{{ allergy.allergen_name }}</strong>
+                            {% if allergy.severity %} · {{ allergy.get_severity_display }}{% endif %}
+                        </div>
+                    {% empty %}
+                        <p class="text-muted small">No active allergies documented.</p>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Most recent vitals</h5>
+                    {% if last_vitals %}
+                        <div class="small">
+                            BP {{ last_vitals.bp_systolic|default:"—" }}/{{ last_vitals.bp_diastolic|default:"—" }} mmHg<br>
+                            Pulse {{ last_vitals.pulse_bpm|default:"—" }} bpm<br>
+                            Temp {{ last_vitals.temperature_celsius|default:"—" }} °C<br>
+                            Glucose {{ last_vitals.blood_glucose_mmol|default:"—" }} mmol/L<br>
+                            Recorded {{ last_vitals.recorded_at|date:"M j, g:i A" }}
+                        </div>
+                    {% else %}
+                        <p class="text-muted small mb-0">No previous vitals available.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}

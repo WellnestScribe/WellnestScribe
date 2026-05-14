@@ -1,0 +1,59 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Referral · WellNest</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="{% static 'css/vendor.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/icons.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/app.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/wellnest.css' %}" rel="stylesheet">
+</head>
+<body class="p-4">
+    <div class="emr-print-sheet">
+        <div class="d-flex justify-content-between align-items-start mb-4">
+            <div>
+                <h3 class="fw-semibold mb-1">Referral form</h3>
+                <div class="text-muted small">{{ emr_organisation.name }}</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="window.print()">Print</button>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <strong>Patient:</strong> {{ patient.display_name }}<br>
+                <strong>DOB:</strong> {{ patient.date_of_birth|date:"Y-m-d" }}<br>
+                <strong>NHF:</strong> {{ patient.nhf_card_number|default:"—" }}
+            </div>
+            <div class="col-md-6">
+                <strong>Referral date:</strong> {{ referral.referral_date|date:"Y-m-d" }}<br>
+                <strong>Urgency:</strong> {{ referral.get_urgency_display }}<br>
+                <strong>Receiving facility:</strong> {{ referral.receiving_facility }}
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <strong>Receiving specialty:</strong> {{ referral.receiving_specialty|default:"—" }}
+        </div>
+        <div class="mb-3">
+            <strong>Reason for referral</strong>
+            <div class="border rounded p-3 mt-2">{{ referral.reason|linebreaksbr }}</div>
+        </div>
+        <div class="mb-3">
+            <strong>Clinical summary</strong>
+            <div class="border rounded p-3 mt-2">{{ referral.clinical_summary|linebreaksbr }}</div>
+        </div>
+        <div class="mb-3">
+            <strong>Medication snapshot</strong>
+            <div class="border rounded p-3 mt-2">
+                {% for item in referral.current_medications_snapshot %}
+                    <div>{{ item.generic }} {% if item.dose %}{{ item.dose }} {{ item.unit }}{% endif %} {% if item.frequency %}· {{ item.frequency }}{% endif %}</div>
+                {% empty %}
+                    <div class="text-muted">No active medications recorded.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

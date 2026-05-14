@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}{% if mode == "edit" %}Edit Patient{% else %}Register Patient{% endif %} · WellNest{% endblock %}
+
+{% block content %}
+<div class="emr-shell">
+    <div class="page-title-box d-flex align-items-start justify-content-between flex-wrap gap-3">
+        <div>
+            <h4 class="mb-1 fw-semibold">
+                {% if mode == "edit" %}Edit patient{% else %}Register patient{% endif %}
+            </h4>
+            <p class="text-muted mb-0 small">
+                Capture identifiers, parish-aware address, contacts, and consent in one place.
+            </p>
+        </div>
+        {% if patient %}
+            <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary btn-sm">Back to chart</a>
+        {% endif %}
+    </div>
+
+    {% if scribe_session %}
+        <div class="alert alert-info small">
+            This registration started from scribe session <strong>{{ scribe_session.display_title }}</strong>.
+            After saving, you’ll go straight into an encounter seeded from that note.
+        </div>
+    {% endif %}
+
+    <form method="post" class="row g-4">
+        {% csrf_token %}
+        {% if scribe_session %}
+            <input type="hidden" name="scribe" value="{{ scribe_session.pk }}">
+        {% endif %}
+        <div class="col-12 col-xl-8">
+            <div class="card">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Demographics</h5>
+                    <div class="row g-3">
+                        <div class="col-md-4">{{ form.legal_first_name.label_tag }}{{ form.legal_first_name }}{{ form.legal_first_name.errors }}</div>
+                        <div class="col-md-4">{{ form.legal_last_name.label_tag }}{{ form.legal_last_name }}{{ form.legal_last_name.errors }}</div>
+                        <div class="col-md-4">{{ form.preferred_name.label_tag }}{{ form.preferred_name }}{{ form.preferred_name.errors }}</div>
+                        <div class="col-md-4">{{ form.date_of_birth.label_tag }}{{ form.date_of_birth }}{{ form.date_of_birth.errors }}</div>
+                        <div class="col-md-4">{{ form.sex.label_tag }}{{ form.sex }}{{ form.sex.errors }}</div>
+                        <div class="col-md-4">{{ form.gender_identity.label_tag }}{{ form.gender_identity }}{{ form.gender_identity.errors }}</div>
+                        <div class="col-md-4">{{ form.nhf_card_number.label_tag }}{{ form.nhf_card_number }}{{ form.nhf_card_number.errors }}</div>
+                        <div class="col-md-4">{{ form.trn.label_tag }}{{ form.trn }}{{ form.trn.errors }}</div>
+                        <div class="col-md-4">{{ form.nids_number.label_tag }}{{ form.nids_number }}{{ form.nids_number.errors }}</div>
+                        <div class="col-md-12">{{ form.street_address.label_tag }}{{ form.street_address }}{{ form.street_address.errors }}</div>
+                        <div class="col-md-4">{{ form.community.label_tag }}{{ form.community }}{{ form.community.errors }}</div>
+                        <div class="col-md-4">{{ form.district.label_tag }}{{ form.district }}{{ form.district.errors }}</div>
+                        <div class="col-md-4">{{ form.parish.label_tag }}{{ form.parish }}{{ form.parish.errors }}</div>
+                        <div class="col-md-4">{{ form.phone_primary.label_tag }}{{ form.phone_primary }}{{ form.phone_primary.errors }}</div>
+                        <div class="col-md-4">{{ form.phone_secondary.label_tag }}{{ form.phone_secondary }}{{ form.phone_secondary.errors }}</div>
+                        <div class="col-md-4">
+                            <label class="form-label d-block">{{ form.phone_is_whatsapp.label }}</label>
+                            <div class="form-check">{{ form.phone_is_whatsapp }} <label class="form-check-label" for="{{ form.phone_is_whatsapp.id_for_label }}">WhatsApp enabled</label></div>
+                            {{ form.phone_is_whatsapp.errors }}
+                        </div>
+                        <div class="col-md-6">{{ form.email.label_tag }}{{ form.email }}{{ form.email.errors }}</div>
+                        <div class="col-md-6">{{ form.occupation.label_tag }}{{ form.occupation }}{{ form.occupation.errors }}</div>
+                        <div class="col-md-4">{{ form.ethnicity.label_tag }}{{ form.ethnicity }}{{ form.ethnicity.errors }}</div>
+                        <div class="col-md-4">{{ form.nationality.label_tag }}{{ form.nationality }}{{ form.nationality.errors }}</div>
+                        <div class="col-md-4">{{ form.language_preference.label_tag }}{{ form.language_preference }}{{ form.language_preference.errors }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Family, insurer, and consent</h5>
+                    <div class="row g-3">
+                        <div class="col-md-6">{{ form.emergency_contact_name.label_tag }}{{ form.emergency_contact_name }}{{ form.emergency_contact_name.errors }}</div>
+                        <div class="col-md-3">{{ form.emergency_contact_relationship.label_tag }}{{ form.emergency_contact_relationship }}{{ form.emergency_contact_relationship.errors }}</div>
+                        <div class="col-md-3">{{ form.emergency_contact_phone.label_tag }}{{ form.emergency_contact_phone }}{{ form.emergency_contact_phone.errors }}</div>
+                        <div class="col-md-6">{{ form.next_of_kin_name.label_tag }}{{ form.next_of_kin_name }}{{ form.next_of_kin_name.errors }}</div>
+                        <div class="col-md-6">{{ form.next_of_kin_relationship.label_tag }}{{ form.next_of_kin_relationship }}{{ form.next_of_kin_relationship.errors }}</div>
+                        <div class="col-md-4">{{ form.nhf_card_programme.label_tag }}{{ form.nhf_card_programme }}{{ form.nhf_card_programme.errors }}</div>
+                        <div class="col-md-4">{{ form.private_insurer_name.label_tag }}{{ form.private_insurer_name }}{{ form.private_insurer_name.errors }}</div>
+                        <div class="col-md-4">{{ form.private_policy_number.label_tag }}{{ form.private_policy_number }}{{ form.private_policy_number.errors }}</div>
+                        <div class="col-md-4">{{ form.blood_group.label_tag }}{{ form.blood_group }}{{ form.blood_group.errors }}</div>
+                        <div class="col-md-8">{{ form.herbal_history.label_tag }}{{ form.herbal_history }}{{ form.herbal_history.errors }}</div>
+                        <div class="col-md-4">
+                            <label class="form-label d-block">{{ form.consent_given.label }}</label>
+                            <div class="form-check">{{ form.consent_given }} <label class="form-check-label" for="{{ form.consent_given.id_for_label }}">Consent captured</label></div>
+                            {{ form.consent_given.errors }}
+                        </div>
+                        <div class="col-md-4">{{ form.consent_date.label_tag }}{{ form.consent_date }}{{ form.consent_date.errors }}</div>
+                        <div class="col-md-4">{{ form.consent_method.label_tag }}{{ form.consent_method }}{{ form.consent_method.errors }}</div>
+                        <div class="col-md-2">
+                            <label class="form-label d-block">{{ form.deceased.label }}</label>
+                            <div class="form-check">{{ form.deceased }} <label class="form-check-label" for="{{ form.deceased.id_for_label }}">Yes</label></div>
+                            {{ form.deceased.errors }}
+                        </div>
+                        <div class="col-md-4">{{ form.deceased_date.label_tag }}{{ form.deceased_date }}{{ form.deceased_date.errors }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-4">
+            <div class="card">
+                <div class="card-body p-4">
+                    <h6 class="fw-semibold mb-2">Design notes</h6>
+                    <p class="text-muted small mb-3">
+                        Keep the front-desk flow tight: required identifiers first, then address, then contacts, then consent.
+                    </p>
+                    <div class="alert alert-light border small mb-0">
+                        Use NHF card number, TRN, parish, district, and community instead of US-centric address assumptions.
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-grid gap-2 mt-3">
+                <button class="btn btn-primary">Save patient</button>
+                {% if patient %}
+                    <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary">Cancel</a>
+                {% else %}
+                    <a href="{% url 'emr:patient_search' %}" class="btn btn-outline-secondary">Cancel</a>
+                {% endif %}
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}

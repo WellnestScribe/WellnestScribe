@@ -1,0 +1,71 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Prescription · WellNest</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="{% static 'css/vendor.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/icons.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/app.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/wellnest.css' %}" rel="stylesheet">
+</head>
+<body class="p-4">
+    <div class="emr-print-sheet">
+        <div class="d-flex justify-content-between align-items-start mb-4">
+            <div>
+                <h3 class="fw-semibold mb-1">Prescription</h3>
+                <div class="text-muted small">{{ emr_organisation.name }}</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="window.print()">Print</button>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <strong>Patient:</strong> {{ patient.display_name }}<br>
+                <strong>DOB:</strong> {{ patient.date_of_birth|date:"Y-m-d" }}<br>
+                <strong>NHF:</strong> {{ patient.nhf_card_number|default:"—" }}
+            </div>
+            <div class="col-md-6">
+                <strong>Date:</strong> {{ encounter.encounter_date|date:"Y-m-d" }}<br>
+                <strong>Prescriber:</strong> {{ encounter.provider.get_full_name|default:encounter.provider.username|default:"—" }}<br>
+                <strong>Chief complaint:</strong> {{ encounter.chief_complaint|default:"—" }}
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-bordered align-middle">
+                <thead>
+                    <tr>
+                        <th>Medication</th>
+                        <th>Dose</th>
+                        <th>Route</th>
+                        <th>Frequency</th>
+                        <th>Duration</th>
+                        <th>Instructions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for med in medications %}
+                        <tr>
+                            <td>
+                                <strong>{{ med.drug_name_generic }}</strong>
+                                {% if med.drug_name_brand %}<div class="small text-muted">{{ med.drug_name_brand }}</div>{% endif %}
+                            </td>
+                            <td>{% if med.dose_amount %}{{ med.dose_amount }} {{ med.dose_unit }}{% else %}—{% endif %}</td>
+                            <td>{{ med.route|default:"—" }}</td>
+                            <td>{{ med.frequency|default:"—" }}</td>
+                            <td>{% if med.duration_days %}{{ med.duration_days }} days{% else %}—{% endif %}</td>
+                            <td>{{ med.pharmacy_instructions|default:"—" }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted">No medications entered for this encounter.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>
