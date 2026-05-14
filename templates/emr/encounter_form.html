@@ -33,6 +33,80 @@
         </div>
     {% endif %}
 
+    {% if scribe_import and scribe_import.has_structured_content %}
+        <div class="card mb-4 border-info-subtle">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+                    <div>
+                        <h5 class="fw-semibold mb-1">Auto-detected from the scribe transcript</h5>
+                        <p class="text-muted small mb-0">
+                            These fields were extracted from the completed transcript and loaded into the form for review.
+                        </p>
+                    </div>
+                    <span class="badge text-bg-info">Review before signing</span>
+                </div>
+
+                <div class="row g-4 mt-1">
+                    {% if scribe_import.vitals_preview %}
+                        <div class="col-12 col-xl-4">
+                            <div class="small text-muted mb-2">Vitals</div>
+                            {% for item in scribe_import.vitals_preview %}
+                                <div class="small mb-1">
+                                    <strong>{{ item.label }}</strong>: {{ item.value }}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    {% if scribe_import.diagnosis_preview %}
+                        <div class="col-12 col-xl-4">
+                            <div class="small text-muted mb-2">Diagnoses</div>
+                            {% for item in scribe_import.diagnosis_preview %}
+                                <div class="small mb-2">
+                                    <strong>{{ item.label }}</strong> - {{ item.value }}
+                                    {% if item.notes %}
+                                        <div class="text-muted">{{ item.notes }}</div>
+                                    {% endif %}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    {% if scribe_import.medication_preview %}
+                        <div class="col-12 col-xl-4">
+                            <div class="small text-muted mb-2">Medications</div>
+                            {% for item in scribe_import.medication_preview %}
+                                <div class="small mb-2">
+                                    <strong>{{ item.label }}</strong>
+                                    {% if item.value %} - {{ item.value }}{% endif %}
+                                    {% if item.notes %}
+                                        <div class="text-muted">{{ item.notes }}</div>
+                                    {% endif %}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                {% if scribe_import.flags %}
+                    <hr>
+                    <div class="small text-muted mb-2">Review flags</div>
+                    {% for item in scribe_import.flags %}
+                        <div class="small text-warning mb-1">{{ item }}</div>
+                    {% endfor %}
+                {% endif %}
+
+                {% if scribe_import.key_phrases %}
+                    <hr>
+                    <div class="small text-muted mb-2">Key phrases heard</div>
+                    {% for phrase in scribe_import.key_phrases|slice:":6" %}
+                        <div class="small mb-1">{{ phrase }}</div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+
     <datalist id="emr-icd10-catalog">
         {% for code, label in icd10_catalog %}
             <option value="{{ code }}">{{ label }}</option>

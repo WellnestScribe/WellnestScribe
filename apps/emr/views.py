@@ -19,15 +19,15 @@ from scribe.models import ScribeSession
 from .forms import (
     AllergyForm,
     AppointmentForm,
-    DiagnosisFormSet,
     EncounterForm,
-    MedicationFormSet,
     OrganisationForm,
     PatientForm,
     ReferralForm,
     VitalForm,
     common_code_catalog,
     common_drug_catalog,
+    diagnosis_formset_class,
+    medication_formset_class,
 )
 from .models import (
     Appointment,
@@ -44,6 +44,7 @@ from .services.search import (
     active_problem_list_for_patient,
     search_patients,
 )
+from .services.scribe_import import build_scribe_import_bundle
 
 
 def _base_context(request):
@@ -67,22 +68,6 @@ def _scribe_queryset_for_user(user):
         doctor=user,
         status__in=["review", "finalized"],
     ).order_by("-created_at")
-
-
-def _prefill_from_scribe(session: ScribeSession) -> dict:
-    note = getattr(session, "note", None)
-    if note is None:
-        return {
-            "chief_complaint": session.chief_complaint,
-        }
-    return {
-        "chief_complaint": session.chief_complaint or note.subjective[:120],
-        "history_of_presenting_illness": note.subjective,
-        "physical_examination": note.objective,
-        "assessment_notes": note.assessment,
-        "plan_notes": note.plan or note.edited_note or note.full_note,
-        "scribe_session": session,
-    }
 
 
 def _prefill_patient_from_scribe(session: ScribeSession) -> dict:
@@ -543,9 +528,14 @@ def _encounter_editor(request, *, patient_pk, encounter_pk=None):
     scribe_id = request.GET.get("scribe") or request.POST.get("scribe_id")
     scribe_session = None
     initial = {}
+    scribe_import = None
     if is_new and scribe_id:
         scribe_session = get_object_or_404(_scribe_queryset_for_user(request.user), pk=scribe_id)
-        initial.update(_prefill_from_scribe(scribe_session))
+        scribe_import = build_scribe_import_bundle(
+            scribe_session,
+            encounter_date=encounter.encounter_date,
+        )
+        initial.update(scribe_import.encounter_initial)
 
     provider_queryset = user_choices_for_organisation(emr.organisation)
     scribe_queryset = _scribe_queryset_for_user(request.user)
@@ -563,9 +553,33 @@ def _encounter_editor(request, *, patient_pk, encounter_pk=None):
     vital_instance = getattr(encounter, "vitals", None) if encounter.pk else None
     if vital_instance is None:
         vital_instance = Vital(organisation=emr.organisation, patient=patient)
-    vitals_form = VitalForm(request.POST or None, instance=vital_instance, prefix="vitals")
-    diagnosis_formset = DiagnosisFormSet(request.POST or None, instance=encounter, prefix="diagnosis")
-    medication_formset = MedicationFormSet(request.POST or None, instance=encounter, prefix="medication")
+    vitals_initial = scribe_import.vitals_initial if request.method != "POST" and scribe_import else None
+    vitals_form = VitalForm(
+        request.POST or None,
+        instance=vital_instance,
+        prefix="vitals",
+        initial=vitals_initial,
+    )
+
+    diagnosis_initial = scribe_import.diagnosis_initial if request.method != "POST" and scribe_import else None
+    medication_initial = scribe_import.medication_initial if request.method != "POST" and scribe_import else None
+
+    diagnosis_formset = diagnosis_formset_class(
+        extra_forms=len(diagnosis_initial or []),
+    )(
+        request.POST or None,
+        instance=encounter,
+        prefix="diagnosis",
+        initial=diagnosis_initial,
+    )
+    medication_formset = medication_formset_class(
+        extra_forms=len(medication_initial or []),
+    )(
+        request.POST or None,
+        instance=encounter,
+        prefix="medication",
+        initial=medication_initial,
+    )
 
     if request.method == "POST":
         action = request.POST.get("action", "save")
@@ -651,6 +665,7 @@ def _encounter_editor(request, *, patient_pk, encounter_pk=None):
             "allergies": patient.allergies.filter(status="active"),
             "last_vitals": patient.vitals.order_by("-recorded_at").first(),
             "scribe_session": scribe_session,
+            "scribe_import": scribe_import,
         },
     )
 

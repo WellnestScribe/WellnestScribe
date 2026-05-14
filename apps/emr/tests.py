@@ -1,10 +1,13 @@
+from datetime import date
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
 from accounts.models import DoctorProfile
 from emr.models import AuditLog, OrganisationMembership, Patient
-from scribe.models import ScribeSession
+from emr.services.scribe_import import build_scribe_import_bundle
+from scribe.models import SOAPNote, ScribeSession
 
 
 class EMRSmokeTests(TestCase):
@@ -106,3 +109,94 @@ class EMRSmokeTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "HTN follow-up")
+
+    def test_scribe_import_bundle_extracts_structured_fields(self):
+        session = ScribeSession.objects.create(
+            doctor=self.user,
+            title="Chronic disease follow-up",
+            chief_complaint="BP review",
+            transcript=(
+                "Blood pressure 140 over 90. Pulse 78. Temperature 37.2 celsius. "
+                "Oxygen saturation 98 percent. Blood sugar 126 mg/dL. "
+                "Weight 70 kg. Height 170 cm. Pain score 3 out of 10. "
+                "Follow up in 2 weeks. Give 3 days sick leave. "
+                "Patient uses cerasee tea."
+            ),
+            active_conditions="htn,dm",
+            status="review",
+            note_format="soap",
+            length_mode="normal",
+        )
+        SOAPNote.objects.create(
+            session=session,
+            subjective="Patient is here for chronic follow-up and denies chest pain.",
+            objective="Blood pressure 140 over 90. Pulse 78. SpO2 98 percent.",
+            assessment="Essential hypertension. Type 2 diabetes mellitus without complications.",
+            plan="Continue Amlodipine 5 mg oral once daily for 30 days.",
+        )
+
+        bundle = build_scribe_import_bundle(session, encounter_date=date(2026, 5, 13))
+
+        self.assertEqual(bundle.encounter_initial["encounter_type"], "chronic_followup")
+        self.assertEqual(bundle.encounter_initial["follow_up_date"].isoformat(), "2026-05-27")
+        self.assertEqual(bundle.encounter_initial["sick_leave_start"].isoformat(), "2026-05-13")
+        self.assertEqual(bundle.encounter_initial["sick_leave_end"].isoformat(), "2026-05-15")
+        self.assertIn("cerasee tea", bundle.encounter_initial["herbal_remedies"].lower())
+        self.assertEqual(bundle.vitals_initial["bp_systolic"], 140)
+        self.assertEqual(bundle.vitals_initial["bp_diastolic"], 90)
+        self.assertEqual(str(bundle.vitals_initial["blood_glucose_mmol"]), "7.0")
+        self.assertEqual(bundle.diagnosis_initial[0]["icd10_code"], "I10")
+        self.assertEqual(bundle.medication_initial[0]["drug_name_generic"], "Amlodipine")
+        self.assertEqual(str(bundle.medication_initial[0]["dose_amount"]), "5")
+        self.assertIn("converted to mmol/L", " ".join(bundle.flags))
+
+    def test_encounter_create_prefills_vitals_diagnoses_and_medications_from_scribe(self):
+        self.client.get(reverse("emr:dashboard"))
+        membership = self.user.organisation_memberships.get(is_default=True)
+        patient = Patient.objects.create(
+            organisation=membership.organisation,
+            legal_first_name="Tara",
+            legal_last_name="Brown",
+            date_of_birth="1988-03-10",
+            sex="female",
+            created_by=self.user,
+            updated_by=self.user,
+        )
+        session = ScribeSession.objects.create(
+            doctor=self.user,
+            title="Diabetes review",
+            chief_complaint="Blood sugar review",
+            transcript=(
+                "Blood pressure 138 over 84. Pulse 76. Glucose 7.4 mmol. "
+                "Continue Metformin 500 mg oral twice daily for 30 days. "
+                "Follow up in 1 month."
+            ),
+            active_conditions="dm",
+            status="review",
+            note_format="soap",
+            length_mode="normal",
+        )
+        SOAPNote.objects.create(
+            session=session,
+            subjective="Patient attends for diabetes follow-up.",
+            objective="Pulse 76. Blood pressure 138 over 84.",
+            assessment="Type 2 diabetes mellitus without complications.",
+            plan="Continue Metformin 500 mg oral twice daily for 30 days.",
+        )
+
+        response = self.client.get(
+            reverse("emr:encounter_create", args=[patient.pk]) + f"?scribe={session.pk}"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["vitals_form"].initial["bp_systolic"], 138)
+        self.assertEqual(str(response.context["vitals_form"].initial["blood_glucose_mmol"]), "7.4")
+        self.assertEqual(
+            response.context["diagnosis_formset"].forms[0].initial["icd10_code"],
+            "E11.9",
+        )
+        self.assertEqual(
+            response.context["medication_formset"].forms[0].initial["drug_name_generic"],
+            "Metformin",
+        )
+        self.assertContains(response, "Auto-detected from the scribe transcript")

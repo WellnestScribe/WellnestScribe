@@ -306,21 +306,28 @@ class OrganisationForm(BootstrapModelForm):
         }
 
 
-DiagnosisFormSet = inlineformset_factory(
-    Encounter,
-    Diagnosis,
-    form=DiagnosisForm,
-    extra=2,
-    can_delete=True,
-)
+def diagnosis_formset_class(*, extra_forms: int = 2):
+    return inlineformset_factory(
+        Encounter,
+        Diagnosis,
+        form=DiagnosisForm,
+        extra=max(2, extra_forms),
+        can_delete=True,
+    )
 
-MedicationFormSet = inlineformset_factory(
-    Encounter,
-    Medication,
-    form=MedicationForm,
-    extra=3,
-    can_delete=True,
-)
+
+def medication_formset_class(*, extra_forms: int = 3):
+    return inlineformset_factory(
+        Encounter,
+        Medication,
+        form=MedicationForm,
+        extra=max(3, extra_forms),
+        can_delete=True,
+    )
+
+
+DiagnosisFormSet = diagnosis_formset_class()
+MedicationFormSet = medication_formset_class()
 
 
 def common_code_catalog():
