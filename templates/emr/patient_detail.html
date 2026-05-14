@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}{{ patient.display_name }} · WellNest EMR{% endblock %}
+
+{% block content %}
+<div class="emr-shell">
+    <div class="page-title-box d-flex align-items-start justify-content-between flex-wrap gap-3">
+        <div>
+            <h4 class="mb-1 fw-semibold">{{ patient.display_name }}</h4>
+            <p class="text-muted mb-0 small">
+                {{ patient.age_display }} years · {{ patient.get_sex_display }} · {{ patient.parish|default:"Parish not set" }}
+            </p>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{% url 'emr:patient_edit' patient.pk %}" class="btn btn-outline-secondary btn-sm">Edit details</a>
+            <a href="{% url 'emr:appointment_create' patient.pk %}" class="btn btn-outline-secondary btn-sm">Add to worklist</a>
+            <a href="{% url 'emr:encounter_create' patient.pk %}" class="btn btn-primary btn-sm">New encounter</a>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-12 col-xl-8">
+            <div class="row g-3 mb-4">
+                <div class="col-md-6 col-xl-4">
+                    <div class="card emr-summary-card">
+                        <div class="card-body">
+                            <div class="emr-summary-label">Problem list</div>
+                            {% for item in problem_list %}
+                                <div class="small mt-2">
+                                    <strong>{{ item.icd10_code }}</strong> · {{ item.icd10_description|default:item.notes|default:"Diagnosis recorded" }}
+                                </div>
+                            {% empty %}
+                                <div class="small text-muted mt-2">No active diagnoses yet.</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-4">
+                    <div class="card emr-summary-card">
+                        <div class="card-body">
+                            <div class="emr-summary-label">Current medications</div>
+                            {% for med in active_medications %}
+                                <div class="small mt-2">
+                                    <strong>{{ med.drug_name_generic }}</strong>
+                                    {% if med.dose_amount %} {{ med.dose_amount }} {{ med.dose_unit }}{% endif %}
+                                    {% if med.frequency %} · {{ med.frequency }}{% endif %}
+                                </div>
+                            {% empty %}
+                                <div class="small text-muted mt-2">No active medications yet.</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-12 col-xl-4">
+                    <div class="card emr-summary-card">
+                        <div class="card-body">
+                            <div class="emr-summary-label">Last vitals</div>
+                            {% if last_vitals %}
+                                <div class="small mt-2">
+                                    BP {{ last_vitals.bp_systolic|default:"—" }}/{{ last_vitals.bp_diastolic|default:"—" }} mmHg<br>
+                                    Pulse {{ last_vitals.pulse_bpm|default:"—" }} bpm<br>
+                                    Glucose {{ last_vitals.blood_glucose_mmol|default:"—" }} mmol/L
+                                </div>
+                            {% else %}
+                                <div class="small text-muted mt-2">No vitals recorded yet.</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Encounter history</h5>
+                    {% if recent_encounters %}
+                        <div class="table-responsive">
+                            <table class="table align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Type</th>
+                                        <th>Chief complaint</th>
+                                        <th>Status</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for encounter in recent_encounters %}
+                                        <tr>
+                                            <td>{{ encounter.encounter_date|date:"M j, Y" }}</td>
+                                            <td>{{ encounter.get_encounter_type_display }}</td>
+                                            <td>{{ encounter.chief_complaint|default:"—"|truncatechars:80 }}</td>
+                                            <td>{{ encounter.get_encounter_status_display }}</td>
+                                            <td class="text-end">
+                                                <a href="{% url 'emr:encounter_edit' patient.pk encounter.pk %}" class="btn btn-outline-secondary btn-sm">Open</a>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="emr-empty-state">
+                            <h6 class="fw-semibold">No encounters yet</h6>
+                            <a href="{% url 'emr:encounter_create' patient.pk %}" class="btn btn-primary btn-sm">Start first encounter</a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Upcoming visits</h5>
+                    {% if upcoming_appointments %}
+                        <div class="d-flex flex-column gap-2">
+                            {% for appointment in upcoming_appointments %}
+                                <div class="emr-worklist-card">
+                                    <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap">
+                                        <div>
+                                            <strong>{{ appointment.scheduled_for|date:"D, M j · g:i A" }}</strong>
+                                            <div class="small text-muted">{{ appointment.get_encounter_type_display }} · {{ appointment.get_status_display }}</div>
+                                        </div>
+                                        <a href="{% url 'emr:triage' appointment.pk %}" class="btn btn-outline-secondary btn-sm">Open triage</a>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted small mb-0">No upcoming visits scheduled.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-4">
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Patient identity</h5>
+                    <div class="small">
+                        <div><strong>NHF:</strong> {{ patient.nhf_card_number|default:"—" }}</div>
+                        <div><strong>TRN:</strong> {{ patient.trn|default:"—" }}</div>
+                        <div><strong>Phone:</strong> {{ patient.phone_primary|default:"—" }}</div>
+                        <div><strong>District:</strong> {{ patient.district|default:"—" }}</div>
+                        <div><strong>Community:</strong> {{ patient.community|default:"—" }}</div>
+                        <div><strong>Language:</strong> {{ patient.language_preference }}</div>
+                        <div class="mt-2"><strong>Herbal history:</strong> {{ patient.herbal_history|default:"None documented" }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <h5 class="fw-semibold mb-0">Allergies</h5>
+                    </div>
+                    {% for allergy in patient.allergies.all %}
+                        <div class="small mb-2">
+                            <strong>{{ allergy.allergen_name }}</strong>
+                            {% if allergy.severity %}<span class="text-muted">· {{ allergy.get_severity_display }}</span>{% endif %}
+                            {% if allergy.reaction_type %}<div class="text-muted">{{ allergy.reaction_type }}</div>{% endif %}
+                        </div>
+                    {% empty %}
+                        <p class="text-muted small">No allergies documented.</p>
+                    {% endfor %}
+
+                    <hr>
+                    <form method="post" class="row g-2">
+                        {% csrf_token %}
+                        <div class="col-12">{{ allergy_form.allergen_name.label_tag }}{{ allergy_form.allergen_name }}</div>
+                        <div class="col-md-6">{{ allergy_form.allergen_type.label_tag }}{{ allergy_form.allergen_type }}</div>
+                        <div class="col-md-6">{{ allergy_form.severity.label_tag }}{{ allergy_form.severity }}</div>
+                        <div class="col-12">{{ allergy_form.reaction_type.label_tag }}{{ allergy_form.reaction_type }}</div>
+                        <div class="col-md-6">{{ allergy_form.status.label_tag }}{{ allergy_form.status }}</div>
+                        <div class="col-md-6">{{ allergy_form.onset_date.label_tag }}{{ allergy_form.onset_date }}</div>
+                        <div class="col-12">{{ allergy_form.notes.label_tag }}{{ allergy_form.notes }}</div>
+                        <div class="col-12"><button class="btn btn-outline-secondary btn-sm">Add allergy</button></div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Import from scribe</h5>
+                    <p class="text-muted small">
+                        Pick a recent note to open a new encounter already seeded with the dictated draft.
+                    </p>
+                    <div class="d-flex flex-column gap-2">
+                        {% for session in recent_scribe_sessions %}
+                            <a href="{% url 'emr:encounter_create' patient.pk %}?scribe={{ session.pk }}" class="btn btn-outline-secondary btn-sm text-start">
+                                <strong class="d-block">{{ session.display_title }}</strong>
+                                <span class="small text-muted">{{ session.created_at|date:"M j · g:i A" }}</span>
+                            </a>
+                        {% empty %}
+                            <p class="text-muted small mb-0">No recent scribe sessions available.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

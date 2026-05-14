@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Organisation Settings · WellNest{% endblock %}
+
+{% block content %}
+<div class="emr-shell">
+    <div class="page-title-box">
+        <h4 class="mb-1 fw-semibold">Organisation settings</h4>
+        <p class="text-muted small mb-0">
+            Clinic profile, member roles, and recent audit activity for {{ emr_organisation.name }}.
+        </p>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-12 col-xl-7">
+            <div class="card">
+                <div class="card-body p-4">
+                    <form method="post" class="row g-3">
+                        {% csrf_token %}
+                        <div class="col-md-6">{{ form.name.label_tag }}{{ form.name }}</div>
+                        <div class="col-md-6">{{ form.organisation_type.label_tag }}{{ form.organisation_type }}</div>
+                        <div class="col-md-4">{{ form.parish.label_tag }}{{ form.parish }}</div>
+                        <div class="col-md-4">{{ form.phone.label_tag }}{{ form.phone }}</div>
+                        <div class="col-md-4">{{ form.email.label_tag }}{{ form.email }}</div>
+                        <div class="col-md-8">{{ form.address.label_tag }}{{ form.address }}</div>
+                        <div class="col-md-4">{{ form.nhf_facility_code.label_tag }}{{ form.nhf_facility_code }}</div>
+                        <div class="col-md-4">{{ form.subscription_tier.label_tag }}{{ form.subscription_tier }}</div>
+                        <div class="col-md-4">{{ form.subscription_status.label_tag }}{{ form.subscription_status }}</div>
+                        <div class="col-md-2">{{ form.billing_currency.label_tag }}{{ form.billing_currency }}</div>
+                        <div class="col-md-2">
+                            <label class="form-label d-block">{{ form.is_active.label }}</label>
+                            <div class="form-check">{{ form.is_active }} <label class="form-check-label" for="{{ form.is_active.id_for_label }}">Active</label></div>
+                        </div>
+                        <div class="col-12">
+                            <button class="btn btn-primary">Save settings</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-5">
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Organisation members</h5>
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Role</th>
+                                    <th>Default</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for membership in memberships %}
+                                    <tr>
+                                        <td>{{ membership.user.username }}</td>
+                                        <td>{{ membership.get_role_display }}</td>
+                                        <td>{% if membership.is_default %}Yes{% else %}—{% endif %}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-muted small mt-3 mb-0">
+                        Use Django admin for full user invitation and role reassignment workflows.
+                    </p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Recent audit activity</h5>
+                    <div class="d-flex flex-column gap-3">
+                        {% for event in audit_events %}
+                            <div class="small">
+                                <div class="fw-semibold">{{ event.action|title }} · {{ event.resource_type|default:"resource" }}</div>
+                                <div class="text-muted">{{ event.detail|default:"No detail" }}</div>
+                                <div class="text-muted">{{ event.created_at|date:"M j, g:i A" }}{% if event.user %} · {{ event.user.username }}{% endif %}</div>
+                            </div>
+                        {% empty %}
+                            <p class="text-muted small mb-0">No audit events yet.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

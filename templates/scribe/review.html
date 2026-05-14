@@ -233,6 +233,10 @@
                             <iconify-icon icon="iconamoon:scan-duotone" class="me-1 align-middle"></iconify-icon>
                             Share to desktop (QR)
                         </button>
+                        <a href="{% url 'emr:scribe_intake' session.pk %}" class="btn btn-outline-secondary">
+                            <iconify-icon icon="iconamoon:files-duotone" class="me-1 align-middle"></iconify-icon>
+                            Send to EMR
+                        </a>
                         {% if doctor_profile.suggestive_assist %}
                         <button type="button" class="btn btn-outline-secondary" id="improveBtn"
                                 title="For interns / juniors. Returns 3-6 bullets of things a more senior clinician would have added. Off by default; toggle 'Suggestive assist' on the record screen to enable.">

@@ -5,6 +5,7 @@ and the dismiss attribute can interfere with click handling on desktop.
 {% endcomment %}
 {% url 'scribe:record' as record_url %}
 {% url 'scribe:history' as history_url %}
+{% url 'emr:dashboard' as emr_url %}
 {% url 'accounts:profile' as profile_url %}
 
 <li class="menu-title">Workspace</li>
@@ -24,6 +25,15 @@ and the dismiss attribute can interfere with click handling on desktop.
             <iconify-icon icon="iconamoon:folder-duotone"></iconify-icon>
         </span>
         <span class="nav-text">Sessions</span>
+    </a>
+</li>
+
+<li class="nav-item">
+    <a class="nav-link {% if request.path|slice:":5" == '/emr/' %}active{% endif %}" href="{{ emr_url }}">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:files-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">EMR</span>
     </a>
 </li>
 

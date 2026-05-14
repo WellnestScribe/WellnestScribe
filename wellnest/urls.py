@@ -20,6 +20,7 @@ urlpatterns = [
     path("service-worker.js", service_worker_view, name="service_worker"),
     path("admin/", admin.site.urls),
     path("accounts/", include("accounts.urls")),
+    path("emr/", include("emr.urls")),
     path("scribe/", include("scribe.urls")),
 ]
 

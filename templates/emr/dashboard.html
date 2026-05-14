@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block title %}EMR Dashboard · WellNest{% endblock %}
+
+{% block content %}
+<div class="emr-shell">
+    <div class="page-title-box d-flex align-items-start justify-content-between flex-wrap gap-3">
+        <div>
+            <h4 class="mb-1 fw-semibold">EMR dashboard</h4>
+            <p class="text-muted mb-0 small">
+                {{ emr_organisation.name }} · {{ today|date:"l, F j, Y" }}
+            </p>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{% url 'emr:patient_search' %}" class="btn btn-outline-secondary btn-sm">Find patient</a>
+            <a href="{% url 'emr:patient_create' %}" class="btn btn-primary btn-sm">Register patient</a>
+            {% if emr_membership.is_admin %}
+                <a href="{% url 'emr:settings' %}" class="btn btn-outline-secondary btn-sm">Clinic settings</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-2">
+            <div class="card emr-stat-card">
+                <div class="card-body">
+                    <div class="emr-stat-label">Today's visits</div>
+                    <div class="emr-stat-value">{{ stats.today }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-2">
+            <div class="card emr-stat-card">
+                <div class="card-body">
+                    <div class="emr-stat-label">Checked in</div>
+                    <div class="emr-stat-value">{{ stats.checked_in }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-2">
+            <div class="card emr-stat-card">
+                <div class="card-body">
+                    <div class="emr-stat-label">In triage</div>
+                    <div class="emr-stat-value">{{ stats.triage }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-2">
+            <div class="card emr-stat-card">
+                <div class="card-body">
+                    <div class="emr-stat-label">With doctor</div>
+                    <div class="emr-stat-value">{{ stats.with_doctor }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-2">
+            <div class="card emr-stat-card">
+                <div class="card-body">
+                    <div class="emr-stat-label">Completed</div>
+                    <div class="emr-stat-value">{{ stats.complete }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-2">
+            <div class="card emr-stat-card">
+                <div class="card-body">
+                    <div class="emr-stat-label">Patients</div>
+                    <div class="emr-stat-value">{{ stats.patients }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-12 col-xl-8">
+            <div class="card">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+                        <div>
+                            <h5 class="fw-semibold mb-1">Daily worklist</h5>
+                            <p class="text-muted small mb-0">
+                                Front desk, triage, and doctor flow in one place.
+                            </p>
+                        </div>
+                    </div>
+
+                    {% if appointments %}
+                        <div class="d-flex flex-column gap-3">
+                            {% for appointment in appointments %}
+                                <div class="emr-worklist-card">
+                                    <div class="d-flex align-items-start justify-content-between flex-wrap gap-3">
+                                        <div>
+                                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                                <h6 class="mb-0 fw-semibold">{{ appointment.patient.display_name }}</h6>
+                                                <span class="badge rounded-pill bg-primary-subtle text-primary">
+                                                    {{ appointment.get_encounter_type_display }}
+                                                </span>
+                                                <span class="badge rounded-pill bg-light text-dark border">
+                                                    {{ appointment.get_status_display }}
+                                                </span>
+                                            </div>
+                                            <div class="small text-muted mt-1">
+                                                {{ appointment.scheduled_for|date:"g:i A" }}
+                                                {% if appointment.queue_number %}· Queue {{ appointment.queue_number }}{% endif %}
+                                                {% if appointment.notes %}· {{ appointment.notes|truncatechars:80 }}{% endif %}
+                                            </div>
+                                        </div>
+                                        <div class="d-flex gap-2 flex-wrap">
+                                            <a href="{% url 'emr:patient_detail' appointment.patient.pk %}" class="btn btn-outline-secondary btn-sm">
+                                                Open chart
+                                            </a>
+                                            <a href="{% url 'emr:triage' appointment.pk %}" class="btn btn-outline-secondary btn-sm">
+                                                Vitals
+                                            </a>
+                                            {% with latest_encounter=appointment.encounters.all|first %}
+                                                {% if latest_encounter %}
+                                                    <a href="{% url 'emr:encounter_edit' appointment.patient.pk latest_encounter.pk %}" class="btn btn-primary btn-sm">
+                                                        Open encounter
+                                                    </a>
+                                                {% else %}
+                                                    <a href="{% url 'emr:encounter_create' appointment.patient.pk %}?appointment={{ appointment.pk }}" class="btn btn-primary btn-sm">
+                                                        Start encounter
+                                                    </a>
+                                                {% endif %}
+                                            {% endwith %}
+                                        </div>
+                                    </div>
+
+                                    <div class="d-flex gap-2 flex-wrap mt-3">
+                                        {% if appointment.status != "checked_in" %}
+                                            <form method="post" action="{% url 'emr:appointment_status' appointment.pk %}">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="status" value="checked_in">
+                                                <button class="btn btn-light btn-sm border">Check in</button>
+                                            </form>
+                                        {% endif %}
+                                        {% if appointment.status != "triage" %}
+                                            <form method="post" action="{% url 'emr:appointment_status' appointment.pk %}">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="status" value="triage">
+                                                <button class="btn btn-light btn-sm border">Move to triage</button>
+                                            </form>
+                                        {% endif %}
+                                        {% if appointment.status != "with_doctor" %}
+                                            <form method="post" action="{% url 'emr:appointment_status' appointment.pk %}">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="status" value="with_doctor">
+                                                <button class="btn btn-light btn-sm border">Ready for doctor</button>
+                                            </form>
+                                        {% endif %}
+                                        {% if appointment.status != "complete" %}
+                                            <form method="post" action="{% url 'emr:appointment_status' appointment.pk %}">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="status" value="complete">
+                                                <button class="btn btn-light btn-sm border">Mark complete</button>
+                                            </form>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="emr-empty-state">
+                            <h6 class="fw-semibold">No patients on today’s worklist yet</h6>
+                            <p class="text-muted small mb-3">
+                                Register a patient, then schedule a visit from the patient chart.
+                            </p>
+                            <a href="{% url 'emr:patient_create' %}" class="btn btn-primary btn-sm">Register patient</a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-4">
+            <div class="card">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Recent patient activity</h5>
+                    {% if recent_patients %}
+                        <div class="d-flex flex-column gap-2">
+                            {% for patient in recent_patients %}
+                                <a href="{% url 'emr:patient_detail' patient.pk %}" class="session-row">
+                                    <span class="session-icon">
+                                        <iconify-icon icon="iconamoon:profile-duotone"></iconify-icon>
+                                    </span>
+                                    <span class="flex-grow-1">
+                                        <span class="d-block fw-semibold">{{ patient.display_name }}</span>
+                                        <span class="d-block small text-muted">
+                                            {{ patient.age_display }} years · {{ patient.parish|default:"Parish not set" }}
+                                        </span>
+                                    </span>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted small mb-0">Your recent charts will appear here.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
