@@ -1,5 +1,6 @@
 from .settings import *
 import socket
+from .settings import _database_from_env
 
 from decouple import Csv, config as env
 
