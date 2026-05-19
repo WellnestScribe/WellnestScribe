@@ -76,11 +76,18 @@ WSGI_APPLICATION = "wellnest.wsgi.application"
 
 
 def _mysql_ssl_options(host: str) -> dict:
-    if "mysql.database.azure.com" not in (host or ""):
+    ssl_disabled = config("MYSQL_SSL_DISABLED", default=False, cast=bool)
+    if ssl_disabled:
+        return {"charset": "utf8mb4"}
+
+    ssl_ca_path = config("MYSQL_SSL_CA_PATH", default="").strip()
+    use_azure_ssl = "mysql.database.azure.com" in (host or "")
+    if not ssl_ca_path and not use_azure_ssl:
         return {}
+
     return {
         "charset": "utf8mb4",
-        "ssl": {"ca": certifi.where()},
+        "ssl": {"ca": ssl_ca_path or certifi.where()},
     }
 
 
@@ -233,6 +240,10 @@ SCRIBE_MAX_COMPLETION_TOKENS = config(
 )
 
 # Transcription is OpenAI direct (gpt-4o(-mini)-transcribe).
+SCRIBE_TRANSCRIPTION_BACKEND = config(
+    "SCRIBE_TRANSCRIPTION_BACKEND",
+    default="openai",
+)  # openai | lightning_mms
 SCRIBE_OPENAI_API_KEY = config("SCRIBE_OPENAI_API_KEY", default="")
 SCRIBE_OPENAI_TRANSCRIBE_MODEL = config(
     "SCRIBE_OPENAI_TRANSCRIBE_MODEL", default="gpt-4o-transcribe"
@@ -250,6 +261,36 @@ SCRIBE_AZURE_OPENAI_TRANSCRIBE_DEPLOYMENT = config(
 )
 SCRIBE_AZURE_OPENAI_TRANSCRIBE_API_VERSION = config(
     "SCRIBE_AZURE_OPENAI_TRANSCRIBE_API_VERSION", default="2024-06-01"
+)
+SCRIBE_LIGHTNING_TRANSCRIBE_URL = config(
+    "SCRIBE_LIGHTNING_TRANSCRIBE_URL",
+    default="",
+)
+SCRIBE_LIGHTNING_TRANSCRIBE_TOKEN = config(
+    "SCRIBE_LIGHTNING_TRANSCRIBE_TOKEN",
+    default="",
+)
+SCRIBE_LIGHTNING_TRANSCRIBE_TARGET_LANG = config(
+    "SCRIBE_LIGHTNING_TRANSCRIBE_TARGET_LANG",
+    default="jam",
+)
+SCRIBE_LIGHTNING_TRANSCRIBE_DEVICE = config(
+    "SCRIBE_LIGHTNING_TRANSCRIBE_DEVICE",
+    default="auto",
+)
+SCRIBE_LIGHTNING_TRANSCRIBE_MODEL_ID = config(
+    "SCRIBE_LIGHTNING_TRANSCRIBE_MODEL_ID",
+    default="facebook/mms-1b-l1107",
+)
+SCRIBE_LIGHTNING_TRANSCRIBE_TIMEOUT = config(
+    "SCRIBE_LIGHTNING_TRANSCRIBE_TIMEOUT",
+    default=600,
+    cast=int,
+)
+SCRIBE_LIGHTNING_TRANSCRIBE_CHUNK_SECONDS = config(
+    "SCRIBE_LIGHTNING_TRANSCRIBE_CHUNK_SECONDS",
+    default=25,
+    cast=int,
 )
 
 # SOAP generation is Azure OpenAI deployment.
