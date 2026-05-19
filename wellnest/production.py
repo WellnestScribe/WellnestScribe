@@ -1,9 +1,7 @@
 from .settings import *
-import os
 import socket
 
 from decouple import Csv, config as env
-import certifi
 
 # Production overrides
 DEBUG = False
@@ -56,19 +54,6 @@ SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 
-# MySQL for production
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.mysql",
-        "NAME": env("AZURE_MYSQL_NAME", default=""),
-        "USER": env("AZURE_MYSQL_USER", default=""),
-        "PASSWORD": env("AZURE_MYSQL_PASSWORD", default=""),
-        "HOST": env("AZURE_MYSQL_HOST", default=""),
-        "PORT": env("AZURE_MYSQL_PORT", default="3306"),
-        "OPTIONS": {
-            "charset": "utf8mb4",
-            "ssl": {"ca": certifi.where()},  # required for Azure MySQL SSL
-        },
-        "CONN_MAX_AGE": 60,  # connection pooling - prevents dropped connections
-    }
-}
+# MySQL / SQLite / DATABASE_URL are resolved in the shared settings helper so
+# production can honor the same SSL env vars as local and App Service.
+DATABASES = {"default": _database_from_env()}
