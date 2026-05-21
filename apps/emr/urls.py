@@ -24,4 +24,13 @@ urlpatterns = [
     path("encounters/<int:encounter_pk>/prescription/", views.prescription_print_view, name="prescription_print"),
     path("referrals/<int:referral_pk>/print/", views.referral_print_view, name="referral_print"),
     path("settings/", views.organisation_settings_view, name="settings"),
+
+    # ── GNU Health / external EMR bridge ──────────────────────────────────────
+    path("api/gnuhealth/status/", views.gnuhealth_status_api, name="api_gnuhealth_status"),
+    path("api/gnuhealth/patients/", views.gnuhealth_patient_search_api, name="api_gnuhealth_patients"),
+    path(
+        "api/gnuhealth/sessions/<int:session_pk>/push/",
+        views.gnuhealth_push_session_api,
+        name="api_gnuhealth_push",
+    ),
 ]

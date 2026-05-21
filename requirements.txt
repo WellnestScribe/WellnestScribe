@@ -40,6 +40,8 @@ pyOpenSSL==26.2.0
 python-decouple==3.8
 python-dotenv==1.2.2
 qrcode==8.2
+# GNU Health bridge — install when EMR_BACKEND=gnuhealth: pip install "proteus>=7.0,<7.1"
+# proteus>=7.0,<7.1
 requests==2.33.1
 service-identity==24.2.0
 sniffio==1.3.1

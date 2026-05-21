@@ -314,6 +314,17 @@ SCRIBE_MODE = config("SCRIBE_MODE", default="cloud")
 PILOT_MODE = config("PILOT_MODE", default=True, cast=bool)
 AUTO_DELETE_AUDIO_DAYS = config("AUTO_DELETE_AUDIO_DAYS", default=30, cast=int)
 
+# ---- External EMR backend ----
+# "local"      → WellnestScribe's built-in Django EMR (default, no extra setup)
+# "gnuhealth"  → GNU Health via Docker (set GNUHEALTH_* vars below)
+EMR_BACKEND = config("EMR_BACKEND", default="local")
+
+GNUHEALTH_HOST = config("GNUHEALTH_HOST", default="localhost")
+GNUHEALTH_PORT = config("GNUHEALTH_PORT", default=8069, cast=int)
+GNUHEALTH_DB = config("GNUHEALTH_DB", default="gnuhealth")
+GNUHEALTH_USER = config("GNUHEALTH_USER", default="admin")
+GNUHEALTH_PASSWORD = config("GNUHEALTH_PASSWORD", default="")
+
 # ---- Triage sandbox (admin/staff only by default) ----
 # Set SCRIBE_ENABLE_TRIAGE=True in .env to expose to all logged-in users.
 # Otherwise visible only to staff / superusers.

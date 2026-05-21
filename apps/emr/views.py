@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from datetime import datetime
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Max
-from django.http import HttpResponseForbidden
+from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
+
+logger = logging.getLogger(__name__)
 
 from scribe.models import ScribeSession
 
@@ -851,4 +856,140 @@ def organisation_settings_view(request):
             "memberships": memberships,
             "audit_events": audit_events,
         },
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# GNU Health / external EMR bridge API
+# ══════════════════════════════════════════════════════════════════════════════
+
+@login_required
+@require_http_methods(["GET"])
+def gnuhealth_status_api(request):
+    """GET /emr/api/gnuhealth/status/ — check connection to configured EMR backend."""
+    from .backends import get_backend
+
+    try:
+        backend = get_backend()
+        result = backend.health_check()
+    except Exception as exc:
+        result = {"status": "error", "error": str(exc)}
+    return JsonResponse(result)
+
+
+@login_required
+@require_http_methods(["GET"])
+def gnuhealth_patient_search_api(request):
+    """GET /emr/api/gnuhealth/patients/?q=... — search patients in configured backend."""
+    from .backends import get_backend
+
+    q = request.GET.get("q", "").strip()
+    if len(q) < 2:
+        return JsonResponse({"patients": [], "query": q})
+
+    try:
+        backend = get_backend()
+        patients = backend.search_patients(q, limit=20)
+        return JsonResponse({"patients": patients, "query": q})
+    except Exception as exc:
+        logger.error("gnuhealth_patient_search_api error: %s", exc)
+        return JsonResponse({"error": str(exc), "patients": []}, status=500)
+
+
+@login_required
+@require_http_methods(["POST"])
+def gnuhealth_push_session_api(request, session_pk: int):
+    """
+    POST /emr/api/gnuhealth/sessions/<pk>/push/
+
+    Push a finalized ScribeSession to the configured EMR backend as a new patient
+    encounter.  Optional JSON body:
+      {
+        "patient_id":  "<backend native id>",   // if known
+        "create_patient": true                  // create patient if not found
+      }
+
+    Response:
+      {"ok": true, "encounter_id": "...", "patient_id": "...", "backend": "..."}
+    """
+    from .backends import get_backend
+
+    session = get_object_or_404(ScribeSession, pk=session_pk, user=request.user)
+    note = getattr(session, "note", None)
+
+    body: dict = {}
+    if request.content_type and "json" in request.content_type:
+        try:
+            body = json.loads(request.body or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON body."}, status=400)
+
+    try:
+        backend = get_backend()
+    except Exception as exc:
+        return JsonResponse({"error": f"Backend error: {exc}"}, status=500)
+
+    # ── Resolve patient ────────────────────────────────────────────────────────
+    patient_id = body.get("patient_id")
+    if not patient_id:
+        # Attempt to find/create from session metadata
+        patient_name = session.patient_name or session.chief_complaint or "Unknown"
+        if body.get("create_patient"):
+            try:
+                parts = patient_name.split()
+                new_patient = backend.create_patient({
+                    "first_name": parts[0] if parts else patient_name,
+                    "last_name": " ".join(parts[1:]) if len(parts) > 1 else "",
+                    "full_name": patient_name,
+                    "dob": session.patient_dob or "",
+                    "sex": "u",
+                })
+                patient_id = new_patient["id"]
+            except Exception as exc:
+                return JsonResponse({"error": f"Could not create patient: {exc}"}, status=500)
+        else:
+            return JsonResponse(
+                {
+                    "error": "patient_id required. Pass patient_id or set create_patient=true.",
+                    "hint": "Search patients at /emr/api/gnuhealth/patients/?q=<name>",
+                },
+                status=400,
+            )
+
+    # ── Build encounter payload ────────────────────────────────────────────────
+    full_note = ""
+    if note:
+        full_note = note.edited_note or note.full_note or ""
+
+    encounter_data = {
+        "chief_complaint": session.chief_complaint or "",
+        "clinical_summary": full_note,
+        "subjective": note.subjective if note else "",
+        "objective": note.objective if note else "",
+        "assessment": note.assessment if note else "",
+        "plan": note.plan if note else "",
+        "encounter_date": str(session.created_at.date()),
+    }
+
+    # ── Push ──────────────────────────────────────────────────────────────────
+    try:
+        encounter = backend.push_encounter(patient_id, encounter_data)
+    except Exception as exc:
+        logger.error("gnuhealth_push_session_api push_encounter error: %s", exc)
+        return JsonResponse({"error": f"Push failed: {exc}"}, status=500)
+
+    log_audit_event(
+        user=request.user,
+        action="gnuhealth_push",
+        resource_type="ScribeSession",
+        resource_id=session_pk,
+        detail=f"Pushed to {encounter.get('_backend','?')} encounter {encounter.get('id','?')}",
+    )
+    return JsonResponse(
+        {
+            "ok": True,
+            "encounter_id": encounter.get("id"),
+            "patient_id": patient_id,
+            "backend": encounter.get("_backend"),
+        }
     )

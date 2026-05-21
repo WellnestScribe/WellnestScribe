@@ -1,0 +1,71 @@
+version: "3.9"
+
+# GNU Health 5.0 / Tryton 7.0
+# Run from this directory: docker compose up -d
+#
+# Ports exposed to the host:
+#   8069  → Tryton XML-RPC / web server
+#   5433  → PostgreSQL (direct access for debugging)
+#
+# The GNU Health module source is mounted read-only from the path below.
+# Adjust GNUHEALTH_SRC if your checkout lives elsewhere.
+
+x-gnuhealth-src: &gnuhealth-src
+  f:/Games/gnuhealth-latest/his/tryton
+
+services:
+  gnuhealth-db:
+    image: postgres:16-alpine
+    container_name: wellnest_gnuhealth_db
+    environment:
+      POSTGRES_DB: ${GNUHEALTH_DB_NAME:-gnuhealth}
+      POSTGRES_USER: ${GNUHEALTH_DB_USER:-gnuhealth}
+      POSTGRES_PASSWORD: ${GNUHEALTH_DB_PASSWORD:-gnuhealth_secret}
+    volumes:
+      - gnuhealth_pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${GNUHEALTH_DB_USER:-gnuhealth}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  gnuhealth:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wellnest_gnuhealth
+    depends_on:
+      gnuhealth-db:
+        condition: service_healthy
+    environment:
+      GNUHEALTH_DB_HOST: gnuhealth-db
+      GNUHEALTH_DB_PORT: 5432
+      GNUHEALTH_DB_NAME: ${GNUHEALTH_DB_NAME:-gnuhealth}
+      GNUHEALTH_DB_USER: ${GNUHEALTH_DB_USER:-gnuhealth}
+      GNUHEALTH_DB_PASSWORD: ${GNUHEALTH_DB_PASSWORD:-gnuhealth_secret}
+      GNUHEALTH_ADMIN_PASSWORD: ${GNUHEALTH_ADMIN_PASSWORD:-change_me_before_deploy}
+      GNUHEALTH_MODULES_DIR: /modules
+      # Tryton reads these env vars directly
+      TRYTOND_DATABASE__URI: postgresql://${GNUHEALTH_DB_USER:-gnuhealth}:${GNUHEALTH_DB_PASSWORD:-gnuhealth_secret}@gnuhealth-db:5432/
+      TRYTOND_WEB__LISTEN: "0.0.0.0:8069"
+    ports:
+      - "8069:8069"
+    volumes:
+      - *gnuhealth-src:/modules:ro
+      - gnuhealth_data:/var/lib/trytond
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import xmlrpc.client; s=xmlrpc.client.ServerProxy('http://localhost:8069/'); print(s.common.version())\" 2>/dev/null && echo ok"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+volumes:
+  gnuhealth_pgdata:
+    name: wellnest_gnuhealth_pgdata
+  gnuhealth_data:
+    name: wellnest_gnuhealth_data
