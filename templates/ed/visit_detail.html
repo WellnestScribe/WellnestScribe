@@ -1,0 +1,355 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ visit.visit_number }} — WellNest ED{% endblock %}
+
+{% block extra_head %}
+<style>
+  .timeline-item { position: relative; padding-left: 2rem; margin-bottom: 1rem; }
+  .timeline-item::before { content: ""; position: absolute; left: 0.5rem; top: 0; bottom: -1rem; width: 2px; background: var(--bs-border-color); }
+  .timeline-item:last-child::before { display: none; }
+  .timeline-dot { position: absolute; left: 0; top: 0.25rem; width: 1rem; height: 1rem; border-radius: 50%; border: 2px solid var(--bs-border-color); background: var(--bs-body-bg); }
+  .timeline-dot.done { background: #198754; border-color: #198754; }
+  .timeline-dot.pending { background: transparent; border-color: #6c757d; }
+  .timeline-dot.active { background: #0d6efd; border-color: #0d6efd; }
+  .esi-pill { font-size: 0.95rem; font-weight: 700; padding: 0.3em 0.7em; border-radius: 0.4rem; }
+  .vital-flag { font-size: 0.75rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-start gap-2 mb-3 flex-wrap">
+  <a href="{% url 'ed:board' %}" class="btn btn-sm btn-outline-secondary">
+    <iconify-icon icon="iconamoon:arrow-left-2-duotone"></iconify-icon>
+  </a>
+  <div class="flex-grow-1">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <h4 class="mb-0 fw-bold">{{ visit.visit_number }}</h4>
+      {% if visit.esi_score %}
+      <span class="badge bg-{{ visit.esi_color_class }} esi-pill">ESI {{ visit.esi_score }}</span>
+      {% else %}
+      <span class="badge bg-secondary">Not triaged</span>
+      {% endif %}
+      <span class="badge bg-{{ visit.zone_color_class }} px-2">{{ visit.get_current_zone_display }}{% if visit.current_bed %} — {{ visit.current_bed }}{% endif %}</span>
+      <span class="badge bg-body-secondary text-body border">{{ visit.get_current_status_display }}</span>
+    </div>
+    <small class="text-muted">{{ visit.display_name }} · Arrived {{ visit.arrived_at|date:"H:i d M Y" }}</small>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    {% if visit.is_active %}
+    <a href="{% url 'ed:triage_form' visit.pk %}" class="btn btn-sm btn-outline-warning">
+      <iconify-icon icon="iconamoon:stethoscope-duotone" class="me-1"></iconify-icon>
+      {% if triage %}Re-triage{% else %}Triage{% endif %}
+    </a>
+    <a href="{% url 'ed:physician_view' visit.pk %}" class="btn btn-sm btn-outline-primary">
+      <iconify-icon icon="iconamoon:profile-duotone" class="me-1"></iconify-icon>
+      Physician view
+    </a>
+    <a href="{% url 'ed:disposition' visit.pk %}" class="btn btn-sm btn-outline-success">
+      <iconify-icon icon="iconamoon:exit-duotone" class="me-1"></iconify-icon>
+      Disposition
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-3">
+
+  <!-- LEFT: Timeline + Triage -->
+  <div class="col-12 col-lg-8">
+
+    <!-- 5-Timestamp Timeline -->
+    <div class="card mb-3">
+      <div class="card-header fw-semibold d-flex align-items-center gap-2">
+        <iconify-icon icon="iconamoon:time-duotone"></iconify-icon>
+        Visit Timeline
+      </div>
+      <div class="card-body">
+        <div class="timeline-item">
+          <div class="timeline-dot done"></div>
+          <div><strong>Arrived</strong> <span class="text-muted ms-2">{{ visit.arrived_at|date:"H:i d M" }}</span></div>
+          <small class="text-muted">{{ visit.get_arrival_mode_display }}</small>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-dot {% if visit.triaged_at %}done{% elif visit.is_active %}active{% else %}pending{% endif %}"></div>
+          <div>
+            <strong>Triage complete</strong>
+            {% if visit.triaged_at %}
+            <span class="text-muted ms-2">{{ visit.triaged_at|date:"H:i" }}</span>
+            <span class="badge bg-success-subtle text-success ms-1">{{ visit.door_to_triage_minutes }} min</span>
+            {% if visit.door_to_triage_minutes > 15 %}<span class="badge bg-warning text-dark ms-1">Target: 15 min</span>{% endif %}
+            {% else %}<span class="text-muted ms-2">Pending</span>{% endif %}
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-dot {% if visit.seen_by_doctor_at %}done{% elif visit.triaged_at %}active{% else %}pending{% endif %}"></div>
+          <div>
+            <strong>Seen by doctor</strong>
+            {% if visit.seen_by_doctor_at %}
+            <span class="text-muted ms-2">{{ visit.seen_by_doctor_at|date:"H:i" }}</span>
+            <span class="badge {% if visit.door_to_doctor_minutes > 60 %}bg-danger{% else %}bg-success-subtle text-success{% endif %} ms-1">
+              D2D: {{ visit.door_to_doctor_minutes }} min
+            </span>
+            {% else %}<span class="text-muted ms-2">Pending</span>{% endif %}
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-dot {% if visit.disposition_decided_at %}done{% else %}pending{% endif %}"></div>
+          <div>
+            <strong>Disposition decided</strong>
+            {% if visit.disposition_decided_at %}
+            <span class="text-muted ms-2">{{ visit.disposition_decided_at|date:"H:i" }}</span>
+            {% else %}<span class="text-muted ms-2">Pending</span>{% endif %}
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-dot {% if visit.exited_at %}done{% else %}pending{% endif %}"></div>
+          <div>
+            <strong>Exit</strong>
+            {% if visit.exited_at %}
+            <span class="text-muted ms-2">{{ visit.exited_at|date:"H:i" }}</span>
+            <span class="badge bg-secondary ms-1">Total LOS: {{ visit.time_in_department_minutes }} min</span>
+            {% else %}
+            <span class="text-muted ms-2">
+              <span id="los-live">{{ visit.time_in_department_minutes }}</span> min in dept
+            </span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Triage Assessment -->
+    {% if triage %}
+    <div class="card mb-3">
+      <div class="card-header fw-semibold d-flex align-items-center gap-2">
+        <iconify-icon icon="iconamoon:stethoscope-duotone"></iconify-icon>
+        Triage Assessment
+        <a href="{% url 'ed:triage_form' visit.pk %}" class="btn btn-sm btn-outline-secondary ms-auto">Edit / Re-triage</a>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-8">
+            <div class="mb-2">
+              <span class="text-muted small">Chief complaint</span>
+              <div class="fw-semibold fs-5">{{ triage.chief_complaint }}</div>
+            </div>
+            <div class="row g-2">
+              <div class="col-6">
+                <span class="text-muted small d-block">Mechanism</span>
+                {{ triage.get_mechanism_display }}
+              </div>
+              <div class="col-6">
+                <span class="text-muted small d-block">Onset</span>
+                {{ triage.complaint_duration }} {{ triage.get_complaint_onset_display }}
+              </div>
+            </div>
+            {% if triage.vital_flags %}
+            <div class="mt-2 d-flex flex-wrap gap-1">
+              {% for flag in triage.vital_flags %}
+              <span class="badge bg-danger vital-flag">{{ flag }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          <div class="col-md-4">
+            {% if triage.ai_esi_suggestion %}
+            <div class="alert py-2 mb-2 {% if triage.ai_esi_suggestion == triage.esi_score %}alert-success{% else %}alert-warning{% endif %}">
+              <small>AI suggested ESI <strong>{{ triage.ai_esi_suggestion }}</strong>
+              {% if triage.ai_esi_suggestion != triage.esi_score %}→ nurse assigned {{ triage.esi_score }}{% endif %}
+              </small>
+            </div>
+            {% endif %}
+            {% if triage.triage_notes %}
+            <small class="text-muted d-block mb-1">Triage notes</small>
+            <div style="font-size:0.88rem;">{{ triage.triage_notes }}</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Vitals grid -->
+        <hr>
+        <div class="row g-2 mt-1" style="font-size:0.85rem;">
+          {% if triage.temp_celsius %}<div class="col-6 col-md-2 col-sm-4"><span class="text-muted d-block" style="font-size:0.72rem;">TEMP</span><strong>{{ triage.temp_celsius }}°C</strong></div>{% endif %}
+          {% if triage.bp_systolic %}<div class="col-6 col-md-2 col-sm-4"><span class="text-muted d-block" style="font-size:0.72rem;">BP</span><strong>{{ triage.bp_systolic }}/{{ triage.bp_diastolic }}</strong></div>{% endif %}
+          {% if triage.pulse_bpm %}<div class="col-6 col-md-2 col-sm-4"><span class="text-muted d-block" style="font-size:0.72rem;">HR</span><strong>{{ triage.pulse_bpm }} bpm</strong></div>{% endif %}
+          {% if triage.rr_rpm %}<div class="col-6 col-md-2 col-sm-4"><span class="text-muted d-block" style="font-size:0.72rem;">RR</span><strong>{{ triage.rr_rpm }}/min</strong></div>{% endif %}
+          {% if triage.spo2_percent %}<div class="col-6 col-md-2 col-sm-4"><span class="text-muted d-block" style="font-size:0.72rem;">SpO₂</span><strong>{{ triage.spo2_percent }}%</strong></div>{% endif %}
+          {% if triage.pain_score is not None %}<div class="col-6 col-md-2 col-sm-4"><span class="text-muted d-block" style="font-size:0.72rem;">PAIN</span><strong>{{ triage.pain_score }}/10</strong></div>{% endif %}
+          {% if triage.gcs_total %}<div class="col-6 col-md-2 col-sm-4"><span class="text-muted d-block" style="font-size:0.72rem;">GCS</span><strong>{{ triage.gcs_total }}/15</strong></div>{% endif %}
+          {% if triage.weight_kg %}<div class="col-6 col-md-2 col-sm-4"><span class="text-muted d-block" style="font-size:0.72rem;">WEIGHT</span><strong>{{ triage.weight_kg }} kg</strong></div>{% endif %}
+          {% if triage.blood_glucose_mmol %}<div class="col-6 col-md-2 col-sm-4"><span class="text-muted d-block" style="font-size:0.72rem;">BGL</span><strong>{{ triage.blood_glucose_mmol }} mmol/L</strong></div>{% endif %}
+        </div>
+
+        <!-- PMH + Allergies -->
+        {% if triage.pmh_list or triage.allergies %}
+        <hr>
+        <div class="row g-2" style="font-size:0.85rem;">
+          {% if triage.pmh_list %}
+          <div class="col-md-6">
+            <span class="text-muted d-block small">PMH</span>
+            {% for item in triage.pmh_list %}<span class="badge bg-body-secondary text-body border me-1">{{ item }}</span>{% endfor %}
+          </div>
+          {% endif %}
+          {% if triage.allergies or triage.allergy_nkda %}
+          <div class="col-md-6">
+            <span class="text-muted d-block small">Allergies</span>
+            {% if triage.allergy_nkda %}<span class="badge bg-success-subtle text-success">NKDA</span>{% else %}<span class="text-danger fw-semibold">⚠ {{ triage.allergies }}</span>{% endif %}
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Nurse -->
+        <div class="mt-2">
+          <small class="text-muted">Triaged by: {{ triage.assessed_by.get_full_name|default:triage.assessed_by.username }} at {{ triage.assessed_at|date:"H:i d M" }}</small>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="card mb-3 border-warning">
+      <div class="card-body d-flex align-items-center gap-3">
+        <iconify-icon icon="iconamoon:alert-duotone" style="font-size:1.8rem;color:#fd7e14;"></iconify-icon>
+        <div>
+          <div class="fw-semibold">Triage not yet completed</div>
+          <a href="{% url 'ed:triage_form' visit.pk %}" class="btn btn-warning btn-sm mt-1">
+            <iconify-icon icon="iconamoon:stethoscope-duotone" class="me-1"></iconify-icon>
+            Start triage assessment
+          </a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Disposition -->
+    {% if disposition %}
+    <div class="card mb-3">
+      <div class="card-header fw-semibold d-flex align-items-center gap-2">
+        <iconify-icon icon="iconamoon:exit-duotone"></iconify-icon>
+        Disposition
+      </div>
+      <div class="card-body">
+        <div class="fw-bold fs-5">{{ disposition.get_disposition_display }}</div>
+        {% if disposition.ward_admitted_to %}<div class="text-muted small">Ward: {{ disposition.ward_admitted_to }}</div>{% endif %}
+        {% if disposition.transfer_facility %}<div class="text-muted small">Transfer to: {{ disposition.transfer_facility }}</div>{% endif %}
+        {% if disposition.discharge_instructions %}<div class="mt-2"><small class="text-muted d-block">Discharge instructions</small>{{ disposition.discharge_instructions }}</div>{% endif %}
+        {% if disposition.follow_up_date %}<div class="mt-1"><small class="text-muted">Follow-up: {{ disposition.follow_up_date|date:"d M Y" }} {% if disposition.follow_up_with %}with {{ disposition.follow_up_with }}{% endif %}</small></div>{% endif %}
+        <div class="mt-2"><small class="text-muted">Decided by: {{ disposition.decided_by.get_full_name|default:disposition.decided_by.username }} at {{ disposition.decided_at|date:"H:i" }}</small></div>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- RIGHT: Quick actions + patient info + zone -->
+  <div class="col-12 col-lg-4">
+
+    <!-- Patient Info -->
+    <div class="card mb-3">
+      <div class="card-header fw-semibold d-flex align-items-center gap-2">
+        <iconify-icon icon="iconamoon:profile-duotone"></iconify-icon>
+        Patient
+      </div>
+      <div class="card-body">
+        <div class="fw-bold fs-5 mb-1">{{ visit.display_name }}</div>
+        {% if visit.patient %}
+        <div style="font-size:0.85rem;" class="mb-1">
+          DOB: {{ visit.patient.date_of_birth|date:"d M Y" }} · {{ visit.patient.get_sex_display }}
+        </div>
+        {% if visit.patient.nhf_card_number %}<div class="text-muted small">NHF: {{ visit.patient.nhf_card_number }}</div>{% endif %}
+        {% if visit.patient.phone_primary %}<div class="text-muted small">📞 {{ visit.patient.phone_primary }}</div>{% endif %}
+        {% if visit.patient.emergency_contact_name %}<div class="text-muted small">NOK: {{ visit.patient.emergency_contact_name }} {% if visit.patient.emergency_contact_phone %}({{ visit.patient.emergency_contact_phone }}){% endif %}</div>{% endif %}
+        {% else %}
+        <div class="badge bg-warning text-dark">Unregistered — not linked to EMR</div>
+        {% endif %}
+        <div class="mt-2">
+          <small class="text-muted d-block">Arrival mode</small>
+          {{ visit.get_arrival_mode_display }}
+        </div>
+        {% if visit.ems_handover_notes %}
+        <div class="mt-2">
+          <small class="text-muted d-block">EMS notes</small>
+          {{ visit.ems_handover_notes }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Zone Management -->
+    <div class="card mb-3">
+      <div class="card-header fw-semibold d-flex align-items-center gap-2">
+        <iconify-icon icon="iconamoon:map-pin-duotone"></iconify-icon>
+        Zone
+      </div>
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <span class="badge bg-{{ visit.zone_color_class }} px-3 py-2 fs-6">{{ visit.get_current_zone_display }}</span>
+          {% if visit.current_bed %}<span class="text-muted">Bed {{ visit.current_bed }}</span>{% endif %}
+        </div>
+        {% if visit.is_active %}
+        <form method="post" action="{% url 'ed:zone_assign' visit.pk %}">
+          {% csrf_token %}
+          <div class="mb-2">
+            <label class="form-label small">Move to zone</label>
+            {{ zone_form.zone }}
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Bed / bay</label>
+            {{ zone_form.bed_number }}
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Notes (optional)</label>
+            {{ zone_form.notes }}
+          </div>
+          <button type="submit" class="btn btn-sm btn-outline-primary w-100">Move</button>
+        </form>
+        {% endif %}
+
+        <!-- Zone history -->
+        {% if zone_history %}
+        <hr>
+        <small class="text-muted d-block mb-1">Movement history</small>
+        <div style="font-size:0.78rem;">
+          {% for za in zone_history %}
+          <div class="d-flex justify-content-between py-1 border-bottom">
+            <span>{{ za.get_zone_display }} {% if za.bed_number %}{{ za.bed_number }}{% endif %}</span>
+            <span class="text-muted">{{ za.assigned_at|date:"H:i" }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Team -->
+    <div class="card mb-3">
+      <div class="card-header fw-semibold d-flex align-items-center gap-2">
+        <iconify-icon icon="iconamoon:group-duotone"></iconify-icon>
+        Team
+      </div>
+      <div class="card-body" style="font-size:0.85rem;">
+        <div class="mb-1"><span class="text-muted">Triage nurse:</span> {{ visit.triage_nurse.get_full_name|default:visit.triage_nurse.username|default:"—" }}</div>
+        <div class="mb-1"><span class="text-muted">Attending:</span> {{ visit.attending_physician.get_full_name|default:visit.attending_physician.username|default:"—" }}</div>
+        <div><span class="text-muted">Charge nurse:</span> {{ visit.charge_nurse.get_full_name|default:visit.charge_nurse.username|default:"—" }}</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if visit.is_active %}
+<script>
+var startMinutes = {{ visit.time_in_department_minutes }};
+var startTime = Date.now();
+setInterval(function() {
+  var el = document.getElementById("los-live");
+  if (el) {
+    var elapsed = Math.floor((Date.now() - startTime) / 60000);
+    el.textContent = startMinutes + elapsed;
+  }
+}, 30000);
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Disposition — {{ visit.visit_number }} — WellNest{% endblock %}
+
+{% block extra_head %}
+<style>
+  .disp-btn { cursor: pointer; transition: all 0.15s; }
+  .disp-btn input { display: none; }
+  .disp-btn label {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 0.8rem 0.5rem; border: 2px solid var(--bs-border-color); border-radius: 0.5rem;
+    cursor: pointer; text-align: center; font-size: 0.8rem; min-height: 80px;
+    transition: all 0.15s;
+  }
+  .disp-btn input:checked + label {
+    border-color: #0d6efd; background: rgba(13,110,253,0.08); font-weight: 600;
+  }
+  .disp-btn.disp-danger input:checked + label { border-color: #dc3545; background: rgba(220,53,69,0.08); }
+  .disp-btn.disp-success input:checked + label { border-color: #198754; background: rgba(25,135,84,0.08); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <a href="{% url 'ed:visit_detail' visit.pk %}" class="btn btn-sm btn-outline-secondary">
+    <iconify-icon icon="iconamoon:arrow-left-2-duotone"></iconify-icon>
+  </a>
+  <div>
+    <h4 class="mb-0 fw-bold">
+      <iconify-icon icon="iconamoon:exit-duotone" class="me-1"></iconify-icon>
+      Disposition — {{ visit.visit_number }}
+    </h4>
+    <small class="text-muted">{{ visit.display_name }} · {{ visit.time_in_department_minutes }} min in department</small>
+  </div>
+</div>
+
+<form method="post">
+  {% csrf_token %}
+
+  <div class="card mb-3">
+    <div class="card-header fw-semibold d-flex align-items-center gap-2">
+      <iconify-icon icon="iconamoon:sorting-4-duotone"></iconify-icon>
+      Disposition decision <span class="text-danger">*</span>
+    </div>
+    <div class="card-body">
+      <div class="row g-2 mb-3">
+
+        <div class="col-6 col-md-3 disp-btn disp-success">
+          <input type="radio" name="disposition" id="d_discharge_home" value="discharge_home">
+          <label for="d_discharge_home">
+            <iconify-icon icon="iconamoon:home-duotone" style="font-size:1.4rem;color:#198754;"></iconify-icon>
+            Discharge home
+          </label>
+        </div>
+
+        <div class="col-6 col-md-3 disp-btn">
+          <input type="radio" name="disposition" id="d_admit_general" value="admit_general">
+          <label for="d_admit_general">
+            <iconify-icon icon="iconamoon:bed-duotone" style="font-size:1.4rem;"></iconify-icon>
+            General ward
+          </label>
+        </div>
+
+        <div class="col-6 col-md-3 disp-btn">
+          <input type="radio" name="disposition" id="d_admit_icu" value="admit_icu">
+          <label for="d_admit_icu">
+            <iconify-icon icon="iconamoon:heart-duotone" style="font-size:1.4rem;color:#dc3545;"></iconify-icon>
+            ICU
+          </label>
+        </div>
+
+        <div class="col-6 col-md-3 disp-btn">
+          <input type="radio" name="disposition" id="d_admit_hdu" value="admit_hdu">
+          <label for="d_admit_hdu">
+            <iconify-icon icon="iconamoon:monitor-duotone" style="font-size:1.4rem;"></iconify-icon>
+            HDU
+          </label>
+        </div>
+
+        <div class="col-6 col-md-3 disp-btn">
+          <input type="radio" name="disposition" id="d_admit_paeds" value="admit_paeds">
+          <label for="d_admit_paeds">
+            <iconify-icon icon="iconamoon:star-duotone" style="font-size:1.4rem;"></iconify-icon>
+            Paeds ward
+          </label>
+        </div>
+
+        <div class="col-6 col-md-3 disp-btn">
+          <input type="radio" name="disposition" id="d_admit_maternity" value="admit_maternity">
+          <label for="d_admit_maternity">
+            <iconify-icon icon="iconamoon:heart-plus-duotone" style="font-size:1.4rem;"></iconify-icon>
+            Maternity
+          </label>
+        </div>
+
+        <div class="col-6 col-md-3 disp-btn">
+          <input type="radio" name="disposition" id="d_transfer" value="transfer">
+          <label for="d_transfer">
+            <iconify-icon icon="iconamoon:ambulance-duotone" style="font-size:1.4rem;"></iconify-icon>
+            Transfer
+          </label>
+        </div>
+
+        <div class="col-6 col-md-3 disp-btn disp-danger">
+          <input type="radio" name="disposition" id="d_dama" value="dama">
+          <label for="d_dama">
+            <iconify-icon icon="iconamoon:exit-duotone" style="font-size:1.4rem;color:#dc3545;"></iconify-icon>
+            DAMA
+          </label>
+        </div>
+
+        <div class="col-6 col-md-3 disp-btn disp-danger">
+          <input type="radio" name="disposition" id="d_absconded" value="absconded">
+          <label for="d_absconded">
+            <iconify-icon icon="iconamoon:user-off-duotone" style="font-size:1.4rem;color:#dc3545;"></iconify-icon>
+            Absconded
+          </label>
+        </div>
+
+        <div class="col-6 col-md-3 disp-btn disp-danger">
+          <input type="radio" name="disposition" id="d_deceased" value="deceased">
+          <label for="d_deceased">
+            <iconify-icon icon="iconamoon:cloud-duotone" style="font-size:1.4rem;color:#6c757d;"></iconify-icon>
+            Deceased
+          </label>
+        </div>
+
+      </div>
+      {% if form.disposition.errors %}
+      <div class="text-danger small">{{ form.disposition.errors }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Conditional detail fields -->
+  <div class="card mb-3" id="admit-section" style="display:none;">
+    <div class="card-header fw-semibold">Admission details</div>
+    <div class="card-body">
+      {{ form.ward_admitted_to }}
+    </div>
+  </div>
+
+  <div class="card mb-3" id="transfer-section" style="display:none;">
+    <div class="card-header fw-semibold">Transfer details</div>
+    <div class="card-body row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Receiving facility</label>
+        {{ form.transfer_facility }}
+      </div>
+      <div class="col-12">
+        <label class="form-label">Reason for transfer</label>
+        {{ form.transfer_reason }}
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3" id="discharge-section" style="display:none;">
+    <div class="card-header fw-semibold">Discharge details</div>
+    <div class="card-body row g-3">
+      <div class="col-12">
+        <label class="form-label">Discharge instructions</label>
+        {{ form.discharge_instructions }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Follow-up date</label>
+        {{ form.follow_up_date }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Follow-up with</label>
+        {{ form.follow_up_with }}
+      </div>
+      <div class="col-12">
+        <label class="form-label">Prescriptions issued</label>
+        {{ form.prescriptions_issued }}
+      </div>
+      <div class="col-12">
+        <label class="form-label">Referrals made</label>
+        {{ form.referrals_made }}
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3" id="deceased-section" style="display:none;">
+    <div class="card-header fw-semibold">Death details</div>
+    <div class="card-body">
+      <label class="form-label">Cause of death</label>
+      {{ form.cause_of_death }}
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">Additional notes</div>
+    <div class="card-body">
+      {{ form.disposition_notes }}
+    </div>
+  </div>
+
+  <div class="d-flex justify-content-end gap-2 mb-4">
+    <a href="{% url 'ed:visit_detail' visit.pk %}" class="btn btn-outline-secondary">Cancel</a>
+    <button type="submit" class="btn btn-success btn-lg px-4">
+      <iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1"></iconify-icon>
+      Confirm disposition
+    </button>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function() {
+  var admitValues = ["admit_general","admit_icu","admit_hdu","admit_paeds","admit_maternity"];
+  var transferValues = ["transfer"];
+  var dischargeValues = ["discharge_home","dama"];
+  var deceasedValues = ["deceased"];
+
+  function updateSections() {
+    var selected = (document.querySelector("[name=disposition]:checked") || {}).value || "";
+    document.getElementById("admit-section").style.display = admitValues.indexOf(selected) > -1 ? "" : "none";
+    document.getElementById("transfer-section").style.display = transferValues.indexOf(selected) > -1 ? "" : "none";
+    document.getElementById("discharge-section").style.display = dischargeValues.indexOf(selected) > -1 ? "" : "none";
+    document.getElementById("deceased-section").style.display = deceasedValues.indexOf(selected) > -1 ? "" : "none";
+  }
+
+  document.querySelectorAll("[name=disposition]").forEach(function(el) {
+    el.addEventListener("change", updateSections);
+  });
+  updateSections();
+})();
+</script>
+{% endblock %}

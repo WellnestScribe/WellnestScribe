@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Shift Handover — {{ shift }} — WellNest{% endblock %}
+
+{% block extra_head %}
+<style>
+  @media print {
+    .no-print { display: none !important; }
+    .card { border: 1px solid #ccc !important; break-inside: avoid; }
+    body { font-size: 11pt; }
+  }
+  .sbar-section { border-left: 3px solid var(--bs-border-color); padding-left: 0.75rem; margin-bottom: 0.5rem; }
+  .sbar-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--bs-secondary-color); margin-bottom: 0.1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap no-print">
+  <a href="{% url 'ed:shifts' %}" class="btn btn-sm btn-outline-secondary">
+    <iconify-icon icon="iconamoon:arrow-left-2-duotone"></iconify-icon>
+  </a>
+  <div class="flex-grow-1">
+    <h4 class="mb-0 fw-bold">
+      <iconify-icon icon="iconamoon:swap-duotone" class="me-1"></iconify-icon>
+      Shift Handover — {{ shift }}
+    </h4>
+    <small class="text-muted">
+      {{ active_count }} active patient{{ active_count|pluralize }} ·
+      Charge nurse: {{ shift.charge_nurse.get_full_name|default:shift.charge_nurse.username|default:"—" }} ·
+      Opened: {{ shift.opened_at|date:"H:i" }}
+    </small>
+  </div>
+  <div class="d-flex gap-2 no-print">
+    <button type="button" class="btn btn-outline-primary" id="ai-generate-btn" onclick="generateAll()">
+      <iconify-icon icon="iconamoon:flash-duotone" class="me-1"></iconify-icon>
+      AI generate all SBAR
+    </button>
+    <button type="button" class="btn btn-outline-secondary" onclick="window.print()">
+      <iconify-icon icon="iconamoon:printer-duotone" class="me-1"></iconify-icon>
+      Print handover
+    </button>
+    <a href="{% url 'ed:shift_close' shift.pk %}" class="btn btn-danger" onclick="return confirm('Close this shift?')">
+      <iconify-icon icon="iconamoon:lock-duotone" class="me-1"></iconify-icon>
+      Close shift
+    </a>
+  </div>
+</div>
+
+<div id="ai-generating-notice" class="alert alert-info d-none mb-3">
+  <span class="spinner-border spinner-border-sm me-2"></span>
+  Generating AI SBAR notes for {{ active_count }} patients…
+</div>
+
+<form method="post" id="handover-form">
+  {% csrf_token %}
+  {% if patient_notes %}
+  <div class="row g-3">
+    {% for item in patient_notes %}
+    <div class="col-12 col-lg-6">
+      <div class="card h-100">
+        <div class="card-header d-flex align-items-center gap-2 py-2">
+          {% if item.visit.esi_score %}
+          <span class="badge bg-{{ item.visit.esi_color_class }}" style="font-size:0.75rem;">ESI {{ item.visit.esi_score }}</span>
+          {% endif %}
+          <strong style="font-size:0.9rem;">{{ item.visit.display_name }}</strong>
+          <span class="text-muted ms-auto" style="font-size:0.75rem;">{{ item.visit.visit_number }}</span>
+          <span class="badge bg-{{ item.visit.zone_color_class }}" style="font-size:0.68rem;">{{ item.visit.get_current_zone_display }}</span>
+        </div>
+        <div class="card-body" style="font-size:0.85rem;">
+          {% if item.visit.chief_complaint %}
+          <div class="mb-2 fw-semibold">{{ item.visit.chief_complaint }}</div>
+          {% endif %}
+
+          <!-- SBAR fields -->
+          <div class="sbar-section">
+            <div class="sbar-label">S — Situation</div>
+            <textarea name="{{ item.form.situation.html_name }}" class="form-control form-control-sm border-0 p-0" rows="2"
+                      style="background:transparent;resize:none;">{{ item.form.situation.value|default:'' }}</textarea>
+          </div>
+          <div class="sbar-section">
+            <div class="sbar-label">B — Background</div>
+            <textarea name="{{ item.form.background.html_name }}" class="form-control form-control-sm border-0 p-0" rows="2"
+                      style="background:transparent;resize:none;">{{ item.form.background.value|default:'' }}</textarea>
+          </div>
+          <div class="sbar-section">
+            <div class="sbar-label">A — Assessment</div>
+            <textarea name="{{ item.form.assessment.html_name }}" class="form-control form-control-sm border-0 p-0" rows="2"
+                      style="background:transparent;resize:none;">{{ item.form.assessment.value|default:'' }}</textarea>
+          </div>
+          <div class="sbar-section">
+            <div class="sbar-label">R — Recommendation</div>
+            <textarea name="{{ item.form.recommendation.html_name }}" class="form-control form-control-sm border-0 p-0" rows="2"
+                      style="background:transparent;resize:none;">{{ item.form.recommendation.value|default:'' }}</textarea>
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center mt-2 no-print" style="font-size:0.72rem;">
+            <a href="{% url 'ed:visit_detail' item.visit.pk %}" class="text-decoration-none text-muted">
+              <iconify-icon icon="iconamoon:arrow-right-circle-duotone" class="me-1"></iconify-icon>View details
+            </a>
+            {% if item.note and item.note.ai_generated %}
+            <span class="badge bg-primary-subtle text-primary">AI generated</span>
+            {% endif %}
+            <span class="text-muted">{{ item.visit.time_in_department_minutes }} min in dept</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="d-flex justify-content-end gap-2 mt-3 no-print">
+    <a href="{% url 'ed:shifts' %}" class="btn btn-outline-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary px-4">
+      <iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1"></iconify-icon>
+      Save all handover notes
+    </button>
+  </div>
+
+  {% else %}
+  <div class="alert alert-success text-center py-4">
+    <iconify-icon icon="iconamoon:check-circle-1-duotone" style="font-size:2rem;"></iconify-icon>
+    <div class="mt-2">No active patients — department is clear.</div>
+  </div>
+  {% endif %}
+</form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+var CSRF = "{{ csrf_token }}";
+var GENERATE_URL = "{% url 'ed:api_handover_generate' shift.pk %}";
+
+function generateAll() {
+  var btn = document.getElementById("ai-generate-btn");
+  var notice = document.getElementById("ai-generating-notice");
+  btn.disabled = true;
+  notice.classList.remove("d-none");
+
+  fetch(GENERATE_URL, {
+    method: "POST",
+    headers: {"Content-Type": "application/json", "X-CSRFToken": CSRF},
+    body: JSON.stringify({}),
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.ok) {
+      notice.className = "alert alert-success mb-3";
+      notice.innerHTML = '<iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-2"></iconify-icon>' +
+        'Generated SBAR notes for ' + d.generated + ' patients. Reload to see them.';
+      setTimeout(function() { window.location.reload(); }, 1500);
+    } else {
+      notice.className = "alert alert-danger mb-3";
+      notice.textContent = "Error: " + (d.error || "Unknown error");
+    }
+  })
+  .catch(function(e) {
+    notice.className = "alert alert-danger mb-3";
+    notice.textContent = "Request failed: " + e;
+    btn.disabled = false;
+  });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Shifts — WellNest ED{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <h4 class="mb-0 fw-bold">
+    <iconify-icon icon="iconamoon:swap-duotone" class="me-1"></iconify-icon>
+    Shift Management
+  </h4>
+  <a href="{% url 'ed:board' %}" class="btn btn-outline-secondary btn-sm">
+    <iconify-icon icon="iconamoon:monitor-duotone" class="me-1"></iconify-icon>
+    Back to board
+  </a>
+</div>
+
+{% if current_shift %}
+<div class="alert alert-success d-flex align-items-center gap-3 mb-3">
+  <iconify-icon icon="iconamoon:time-duotone" style="font-size:1.5rem;"></iconify-icon>
+  <div class="flex-grow-1">
+    <strong>Open shift:</strong> {{ current_shift.get_shift_type_display }} — {{ current_shift.shift_date|date:"d M Y" }}
+    · Charge: {{ current_shift.charge_nurse.get_full_name|default:current_shift.charge_nurse.username|default:"—" }}
+    · Opened: {{ current_shift.opened_at|date:"H:i" }}
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{% url 'ed:handover' current_shift.pk %}" class="btn btn-outline-primary btn-sm">
+      <iconify-icon icon="iconamoon:swap-duotone" class="me-1"></iconify-icon>
+      Handover
+    </a>
+    <form method="post" action="{% url 'ed:shift_close' current_shift.pk %}" class="m-0">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Close this shift?')">
+        Close shift
+      </button>
+    </form>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-warning d-flex align-items-center gap-3 mb-3">
+  <iconify-icon icon="iconamoon:alert-duotone" style="font-size:1.4rem;"></iconify-icon>
+  No shift is currently open.
+</div>
+{% endif %}
+
+<!-- Open new shift -->
+<div class="card mb-4">
+  <div class="card-header fw-semibold d-flex align-items-center gap-2">
+    <iconify-icon icon="iconamoon:sign-plus-circle-duotone"></iconify-icon>
+    Open new shift
+  </div>
+  <div class="card-body">
+    <form method="post" action="{% url 'ed:shift_open' %}" class="row g-3 align-items-end">
+      {% csrf_token %}
+      <div class="col-md-3">
+        <label class="form-label">Shift type</label>
+        {{ open_form.shift_type }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Date</label>
+        {{ open_form.shift_date }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Incoming notes</label>
+        {{ open_form.incoming_notes }}
+      </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-primary w-100">Open shift</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Shift history -->
+<div class="card">
+  <div class="card-header fw-semibold d-flex align-items-center gap-2">
+    <iconify-icon icon="iconamoon:clock-duotone"></iconify-icon>
+    Recent shifts
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Type</th>
+          <th>Charge nurse</th>
+          <th>Opened</th>
+          <th>Closed</th>
+          <th>Census</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for shift in shifts %}
+        <tr>
+          <td>{{ shift.shift_date|date:"d M Y" }}</td>
+          <td>{{ shift.get_shift_type_display }}</td>
+          <td>{{ shift.charge_nurse.get_full_name|default:shift.charge_nurse.username|default:"—" }}</td>
+          <td>{{ shift.opened_at|date:"H:i" }}</td>
+          <td>{% if shift.closed_at %}{{ shift.closed_at|date:"H:i" }}{% else %}<span class="badge bg-success">Open</span>{% endif %}</td>
+          <td>{{ shift.census_at_close|default:"—" }}</td>
+          <td>
+            <a href="{% url 'ed:handover' shift.pk %}" class="btn btn-sm btn-outline-secondary">Handover</a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="text-muted text-center py-3">No shifts recorded.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

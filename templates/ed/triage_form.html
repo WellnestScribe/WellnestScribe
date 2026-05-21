@@ -1,0 +1,515 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Triage — {{ visit.visit_number }} — WellNest{% endblock %}
+
+{% block extra_head %}
+<style>
+  .esi-btn { width: 100%; min-height: 60px; font-size: 1.1rem; font-weight: 700; }
+  .esi-btn input[type=radio] { display: none; }
+  .esi-btn label {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: pointer; border-radius: 0.5rem; padding: 0.75rem;
+    border: 2px solid var(--bs-border-color); transition: all 0.15s;
+    color: var(--bs-body-color);
+  }
+  .esi-btn input[type=radio]:checked + label { border-width: 3px; transform: scale(1.02); }
+  .esi-1-btn input:checked + label { background: rgba(220,53,69,0.15); border-color: #dc3545; color: #dc3545; }
+  .esi-2-btn input:checked + label { background: rgba(253,126,20,0.15); border-color: #fd7e14; color: #fd7e14; }
+  .esi-3-btn input:checked + label { background: rgba(13,110,253,0.12); border-color: #0d6efd; color: #0d6efd; }
+  .esi-4-btn input:checked + label { background: rgba(25,135,84,0.12); border-color: #198754; color: #198754; }
+  .esi-5-btn input:checked + label { background: rgba(13,202,240,0.1); border-color: #0dcaf0; color: #0dcaf0; }
+  .vital-warning { background: rgba(253,126,20,0.08); border-left: 3px solid #fd7e14; }
+  .vital-critical { background: rgba(220,53,69,0.08); border-left: 3px solid #dc3545; }
+  .section-card { border-radius: 0.5rem; margin-bottom: 1rem; }
+  #ai-esi-result { display: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <a href="{% url 'ed:visit_detail' visit.pk %}" class="btn btn-sm btn-outline-secondary">
+    <iconify-icon icon="iconamoon:arrow-left-2-duotone"></iconify-icon>
+  </a>
+  <div class="flex-grow-1">
+    <h4 class="mb-0 fw-bold">
+      <iconify-icon icon="iconamoon:stethoscope-duotone" class="me-1"></iconify-icon>
+      {% if is_retriage %}Re-triage{% else %}Triage Assessment{% endif %} — {{ visit.visit_number }}
+    </h4>
+    <small class="text-muted">
+      {{ visit.display_name }} ·
+      Arrived {{ visit.arrived_at|date:"H:i" }} ({{ visit.time_in_department_minutes }} min ago)
+    </small>
+  </div>
+  <span class="badge bg-{{ visit.zone_color_class }} px-3 py-2">
+    {{ visit.get_current_zone_display }}
+  </span>
+</div>
+
+{% if is_retriage %}
+<div class="alert alert-warning d-flex gap-2 align-items-center mb-3">
+  <iconify-icon icon="iconamoon:alert-duotone" style="font-size:1.3rem;"></iconify-icon>
+  <div><strong>Re-triage</strong> — Patient condition may have changed. Previous ESI: <strong>{{ visit.triage.esi_score }}</strong></div>
+</div>
+{% endif %}
+
+<form method="post" id="triage-form" novalidate>
+  {% csrf_token %}
+
+  <!-- SECTION 1: Presenting Problem -->
+  <div class="card section-card">
+    <div class="card-header fw-semibold d-flex align-items-center gap-2">
+      <iconify-icon icon="iconamoon:comment-duotone"></iconify-icon>
+      Presenting Problem
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-12">
+          <label class="form-label fw-semibold">Chief complaint <span class="text-danger">*</span></label>
+          {{ form.chief_complaint }}
+          {% if form.chief_complaint.errors %}
+          <div class="text-danger small">{{ form.chief_complaint.errors }}</div>
+          {% endif %}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Onset</label>
+          {{ form.complaint_onset }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Duration</label>
+          {{ form.complaint_duration }}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Mechanism</label>
+          {{ form.mechanism }}
+        </div>
+        <div class="col-12" id="trauma-details-row" style="display:none;">
+          <label class="form-label">Trauma details</label>
+          {{ form.trauma_details }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 2: Vital Signs -->
+  <div class="card section-card">
+    <div class="card-header fw-semibold d-flex align-items-center gap-2">
+      <iconify-icon icon="iconamoon:chart-bar-duotone"></iconify-icon>
+      Vital Signs
+      <span class="ms-auto">
+        <small id="vitals-flag-summary" class="text-danger fw-normal"></small>
+      </span>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <!-- Temperature -->
+        <div class="col-6 col-md-3">
+          <label class="form-label">Temp (°C)</label>
+          <div class="input-group">
+            {{ form.temp_celsius }}
+            <span class="input-group-text">°C</span>
+          </div>
+        </div>
+        <!-- BP -->
+        <div class="col-6 col-md-3">
+          <label class="form-label">Blood pressure</label>
+          <div class="input-group">
+            {{ form.bp_systolic }}
+            <span class="input-group-text">/</span>
+            {{ form.bp_diastolic }}
+            <span class="input-group-text">mmHg</span>
+          </div>
+        </div>
+        <!-- HR -->
+        <div class="col-6 col-md-2">
+          <label class="form-label">HR (bpm)</label>
+          {{ form.pulse_bpm }}
+        </div>
+        <!-- RR -->
+        <div class="col-6 col-md-2">
+          <label class="form-label">RR (/min)</label>
+          {{ form.rr_rpm }}
+        </div>
+        <!-- SpO2 -->
+        <div class="col-6 col-md-2">
+          <label class="form-label">SpO₂ (%)</label>
+          <div class="input-group">
+            {{ form.spo2_percent }}
+            <span class="input-group-text">%</span>
+          </div>
+        </div>
+        <!-- Weight -->
+        <div class="col-6 col-md-2">
+          <label class="form-label">Weight (kg)</label>
+          {{ form.weight_kg }}
+        </div>
+        <!-- Pain -->
+        <div class="col-6 col-md-2">
+          <label class="form-label">Pain score (0–10)</label>
+          {{ form.pain_score }}
+        </div>
+        <!-- Glucose -->
+        <div class="col-6 col-md-2">
+          <label class="form-label">BGL (mmol/L)</label>
+          {{ form.blood_glucose_mmol }}
+        </div>
+        <!-- GCS -->
+        <div class="col-12 col-md-4">
+          <label class="form-label">GCS (E / V / M)</label>
+          <div class="input-group">
+            {{ form.gcs_eye }}
+            {{ form.gcs_verbal }}
+            {{ form.gcs_motor }}
+            <span class="input-group-text" id="gcs-total-display">Total: —</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Vital flag bar -->
+      <div id="vital-flag-bar" class="mt-3" style="display:none;">
+        <div class="alert alert-danger py-2 mb-0 d-flex flex-wrap gap-2 align-items-center">
+          <iconify-icon icon="iconamoon:alert-duotone" class="flex-shrink-0"></iconify-icon>
+          <strong>Abnormal vitals:</strong>
+          <span id="vital-flags-list"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 3: ESI -->
+  <div class="card section-card">
+    <div class="card-header fw-semibold d-flex align-items-center gap-2">
+      <iconify-icon icon="iconamoon:sorting-4-duotone"></iconify-icon>
+      ESI Triage Level
+      <button type="button" class="btn btn-sm btn-outline-primary ms-auto" id="ai-esi-btn" onclick="getAIESI()">
+        <iconify-icon icon="iconamoon:flash-duotone" class="me-1"></iconify-icon>
+        AI assessment
+      </button>
+    </div>
+    <div class="card-body">
+
+      <!-- AI result box -->
+      <div id="ai-esi-result" class="alert mb-3 d-flex gap-3 align-items-start">
+        <div style="font-size:2rem;" id="ai-esi-badge"></div>
+        <div class="flex-grow-1">
+          <div class="fw-semibold">AI suggests ESI <span id="ai-esi-level"></span>
+            <span class="badge bg-secondary-subtle text-secondary ms-1" id="ai-confidence-badge"></span>
+          </div>
+          <div id="ai-esi-rationale" class="small mt-1"></div>
+          <div id="ai-esi-flags" class="mt-1"></div>
+        </div>
+        <button type="button" class="btn-close" onclick="document.getElementById('ai-esi-result').style.display='none';"></button>
+      </div>
+
+      <div class="row g-2 mb-3">
+        {% for value, label in form.esi_score.field.choices %}
+        <div class="col">
+          <div class="esi-btn esi-{{ value }}-btn">
+            <input type="radio" name="esi_score" id="esi_{{ value }}" value="{{ value }}"
+              {% if form.esi_score.value == value|stringformat:"s" %}checked{% endif %}>
+            <label for="esi_{{ value }}">
+              <span style="font-size:1.5rem;">{{ value }}</span>
+              <span style="font-size:0.62rem;text-align:center;margin-top:0.2rem;">
+                {% if value == 1 %}Immediate{% elif value == 2 %}Emergent{% elif value == 3 %}Urgent{% elif value == 4 %}Less urgent{% else %}Non-urgent{% endif %}
+              </span>
+            </label>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% if form.esi_score.errors %}
+      <div class="text-danger small">{{ form.esi_score.errors }}</div>
+      {% endif %}
+
+      <div class="mt-2" id="override-reason-row" style="display:none;">
+        <label class="form-label">Reason for overriding AI suggestion</label>
+        {{ form.esi_override_reason }}
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 4: PMH & Medications -->
+  <div class="card section-card">
+    <div class="card-header fw-semibold d-flex align-items-center gap-2">
+      <iconify-icon icon="iconamoon:files-duotone"></iconify-icon>
+      Past Medical History &amp; Medications
+    </div>
+    <div class="card-body">
+      <!-- Allergies -->
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Allergies</label>
+        <div class="form-check mb-2">
+          {{ form.allergy_nkda }}
+          <label class="form-check-label" for="{{ form.allergy_nkda.id_for_label }}">
+            NKDA — No known drug allergies
+          </label>
+        </div>
+        <div id="allergy-detail" {% if form.allergy_nkda.value %}style="display:none;"{% endif %}>
+          {{ form.allergies }}
+        </div>
+      </div>
+
+      <!-- PMH checkboxes -->
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Past medical history</label>
+        <div class="row g-2">
+          {% for fname, label in pmh_fields %}
+          <div class="col-6 col-md-3">
+            <div class="form-check">
+              {{ form|default_if_none:'' }}
+              <input class="form-check-input" type="checkbox"
+                     name="{{ fname }}" id="id_{{ fname }}"
+                     {% if form|default_if_none:'' %}{% endif %}>
+              <label class="form-check-label" for="id_{{ fname }}">{{ label }}</label>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="mt-2">
+          <label class="form-label">Other</label>
+          {{ form.pmh_other }}
+        </div>
+      </div>
+
+      <!-- PMH raw checkboxes (direct from form) -->
+      <div class="mb-3 d-none" id="pmh-raw">
+        <div class="row g-2">
+          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_htn }}<label class="form-check-label">Hypertension</label></div></div>
+          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_dm }}<label class="form-check-label">Diabetes</label></div></div>
+          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_asthma }}<label class="form-check-label">Asthma</label></div></div>
+          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_cardiac }}<label class="form-check-label">Cardiac disease</label></div></div>
+          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_renal }}<label class="form-check-label">Renal disease</label></div></div>
+          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_hiv }}<label class="form-check-label">HIV</label></div></div>
+          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_sickle_cell }}<label class="form-check-label">Sickle cell</label></div></div>
+          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_stroke }}<label class="form-check-label">Stroke/TIA</label></div></div>
+        </div>
+      </div>
+      <!-- Show raw form checkboxes properly -->
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Past medical history</label>
+        <div class="row g-2">
+          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_htn }} <label class="form-check-label" for="{{ form.pmh_htn.id_for_label }}">Hypertension</label></div></div>
+          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_dm }} <label class="form-check-label" for="{{ form.pmh_dm.id_for_label }}">Diabetes</label></div></div>
+          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_asthma }} <label class="form-check-label" for="{{ form.pmh_asthma.id_for_label }}">Asthma</label></div></div>
+          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_cardiac }} <label class="form-check-label" for="{{ form.pmh_cardiac.id_for_label }}">Cardiac disease</label></div></div>
+          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_renal }} <label class="form-check-label" for="{{ form.pmh_renal.id_for_label }}">Renal disease</label></div></div>
+          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_hiv }} <label class="form-check-label" for="{{ form.pmh_hiv.id_for_label }}">HIV</label></div></div>
+          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_sickle_cell }} <label class="form-check-label" for="{{ form.pmh_sickle_cell.id_for_label }}">Sickle cell</label></div></div>
+          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_stroke }} <label class="form-check-label" for="{{ form.pmh_stroke.id_for_label }}">Stroke/TIA</label></div></div>
+        </div>
+      </div>
+
+      <!-- Medications -->
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Current medications</label>
+        {{ form.current_medications }}
+      </div>
+
+      <!-- Last oral intake -->
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Last oral intake (NPO)</label>
+          {{ form.last_oral_intake }}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Pregnancy status</label>
+          {{ form.pregnant }}
+        </div>
+        <div class="col-md-3" id="lmp-row">
+          <label class="form-label">LMP</label>
+          {{ form.lmp }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 5: Notes & Re-triage -->
+  <div class="card section-card">
+    <div class="card-header fw-semibold d-flex align-items-center gap-2">
+      <iconify-icon icon="iconamoon:edit-duotone"></iconify-icon>
+      Triage Notes
+    </div>
+    <div class="card-body">
+      {% if is_retriage %}
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Reason for re-triage</label>
+        {{ form.re_triage_reason }}
+      </div>
+      {% endif %}
+      <label class="form-label fw-semibold">Clinical notes</label>
+      {{ form.triage_notes }}
+    </div>
+  </div>
+
+  <div class="d-flex justify-content-end gap-2 mb-4">
+    <a href="{% url 'ed:visit_detail' visit.pk %}" class="btn btn-outline-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary btn-lg px-4">
+      <iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1"></iconify-icon>
+      {% if is_retriage %}Save re-triage{% else %}Complete triage{% endif %}
+    </button>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+var CSRF = "{{ csrf_token }}";
+var ESI_API_URL = "{% url 'ed:api_esi' visit.pk %}";
+var aiSuggestedESI = null;
+
+// GCS total
+function updateGCSTotal() {
+  var e = parseInt(document.getElementById("id_gcs_eye").value) || 0;
+  var v = parseInt(document.getElementById("id_gcs_verbal").value) || 0;
+  var m = parseInt(document.getElementById("id_gcs_motor").value) || 0;
+  var total = (e && v && m) ? e + v + m : null;
+  var el = document.getElementById("gcs-total-display");
+  if (el) el.textContent = total ? "Total: " + total + "/15" : "Total: —";
+}
+["id_gcs_eye","id_gcs_verbal","id_gcs_motor"].forEach(function(id) {
+  var el = document.getElementById(id);
+  if (el) el.addEventListener("change", updateGCSTotal);
+});
+updateGCSTotal();
+
+// Vital flag check
+var THRESHOLDS = {
+  pulse_bpm: {hi: 130, lo: 40, hiMsg: "Tachycardia HR {v}", loMsg: "Bradycardia HR {v}"},
+  bp_systolic: {hi: 220, lo: 90, hiMsg: "Hypertensive crisis SBP {v}", loMsg: "Hypotension SBP {v}"},
+  rr_rpm: {hi: 30, lo: 8, hiMsg: "Tachypnoea RR {v}/min", loMsg: "Apnoea risk RR {v}/min"},
+  spo2_percent: {lo: 90, loMsg: "Hypoxia SpO₂ {v}%"},
+  temp_celsius: {hi: 39.5, lo: 35, hiMsg: "Fever Temp {v}°C", loMsg: "Hypothermia {v}°C"},
+};
+
+function checkVitals() {
+  var flags = [];
+  Object.keys(THRESHOLDS).forEach(function(field) {
+    var el = document.querySelector("[name='" + field + "']");
+    if (!el || !el.value) return;
+    var v = parseFloat(el.value);
+    var t = THRESHOLDS[field];
+    if (t.hi !== undefined && v > t.hi) flags.push(t.hiMsg.replace("{v}", v));
+    if (t.lo !== undefined && v < t.lo) flags.push(t.loMsg.replace("{v}", v));
+  });
+  var bar = document.getElementById("vital-flag-bar");
+  var list = document.getElementById("vital-flags-list");
+  if (flags.length > 0) {
+    bar.style.display = "";
+    list.innerHTML = flags.map(function(f) { return '<span class="badge bg-danger me-1">' + f + '</span>'; }).join("");
+  } else {
+    bar.style.display = "none";
+  }
+}
+
+document.querySelectorAll("[name^='bp_'],[name='pulse_bpm'],[name='rr_rpm'],[name='spo2_percent'],[name='temp_celsius']").forEach(function(el) {
+  el.addEventListener("input", checkVitals);
+});
+
+// Mechanism → show trauma details
+var mechEl = document.getElementById("id_mechanism");
+if (mechEl) {
+  function toggleTrauma() {
+    var medical = ["medical", "unknown", "poisoning"];
+    document.getElementById("trauma-details-row").style.display =
+      medical.indexOf(mechEl.value) === -1 ? "" : "none";
+  }
+  mechEl.addEventListener("change", toggleTrauma);
+  toggleTrauma();
+}
+
+// NKDA toggle
+var nkdaEl = document.getElementById("{{ form.allergy_nkda.id_for_label }}");
+if (nkdaEl) {
+  nkdaEl.addEventListener("change", function() {
+    document.getElementById("allergy-detail").style.display = this.checked ? "none" : "";
+  });
+}
+
+// Pregnancy → show LMP
+var pregEl = document.getElementById("id_pregnant");
+if (pregEl) {
+  function toggleLMP() {
+    document.getElementById("lmp-row").style.display = pregEl.value === "yes" ? "" : "none";
+  }
+  pregEl.addEventListener("change", toggleLMP);
+  toggleLMP();
+}
+
+// AI ESI
+function getAIESI() {
+  var btn = document.getElementById("ai-esi-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Analysing…';
+
+  var gcsE = parseInt(document.getElementById("id_gcs_eye").value) || null;
+  var gcsV = parseInt(document.getElementById("id_gcs_verbal").value) || null;
+  var gcsM = parseInt(document.getElementById("id_gcs_motor").value) || null;
+  var gcsTotal = (gcsE && gcsV && gcsM) ? gcsE + gcsV + gcsM : null;
+
+  var pmh = [];
+  ["htn","dm","asthma","cardiac","renal","hiv","sickle_cell","stroke"].forEach(function(k) {
+    var el = document.getElementById("id_pmh_" + k);
+    if (el && el.checked) pmh.push(el.nextElementSibling ? el.nextElementSibling.textContent.trim() : k);
+  });
+
+  var payload = {
+    chief_complaint: document.querySelector("[name=chief_complaint]").value,
+    mechanism: document.getElementById("id_mechanism").value,
+    bp_systolic: parseFloat(document.querySelector("[name=bp_systolic]").value) || null,
+    bp_diastolic: parseFloat(document.querySelector("[name=bp_diastolic]").value) || null,
+    pulse_bpm: parseFloat(document.querySelector("[name=pulse_bpm]").value) || null,
+    rr_rpm: parseFloat(document.querySelector("[name=rr_rpm]").value) || null,
+    spo2_percent: parseFloat(document.querySelector("[name=spo2_percent]").value) || null,
+    temp_celsius: parseFloat(document.querySelector("[name=temp_celsius]").value) || null,
+    pain_score: parseInt(document.querySelector("[name=pain_score]").value) || null,
+    gcs_total: gcsTotal,
+    pmh_list: pmh,
+  };
+
+  fetch(ESI_API_URL, {
+    method: "POST",
+    headers: {"Content-Type": "application/json", "X-CSRFToken": CSRF},
+    body: JSON.stringify(payload),
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    var resultBox = document.getElementById("ai-esi-result");
+    var colorMap = {1:"danger",2:"warning",3:"primary",4:"success",5:"info"};
+    var esi = d.esi;
+    aiSuggestedESI = esi;
+    var c = colorMap[esi] || "secondary";
+    resultBox.className = "alert alert-" + c + " mb-3 d-flex gap-3 align-items-start";
+    document.getElementById("ai-esi-badge").textContent = esi;
+    document.getElementById("ai-esi-level").textContent = esi;
+    document.getElementById("ai-confidence-badge").textContent = d.confidence || "";
+    document.getElementById("ai-esi-rationale").textContent = d.rationale || "";
+    var flagsEl = document.getElementById("ai-esi-flags");
+    flagsEl.innerHTML = (d.flags || []).map(function(f) {
+      return '<span class="badge bg-' + c + '-subtle text-' + c + ' me-1">' + f + '</span>';
+    }).join("");
+    resultBox.style.display = "";
+
+    // Auto-select ESI if nothing chosen
+    var currentChecked = document.querySelector("[name=esi_score]:checked");
+    if (!currentChecked) {
+      var radio = document.getElementById("esi_" + esi);
+      if (radio) radio.checked = true;
+    }
+
+    // Show override reason if nurse picks different ESI
+    document.querySelectorAll("[name=esi_score]").forEach(function(r) {
+      r.addEventListener("change", function() {
+        var chosen = parseInt(this.value);
+        var overrideRow = document.getElementById("override-reason-row");
+        overrideRow.style.display = (aiSuggestedESI && chosen !== aiSuggestedESI) ? "" : "none";
+      });
+    });
+  })
+  .catch(function(e) { alert("AI ESI request failed: " + e); })
+  .finally(function() {
+    btn.disabled = false;
+    btn.innerHTML = '<iconify-icon icon="iconamoon:flash-duotone" class="me-1"></iconify-icon>AI assessment';
+  });
+}
+</script>
+{% endblock %}

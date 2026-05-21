@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Physician View — {{ visit.visit_number }} — WellNest{% endblock %}
+
+{% block extra_head %}
+<style>
+  .allergy-banner { border-left: 4px solid #dc3545; background: rgba(220,53,69,0.07); }
+  .triage-sidebar { font-size: 0.85rem; }
+  .vital-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 0.5rem; }
+  .vital-cell { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-radius: 0.35rem; padding: 0.35rem 0.5rem; }
+  .vital-label { font-size: 0.65rem; color: var(--bs-secondary-color); text-transform: uppercase; letter-spacing: 0.04em; }
+  .vital-value { font-size: 0.95rem; font-weight: 600; }
+  .esi-chip { font-size: 1rem; font-weight: 700; padding: 0.2em 0.6em; border-radius: 0.35rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Header -->
+<div class="d-flex align-items-start gap-2 mb-3 flex-wrap">
+  <a href="{% url 'ed:visit_detail' visit.pk %}" class="btn btn-sm btn-outline-secondary">
+    <iconify-icon icon="iconamoon:arrow-left-2-duotone"></iconify-icon>
+  </a>
+  <div class="flex-grow-1">
+    <h4 class="mb-0 fw-bold">
+      <iconify-icon icon="iconamoon:profile-duotone" class="me-1"></iconify-icon>
+      Physician View — {{ visit.visit_number }}
+    </h4>
+    <small class="text-muted">
+      {{ visit.display_name }} ·
+      {% if visit.patient %}DOB {{ visit.patient.date_of_birth|date:"d M Y" }} · {{ visit.patient.get_sex_display }} ·{% endif %}
+      Door-to-doctor: <strong>{% if visit.door_to_doctor_minutes %}{{ visit.door_to_doctor_minutes }} min{% else %}just now{% endif %}</strong>
+    </small>
+  </div>
+  <a href="{% url 'ed:disposition' visit.pk %}" class="btn btn-success">
+    <iconify-icon icon="iconamoon:exit-duotone" class="me-1"></iconify-icon>
+    Decide disposition
+  </a>
+</div>
+
+<!-- Allergy banner -->
+{% if triage and not triage.allergy_nkda and triage.allergies %}
+<div class="allergy-banner rounded p-2 mb-3 d-flex align-items-center gap-2">
+  <iconify-icon icon="iconamoon:alert-duotone" style="font-size:1.3rem;color:#dc3545;"></iconify-icon>
+  <div>
+    <strong class="text-danger">ALLERGY:</strong> {{ triage.allergies }}
+  </div>
+</div>
+{% elif triage and triage.allergy_nkda %}
+<div class="alert alert-success-subtle border border-success-subtle py-2 mb-3 d-flex align-items-center gap-2">
+  <iconify-icon icon="iconamoon:check-circle-1-duotone" class="text-success"></iconify-icon>
+  NKDA — No known drug allergies
+</div>
+{% endif %}
+
+<div class="row g-3">
+
+  <!-- LEFT: Physician notes -->
+  <div class="col-12 col-lg-8">
+    <div class="card mb-3">
+      <div class="card-header fw-semibold d-flex align-items-center gap-2">
+        <iconify-icon icon="iconamoon:comment-duotone"></iconify-icon>
+        History of Presenting Illness
+      </div>
+      <div class="card-body">
+        <textarea class="form-control" id="hpi-field" name="hpi" rows="5"
+                  placeholder="Document HPI here — dictate or type. Chief complaint: {{ visit.chief_complaint }}"></textarea>
+        <div class="text-end mt-1">
+          <small class="text-muted">Links to EMR encounter on disposition sign-off.</small>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header fw-semibold d-flex align-items-center gap-2">
+        <iconify-icon icon="iconamoon:files-duotone"></iconify-icon>
+        Physical Examination
+      </div>
+      <div class="card-body">
+        <textarea class="form-control" id="exam-field" name="exam" rows="6"
+                  placeholder="Document findings by system: General, HEENT, Cardiovascular, Respiratory, Abdomen, Extremities, Neurological…"></textarea>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header fw-semibold d-flex align-items-center gap-2">
+        <iconify-icon icon="iconamoon:medical-file-duotone"></iconify-icon>
+        Assessment &amp; Plan
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Working diagnosis / Assessment</label>
+          <textarea class="form-control" name="assessment" rows="3"
+                    placeholder="e.g. 1. Hypertensive emergency (BP 220/130) — history of poorly controlled hypertension&#10;2. Rule out hypertensive encephalopathy"></textarea>
+        </div>
+        <div>
+          <label class="form-label fw-semibold small">Management plan / Orders</label>
+          <textarea class="form-control" name="plan" rows="4"
+                    placeholder="e.g. - IV labetalol 20 mg slow push&#10;- Repeat BP q15min&#10;- 12-lead ECG&#10;- Urgent CT head&#10;- Neurology consult"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 justify-content-end mb-3">
+      <a href="{% url 'ed:disposition' visit.pk %}" class="btn btn-success px-4">
+        <iconify-icon icon="iconamoon:exit-duotone" class="me-1"></iconify-icon>
+        Proceed to disposition
+      </a>
+    </div>
+  </div>
+
+  <!-- RIGHT: Triage summary sidebar -->
+  <div class="col-12 col-lg-4 triage-sidebar">
+
+    <!-- ESI + complaint -->
+    <div class="card mb-3">
+      <div class="card-body">
+        {% if triage %}
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span class="badge bg-{{ visit.esi_color_class }} esi-chip">ESI {{ triage.esi_score }}</span>
+          <span class="fw-semibold">{{ triage.chief_complaint }}</span>
+        </div>
+        <div class="text-muted mb-2">{{ triage.complaint_duration }} {{ triage.get_complaint_onset_display }} · {{ triage.get_mechanism_display }}</div>
+
+        {% if triage.vital_flags %}
+        <div class="d-flex flex-wrap gap-1 mb-2">
+          {% for flag in triage.vital_flags %}
+          <span class="badge bg-danger" style="font-size:0.68rem;">{{ flag }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Vitals -->
+        <div class="vital-grid mb-2">
+          {% if triage.temp_celsius %}<div class="vital-cell"><div class="vital-label">Temp</div><div class="vital-value">{{ triage.temp_celsius }}°</div></div>{% endif %}
+          {% if triage.bp_systolic %}<div class="vital-cell"><div class="vital-label">BP</div><div class="vital-value">{{ triage.bp_systolic }}/{{ triage.bp_diastolic }}</div></div>{% endif %}
+          {% if triage.pulse_bpm %}<div class="vital-cell"><div class="vital-label">HR</div><div class="vital-value">{{ triage.pulse_bpm }}</div></div>{% endif %}
+          {% if triage.rr_rpm %}<div class="vital-cell"><div class="vital-label">RR</div><div class="vital-value">{{ triage.rr_rpm }}</div></div>{% endif %}
+          {% if triage.spo2_percent %}<div class="vital-cell"><div class="vital-label">SpO₂</div><div class="vital-value">{{ triage.spo2_percent }}%</div></div>{% endif %}
+          {% if triage.pain_score is not None %}<div class="vital-cell"><div class="vital-label">Pain</div><div class="vital-value">{{ triage.pain_score }}/10</div></div>{% endif %}
+          {% if triage.gcs_total %}<div class="vital-cell"><div class="vital-label">GCS</div><div class="vital-value">{{ triage.gcs_total }}/15</div></div>{% endif %}
+          {% if triage.weight_kg %}<div class="vital-cell"><div class="vital-label">Wt</div><div class="vital-value">{{ triage.weight_kg }}kg</div></div>{% endif %}
+          {% if triage.blood_glucose_mmol %}<div class="vital-cell"><div class="vital-label">BGL</div><div class="vital-value">{{ triage.blood_glucose_mmol }}</div></div>{% endif %}
+        </div>
+
+        <!-- PMH -->
+        {% if triage.pmh_list %}
+        <div class="mb-2">
+          <div class="vital-label mb-1">PMH</div>
+          {% for h in triage.pmh_list %}<span class="badge bg-body-secondary text-body border me-1 mb-1">{{ h }}</span>{% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Meds -->
+        {% if triage.current_medications %}
+        <div class="mb-2">
+          <div class="vital-label mb-1">Current meds</div>
+          <div>{{ triage.current_medications }}</div>
+        </div>
+        {% endif %}
+
+        <!-- NPO -->
+        {% if triage.last_oral_intake %}
+        <div class="mb-2">
+          <div class="vital-label">Last oral intake (NPO)</div>
+          <div class="{% if triage.last_oral_intake %}text-warning fw-semibold{% endif %}">{{ triage.last_oral_intake|date:"H:i d M" }}</div>
+        </div>
+        {% endif %}
+
+        <!-- Pregnancy -->
+        {% if triage.pregnant == "yes" %}
+        <div class="alert alert-warning py-1 mb-2" style="font-size:0.8rem;">
+          <iconify-icon icon="iconamoon:alert-duotone" class="me-1"></iconify-icon>
+          <strong>Pregnant</strong>{% if triage.lmp %} · LMP {{ triage.lmp|date:"d M Y" }}{% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Triage notes -->
+        {% if triage.triage_notes %}
+        <div class="mb-2">
+          <div class="vital-label mb-1">Triage notes</div>
+          <div>{{ triage.triage_notes }}</div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="text-muted">No triage assessment on file.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Patient demographics -->
+    {% if visit.patient %}
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-semibold d-flex align-items-center gap-2">
+        <iconify-icon icon="iconamoon:profile-duotone"></iconify-icon> Demographics
+      </div>
+      <div class="card-body" style="font-size:0.82rem;">
+        <div><strong>{{ visit.patient.full_name }}</strong></div>
+        <div>DOB: {{ visit.patient.date_of_birth|date:"d M Y" }} ({{ visit.patient.age_display }} y)</div>
+        <div>{{ visit.patient.get_sex_display }}</div>
+        {% if visit.patient.blood_group %}<div>Blood group: {{ visit.patient.blood_group }}</div>{% endif %}
+        {% if visit.patient.phone_primary %}<div>📞 {{ visit.patient.phone_primary }}</div>{% endif %}
+        {% if visit.patient.emergency_contact_name %}
+        <div class="mt-1"><small class="text-muted">NOK:</small> {{ visit.patient.emergency_contact_name }} {{ visit.patient.emergency_contact_phone }}</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

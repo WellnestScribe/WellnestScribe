@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}ED Tracking Board — WellNest{% endblock %}
+
+{% block extra_head %}
+<style>
+  .board-zone {
+    min-height: 120px;
+    border-radius: 0.5rem;
+    border: 1.5px solid var(--bs-border-color);
+  }
+  .zone-header {
+    border-radius: 0.4rem 0.4rem 0 0;
+    padding: 0.5rem 0.75rem;
+    font-weight: 600;
+    font-size: 0.82rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .patient-card {
+    border-left: 4px solid transparent;
+    border-radius: 0.35rem;
+    margin-bottom: 0.5rem;
+    background: var(--bs-body-bg);
+    transition: box-shadow 0.15s;
+    cursor: pointer;
+  }
+  .patient-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,0.15); }
+  .patient-card.esi-1 { border-left-color: #dc3545; }
+  .patient-card.esi-2 { border-left-color: #fd7e14; }
+  .patient-card.esi-3 { border-left-color: #0d6efd; }
+  .patient-card.esi-4 { border-left-color: #198754; }
+  .patient-card.esi-5 { border-left-color: #0dcaf0; }
+  .esi-badge { font-size: 0.7rem; padding: 0.25em 0.5em; font-weight: 700; }
+  .time-counter { font-size: 0.72rem; color: var(--bs-secondary-color); }
+  .time-warning { color: #fd7e14 !important; font-weight: 600; }
+  .time-critical { color: #dc3545 !important; font-weight: 700; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+  .zone-resus .zone-header { background: rgba(220,53,69,0.15); color: #dc3545; }
+  .zone-acute .zone-header { background: rgba(253,126,20,0.15); color: #fd7e14; }
+  .zone-observation .zone-header { background: rgba(13,110,253,0.12); color: #0d6efd; }
+  .zone-fast-track .zone-header { background: rgba(25,135,84,0.12); color: #198754; }
+  .zone-isolation .zone-header { background: rgba(111,66,193,0.12); color: #6f42c1; }
+  .zone-waiting .zone-header { background: rgba(108,117,125,0.12); color: #6c757d; }
+  .board-stats-bar { border-radius: 0.5rem; }
+  .vital-flag-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: #dc3545; margin-right: 3px; }
+  #board-timestamp { font-size: 0.72rem; color: var(--bs-secondary-color); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <div>
+    <h4 class="mb-0 fw-bold">
+      <iconify-icon icon="iconamoon:monitor-duotone" class="me-1"></iconify-icon>
+      ED Tracking Board
+    </h4>
+    <small id="board-timestamp" class="text-muted">Live — refreshes every 30 s</small>
+  </div>
+  <div class="d-flex gap-2 align-items-center flex-wrap">
+    {% if current_shift %}
+    <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
+      <iconify-icon icon="iconamoon:time-duotone" class="me-1"></iconify-icon>
+      {{ current_shift.get_shift_type_display }} shift open
+    </span>
+    {% else %}
+    <span class="badge bg-secondary-subtle text-secondary border px-2 py-1">No shift open</span>
+    {% endif %}
+    <span class="badge bg-body-secondary border px-2 py-1" id="total-count">
+      {{ total_active }} active patient{{ total_active|pluralize }}
+    </span>
+    {% if critical_count > 0 %}
+    <span class="badge bg-danger px-2 py-1" id="critical-count">
+      <iconify-icon icon="iconamoon:alert-duotone" class="me-1"></iconify-icon>
+      {{ critical_count }} critical
+    </span>
+    {% endif %}
+    <a href="{% url 'ed:new_visit' %}" class="btn btn-primary btn-sm">
+      <iconify-icon icon="iconamoon:sign-plus-circle-duotone" class="me-1"></iconify-icon>
+      New arrival
+    </a>
+    <a href="{% url 'ed:shifts' %}" class="btn btn-outline-secondary btn-sm">
+      <iconify-icon icon="iconamoon:swap-duotone" class="me-1"></iconify-icon>
+      Shift
+    </a>
+  </div>
+</div>
+
+{% if not org %}
+<div class="alert alert-warning">
+  <iconify-icon icon="iconamoon:alert-duotone" class="me-2"></iconify-icon>
+  Your account is not linked to an organisation. Ask an admin to add you.
+</div>
+{% else %}
+
+<!-- Board grid -->
+<div class="row g-3" id="zone-board">
+
+  <!-- Resuscitation -->
+  <div class="col-12 col-xl-2">
+    <div class="board-zone zone-resus">
+      <div class="zone-header d-flex justify-content-between align-items-center">
+        <span><iconify-icon icon="iconamoon:heart-duotone" class="me-1"></iconify-icon>Resus</span>
+        <span class="badge bg-danger rounded-pill" id="count-resus">{{ zone_board.resus|length }}</span>
+      </div>
+      <div class="p-2" id="zone-resus-cards">
+        {% for v in zone_board.resus %}{% include "ed/_patient_card.html" with visit=v %}{% empty %}
+        <div class="text-center text-muted py-3" style="font-size:0.8rem;">Empty</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Acute -->
+  <div class="col-12 col-xl-3">
+    <div class="board-zone zone-acute">
+      <div class="zone-header d-flex justify-content-between align-items-center">
+        <span><iconify-icon icon="iconamoon:bed-duotone" class="me-1"></iconify-icon>Acute <small class="fw-normal opacity-75">12 cubicles</small></span>
+        <span class="badge bg-warning text-dark rounded-pill" id="count-acute">{{ zone_board.acute|length }}</span>
+      </div>
+      <div class="p-2" id="zone-acute-cards">
+        {% for v in zone_board.acute %}{% include "ed/_patient_card.html" with visit=v %}{% empty %}
+        <div class="text-center text-muted py-3" style="font-size:0.8rem;">Empty</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Observation -->
+  <div class="col-12 col-xl-2">
+    <div class="board-zone zone-observation">
+      <div class="zone-header d-flex justify-content-between align-items-center">
+        <span><iconify-icon icon="iconamoon:moon-duotone" class="me-1"></iconify-icon>Obs <small class="fw-normal opacity-75">4 beds</small></span>
+        <span class="badge bg-primary rounded-pill" id="count-observation">{{ zone_board.observation|length }}</span>
+      </div>
+      <div class="p-2" id="zone-observation-cards">
+        {% for v in zone_board.observation %}{% include "ed/_patient_card.html" with visit=v %}{% empty %}
+        <div class="text-center text-muted py-3" style="font-size:0.8rem;">Empty</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Fast-track -->
+  <div class="col-12 col-xl-2">
+    <div class="board-zone zone-fast-track">
+      <div class="zone-header d-flex justify-content-between align-items-center">
+        <span><iconify-icon icon="iconamoon:lightning-2-duotone" class="me-1"></iconify-icon>Fast-track <small class="fw-normal opacity-75">6 chairs</small></span>
+        <span class="badge bg-success rounded-pill" id="count-fast_track">{{ zone_board.fast_track|length }}</span>
+      </div>
+      <div class="p-2" id="zone-fast_track-cards">
+        {% for v in zone_board.fast_track %}{% include "ed/_patient_card.html" with visit=v %}{% empty %}
+        <div class="text-center text-muted py-3" style="font-size:0.8rem;">Empty</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Isolation -->
+  <div class="col-12 col-xl-1">
+    <div class="board-zone zone-isolation">
+      <div class="zone-header d-flex justify-content-between align-items-center">
+        <span><iconify-icon icon="iconamoon:shield-duotone" class="me-1"></iconify-icon>Iso</span>
+        <span class="badge rounded-pill" style="background:#6f42c1;" id="count-isolation">{{ zone_board.isolation|length }}</span>
+      </div>
+      <div class="p-2" id="zone-isolation-cards">
+        {% for v in zone_board.isolation %}{% include "ed/_patient_card.html" with visit=v %}{% empty %}
+        <div class="text-center text-muted py-3" style="font-size:0.8rem;">Empty</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Waiting -->
+  <div class="col-12 col-xl-2">
+    <div class="board-zone zone-waiting">
+      <div class="zone-header d-flex justify-content-between align-items-center">
+        <span><iconify-icon icon="iconamoon:clock-duotone" class="me-1"></iconify-icon>Waiting</span>
+        <span class="badge bg-secondary rounded-pill" id="count-waiting">{{ zone_board.waiting|length }}</span>
+      </div>
+      <div class="p-2" id="zone-waiting-cards">
+        {% for v in zone_board.waiting %}{% include "ed/_patient_card.html" with visit=v %}{% empty %}
+        <div class="text-center text-muted py-3" style="font-size:0.8rem;">Empty</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+</div><!-- /row -->
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  var BOARD_URL = "{% url 'ed:api_board' %}";
+  var CSRF = "{{ csrf_token }}";
+
+  function timeClass(minutes, esi) {
+    if (esi <= 2 && minutes > 30) return "time-critical";
+    if (esi <= 2 && minutes > 15) return "time-warning";
+    if (minutes > 240) return "time-warning";
+    return "";
+  }
+
+  function esiLabel(esi) {
+    var map = {1:"danger",2:"warning",3:"primary",4:"success",5:"info"};
+    var c = map[esi] || "secondary";
+    return '<span class="badge bg-' + c + ' esi-badge">ESI ' + esi + '</span>';
+  }
+
+  function renderCard(v) {
+    var tc = timeClass(v.time_in_dept, v.esi);
+    var flagDot = v.has_critical_vitals ? '<span class="vital-flag-dot"></span>' : "";
+    var doctor = v.doctor ? '<div style="font-size:0.7rem;color:var(--bs-secondary-color);">Dr. ' + v.doctor + '</div>' : "";
+    return '<a href="' + v.detail_url + '" class="text-decoration-none">' +
+      '<div class="patient-card esi-' + v.esi + ' p-2">' +
+        '<div class="d-flex justify-content-between align-items-start">' +
+          '<div class="fw-semibold" style="font-size:0.82rem;">' + flagDot + v.display_name + '</div>' +
+          (v.esi ? esiLabel(v.esi) : "") +
+        '</div>' +
+        '<div style="font-size:0.75rem;color:var(--bs-secondary-color);">' + (v.chief_complaint || "") + '</div>' +
+        (v.bed ? '<div style="font-size:0.7rem;" class="text-muted">' + v.zone_display + ' ' + v.bed + '</div>' : '') +
+        '<div class="d-flex justify-content-between align-items-center mt-1">' +
+          '<span class="time-counter ' + tc + '">' + v.time_in_dept + ' min</span>' +
+          '<span class="badge bg-body-secondary text-body border" style="font-size:0.65rem;">' + v.status_display + '</span>' +
+        '</div>' +
+        doctor +
+      '</div></a>';
+  }
+
+  function refreshBoard() {
+    fetch(BOARD_URL, {headers: {"X-CSRFToken": CSRF}})
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var zones = {resus:[],acute:[],observation:[],fast_track:[],isolation:[],waiting:[]};
+        data.visits.forEach(function(v) {
+          if (zones[v.zone] !== undefined) zones[v.zone].push(v);
+        });
+
+        Object.keys(zones).forEach(function(zone) {
+          var el = document.getElementById("zone-" + zone + "-cards");
+          var countEl = document.getElementById("count-" + zone);
+          if (!el) return;
+          var list = zones[zone];
+          if (countEl) countEl.textContent = list.length;
+          if (list.length === 0) {
+            el.innerHTML = '<div class="text-center text-muted py-3" style="font-size:0.8rem;">Empty</div>';
+          } else {
+            el.innerHTML = list.map(renderCard).join("");
+          }
+        });
+
+        var total = data.visits.length;
+        var totalEl = document.getElementById("total-count");
+        if (totalEl) totalEl.textContent = total + " active patient" + (total === 1 ? "" : "s");
+
+        var ts = document.getElementById("board-timestamp");
+        if (ts) {
+          var d = new Date(data.timestamp);
+          ts.textContent = "Last updated: " + d.toLocaleTimeString();
+        }
+      })
+      .catch(function(e) { console.warn("Board refresh failed", e); });
+  }
+
+  setInterval(refreshBoard, 30000);
+})();
+</script>
+{% endblock %}

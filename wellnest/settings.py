@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "accounts",
     "emr",
     "scribe",
+    "ed",
 ]
 
 MIDDLEWARE = [

@@ -7,6 +7,48 @@ and the dismiss attribute can interfere with click handling on desktop.
 {% url 'scribe:history' as history_url %}
 {% url 'emr:dashboard' as emr_url %}
 {% url 'accounts:profile' as profile_url %}
+{% url 'ed:board' as ed_board_url %}
+{% url 'ed:new_visit' as ed_new_url %}
+{% url 'ed:visit_list' as ed_list_url %}
+{% url 'ed:shifts' as ed_shifts_url %}
+
+<li class="menu-title">Emergency Department</li>
+
+<li class="nav-item">
+    <a class="nav-link {% if request.path == ed_board_url %}active{% endif %}" href="{{ ed_board_url }}">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:monitor-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">ED Board</span>
+    </a>
+</li>
+
+<li class="nav-item">
+    <a class="nav-link {% if request.path == ed_new_url %}active{% endif %}" href="{{ ed_new_url }}">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:sign-plus-circle-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">New arrival</span>
+    </a>
+</li>
+
+<li class="nav-item">
+    <a class="nav-link {% if request.path == ed_list_url %}active{% endif %}" href="{{ ed_list_url }}">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:files-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">Today's visits</span>
+    </a>
+</li>
+
+<li class="nav-item">
+    <a class="nav-link {% if request.path == ed_shifts_url %}active{% endif %}" href="{{ ed_shifts_url }}">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:swap-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">Shifts &amp; handover</span>
+    </a>
+</li>
 
 <li class="menu-title">Workspace</li>
 

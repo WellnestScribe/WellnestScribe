@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}New ED Arrival — WellNest{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-8">
+
+    <div class="d-flex align-items-center gap-2 mb-4">
+      <a href="{% url 'ed:board' %}" class="btn btn-sm btn-outline-secondary">
+        <iconify-icon icon="iconamoon:arrow-left-2-duotone"></iconify-icon>
+      </a>
+      <div>
+        <h4 class="mb-0 fw-bold">
+          <iconify-icon icon="iconamoon:sign-plus-circle-duotone" class="me-1"></iconify-icon>
+          New ED Arrival
+        </h4>
+        <small class="text-muted">Register the patient and record arrival mode</small>
+      </div>
+    </div>
+
+    <!-- Patient Search -->
+    <div class="card mb-3">
+      <div class="card-header d-flex align-items-center gap-2">
+        <iconify-icon icon="iconamoon:search-duotone"></iconify-icon>
+        <strong>Step 1 — Search EMR for existing patient</strong>
+      </div>
+      <div class="card-body">
+        <form method="get" class="d-flex gap-2 mb-3">
+          <input type="text" name="q" value="{{ patient_search }}" class="form-control"
+                 placeholder="Search by last name or first name…">
+          <button type="submit" class="btn btn-outline-primary">Search</button>
+        </form>
+        {% if patients %}
+        <div class="list-group" id="patient-results">
+          {% for p in patients %}
+          <button type="button"
+                  class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+                  onclick="selectPatient({{ p.pk }}, '{{ p.full_name|escapejs }}')">
+            <div>
+              <div class="fw-semibold">{{ p.full_name }}</div>
+              <small class="text-muted">DOB: {{ p.date_of_birth|date:"d M Y" }} · {{ p.get_sex_display }}</small>
+              {% if p.nhf_card_number %}<small class="text-muted"> · NHF: {{ p.nhf_card_number }}</small>{% endif %}
+            </div>
+            <iconify-icon icon="iconamoon:check-circle-1-duotone" class="text-success" id="check-{{ p.pk }}" style="display:none;font-size:1.2rem;"></iconify-icon>
+          </button>
+          {% endfor %}
+        </div>
+        {% elif patient_search %}
+        <div class="alert alert-info py-2 mb-0">
+          No patient found for "{{ patient_search }}". Fill the name below to proceed without EMR link.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Registration Form -->
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="patient_id" id="patient-id-input" value="">
+
+      <div class="card mb-3">
+        <div class="card-header d-flex align-items-center gap-2">
+          <iconify-icon icon="iconamoon:profile-duotone"></iconify-icon>
+          <strong>Step 2 — Patient identity</strong>
+        </div>
+        <div class="card-body">
+          <div id="selected-patient-banner" class="alert alert-success d-none mb-3 py-2">
+            <iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1"></iconify-icon>
+            <strong>EMR patient selected:</strong> <span id="selected-patient-name"></span>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">{{ form.patient_name_unregistered.label }}</label>
+            {{ form.patient_name_unregistered }}
+            <div class="form-text">Leave blank if EMR patient selected above.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-header d-flex align-items-center gap-2">
+          <iconify-icon icon="iconamoon:ambulance-duotone"></iconify-icon>
+          <strong>Step 3 — Arrival information</strong>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Arrival mode <span class="text-danger">*</span></label>
+              {{ form.arrival_mode }}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Arrival time</label>
+              {{ form.arrived_at }}
+            </div>
+            <div class="col-12" id="ambulance-fields" style="display:none;">
+              <label class="form-label">Ambulance crew</label>
+              {{ form.ambulance_crew }}
+            </div>
+            <div class="col-12" id="transfer-fields" style="display:none;">
+              <label class="form-label">Referring facility</label>
+              {{ form.referring_facility }}
+            </div>
+            <div class="col-12" id="ems-notes-field">
+              <label class="form-label">EMS / pre-hospital notes</label>
+              {{ form.ems_handover_notes }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex gap-2 justify-content-end">
+        <a href="{% url 'ed:board' %}" class="btn btn-outline-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">
+          <iconify-icon icon="iconamoon:sign-plus-circle-duotone" class="me-1"></iconify-icon>
+          Register arrival &amp; proceed to triage
+        </button>
+      </div>
+    </form>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function selectPatient(pk, name) {
+  document.getElementById("patient-id-input").value = pk;
+  document.getElementById("selected-patient-name").textContent = name;
+  document.getElementById("selected-patient-banner").classList.remove("d-none");
+  document.querySelectorAll("[id^='check-']").forEach(function(el) { el.style.display = "none"; });
+  document.getElementById("check-" + pk).style.display = "";
+}
+
+(function() {
+  var modeEl = document.getElementById("id_arrival_mode");
+  if (!modeEl) return;
+  function updateVisibility() {
+    var v = modeEl.value;
+    document.getElementById("ambulance-fields").style.display = v === "ambulance" ? "" : "none";
+    document.getElementById("transfer-fields").style.display = v === "transferred" ? "" : "none";
+    document.getElementById("ems-notes-field").style.display = (v === "ambulance" || v === "transferred") ? "" : "none";
+  }
+  modeEl.addEventListener("change", updateVisibility);
+  updateVisibility();
+})();
+</script>
+{% endblock %}

@@ -22,6 +22,7 @@ urlpatterns = [
     path("accounts/", include("accounts.urls")),
     path("emr/", include("emr.urls")),
     path("scribe/", include("scribe.urls")),
+    path("ed/", include("ed.urls")),
 ]
 
 if settings.DEBUG:
