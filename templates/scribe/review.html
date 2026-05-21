@@ -237,6 +237,11 @@
                             <iconify-icon icon="iconamoon:files-duotone" class="me-1 align-middle"></iconify-icon>
                             Send to EMR
                         </a>
+                        <button type="button" class="btn btn-outline-secondary" id="gnuHealthPushBtn"
+                                data-bs-toggle="modal" data-bs-target="#gnuHealthModal">
+                            <iconify-icon icon="iconamoon:cloud-upload-duotone" class="me-1 align-middle"></iconify-icon>
+                            Push to GNU Health
+                        </button>
                         {% if doctor_profile.suggestive_assist %}
                         <button type="button" class="btn btn-outline-secondary" id="improveBtn"
                                 title="For interns / juniors. Returns 3-6 bullets of things a more senior clinician would have added. Off by default; toggle 'Suggestive assist' on the record screen to enable.">
@@ -350,6 +355,210 @@
         </div>
     </div>
 </div>
+
+<!-- GNU Health push modal -->
+<div class="modal fade" id="gnuHealthModal" tabindex="-1" aria-labelledby="gnuHealthModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-semibold" id="gnuHealthModalLabel">
+                    <iconify-icon icon="iconamoon:cloud-upload-duotone" class="me-2 align-middle"></iconify-icon>
+                    Push to GNU Health
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Status indicator -->
+                <div id="ghStatusRow" class="d-flex align-items-center gap-2 mb-3 small">
+                    <span class="spinner-border spinner-border-sm text-secondary" id="ghStatusSpinner"></span>
+                    <span id="ghStatusText" class="text-muted">Checking connection…</span>
+                </div>
+
+                <!-- Patient search -->
+                <div id="ghPatientSection">
+                    <label class="form-label fw-semibold small">Find patient in GNU Health</label>
+                    <div class="input-group mb-2">
+                        <input type="text" class="form-control" id="ghPatientQuery"
+                               placeholder="Type name to search…" autocomplete="off">
+                        <button class="btn btn-outline-secondary" type="button" id="ghSearchBtn">Search</button>
+                    </div>
+                    <div id="ghPatientResults" class="list-group mb-3" style="max-height:180px; overflow-y:auto;"></div>
+
+                    <div id="ghSelectedPatient" class="alert alert-info d-none py-2 px-3 small mb-3">
+                        <iconify-icon icon="iconamoon:profile-duotone" class="me-1 align-middle"></iconify-icon>
+                        <span id="ghSelectedName"></span>
+                        <button type="button" class="btn-close btn-sm float-end" id="ghClearPatient" style="font-size:0.65rem;"></button>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="ghCreatePatient">
+                        <label class="form-check-label small" for="ghCreatePatient">
+                            Create new patient from session metadata (if not found above)
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Result -->
+                <div id="ghPushResult" class="d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="ghPushConfirmBtn" disabled>
+                    <iconify-icon icon="iconamoon:cloud-upload-duotone" class="me-1 align-middle"></iconify-icon>
+                    Push encounter
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var SESSION_PK = "{{ session.pk }}";
+    var CSRF_TOKEN = "{{ csrf_token }}";
+    var STATUS_URL = "/emr/api/gnuhealth/status/";
+    var SEARCH_URL = "/emr/api/gnuhealth/patients/";
+    var PUSH_URL   = "/emr/api/gnuhealth/sessions/" + SESSION_PK + "/push/";
+
+    var selectedPatientId = null;
+
+    var modal       = document.getElementById("gnuHealthModal");
+    var statusText  = document.getElementById("ghStatusText");
+    var statusSpinner = document.getElementById("ghStatusSpinner");
+    var queryInput  = document.getElementById("ghPatientQuery");
+    var searchBtn   = document.getElementById("ghSearchBtn");
+    var resultsEl   = document.getElementById("ghPatientResults");
+    var selectedEl  = document.getElementById("ghSelectedPatient");
+    var selectedName = document.getElementById("ghSelectedName");
+    var clearBtn    = document.getElementById("ghClearPatient");
+    var createChk   = document.getElementById("ghCreatePatient");
+    var pushBtn     = document.getElementById("ghPushConfirmBtn");
+    var resultBox   = document.getElementById("ghPushResult");
+
+    // Check connection when modal opens
+    modal.addEventListener("show.bs.modal", function () {
+        selectedPatientId = null;
+        resultsEl.innerHTML = "";
+        selectedEl.classList.add("d-none");
+        resultBox.classList.add("d-none");
+        resultBox.innerHTML = "";
+        pushBtn.disabled = true;
+        statusSpinner.style.display = "";
+        statusText.textContent = "Checking connection…";
+        statusText.className = "text-muted";
+
+        fetch(STATUS_URL, {credentials: "same-origin"})
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                statusSpinner.style.display = "none";
+                if (d.status === "connected") {
+                    statusText.textContent = "Connected to GNU Health (" + (d.version || "running") + ")";
+                    statusText.className = "text-success";
+                } else {
+                    statusText.textContent = "GNU Health not reachable: " + (d.error || "unknown error");
+                    statusText.className = "text-danger";
+                    pushBtn.disabled = true;
+                }
+            })
+            .catch(function () {
+                statusSpinner.style.display = "none";
+                statusText.textContent = "Could not reach status endpoint.";
+                statusText.className = "text-danger";
+            });
+    });
+
+    // Patient search
+    function doSearch() {
+        var q = queryInput.value.trim();
+        if (q.length < 2) { return; }
+        resultsEl.innerHTML = "<div class='list-group-item text-muted small'>Searching…</div>";
+        fetch(SEARCH_URL + "?q=" + encodeURIComponent(q), {credentials: "same-origin"})
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                resultsEl.innerHTML = "";
+                if (!d.patients || !d.patients.length) {
+                    resultsEl.innerHTML = "<div class='list-group-item text-muted small'>No patients found.</div>";
+                    return;
+                }
+                d.patients.forEach(function (p) {
+                    var btn = document.createElement("button");
+                    btn.type = "button";
+                    btn.className = "list-group-item list-group-item-action small";
+                    btn.innerHTML = "<strong>" + (p.name || "Unknown") + "</strong>" +
+                        (p.dob ? " &nbsp;·&nbsp; DOB " + p.dob : "") +
+                        (p.ref ? " &nbsp;·&nbsp; #" + p.ref : "");
+                    btn.addEventListener("click", function () {
+                        selectedPatientId = p.id;
+                        selectedName.textContent = (p.name || "Unknown") + (p.dob ? " (DOB " + p.dob + ")" : "");
+                        selectedEl.classList.remove("d-none");
+                        resultsEl.innerHTML = "";
+                        queryInput.value = "";
+                        pushBtn.disabled = false;
+                    });
+                    resultsEl.appendChild(btn);
+                });
+            })
+            .catch(function () {
+                resultsEl.innerHTML = "<div class='list-group-item text-danger small'>Search failed.</div>";
+            });
+    }
+
+    searchBtn.addEventListener("click", doSearch);
+    queryInput.addEventListener("keydown", function (e) { if (e.key === "Enter") { doSearch(); } });
+
+    clearBtn.addEventListener("click", function () {
+        selectedPatientId = null;
+        selectedEl.classList.add("d-none");
+        pushBtn.disabled = !createChk.checked;
+    });
+
+    createChk.addEventListener("change", function () {
+        if (!selectedPatientId) { pushBtn.disabled = !this.checked; }
+    });
+
+    // Push encounter
+    pushBtn.addEventListener("click", function () {
+        pushBtn.disabled = true;
+        pushBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Pushing…';
+        resultBox.classList.add("d-none");
+        resultBox.innerHTML = "";
+
+        var body = {};
+        if (selectedPatientId) { body.patient_id = selectedPatientId; }
+        if (createChk.checked && !selectedPatientId) { body.create_patient = true; }
+
+        fetch(PUSH_URL, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {"Content-Type": "application/json", "X-CSRFToken": CSRF_TOKEN},
+            body: JSON.stringify(body),
+        })
+            .then(function (r) {
+                if (!r.ok && r.status === 403) throw new Error("CSRF or auth error (403). Try refreshing the page.");
+                return r.json().catch(function() { throw new Error("Server returned non-JSON (status " + r.status + ")"); });
+            })
+            .then(function (d) {
+                pushBtn.innerHTML = '<iconify-icon icon="iconamoon:cloud-upload-duotone" class="me-1 align-middle"></iconify-icon> Push encounter';
+                resultBox.classList.remove("d-none");
+                if (d.ok) {
+                    resultBox.innerHTML = '<div class="alert alert-success py-2 mb-0 small">' +
+                        '<iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon>' +
+                        'Encounter pushed. GNU Health encounter ID: <strong>' + d.encounter_id + '</strong></div>';
+                } else {
+                    resultBox.innerHTML = '<div class="alert alert-danger py-2 mb-0 small">' +
+                        (d.error || "Unknown error") + '</div>';
+                    pushBtn.disabled = false;
+                }
+            })
+            .catch(function (err) {
+                pushBtn.innerHTML = '<iconify-icon icon="iconamoon:cloud-upload-duotone" class="me-1 align-middle"></iconify-icon> Push encounter';
+                resultBox.classList.remove("d-none");
+                resultBox.innerHTML = '<div class="alert alert-danger py-2 mb-0 small">Request failed: ' + err + '</div>';
+                pushBtn.disabled = false;
+            });
+    });
+}());
+</script>
 
 <!-- Idle warning modal -->
 <div class="modal fade" id="idleModal" tabindex="-1" aria-hidden="true">

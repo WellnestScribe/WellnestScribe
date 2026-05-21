@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GNU Health — WellnestScribe</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 80px auto; padding: 0 20px; color: #333; }
+  h1 { color: #2563eb; font-size: 1.5rem; margin-bottom: 0.25rem; }
+  .badge { display: inline-block; background: #22c55e; color: #fff; font-size: 0.75rem; padding: 2px 8px; border-radius: 99px; margin-left: 8px; vertical-align: middle; }
+  .card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 16px 0; background: #fafafa; }
+  code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+  a { color: #2563eb; }
+  .tip { font-size: 0.85rem; color: #6b7280; margin-top: 24px; }
+  hr { border: none; border-top: 1px solid #e5e7eb; margin: 24px 0; }
+</style>
+</head>
+<body>
+  <h1>GNU Health <span class="badge">Running</span></h1>
+  <p>Tryton XML-RPC server is live on port 8069. The browser web client (SAO) was not available at build time.</p>
+
+  <div class="card">
+    <strong>Desktop Client (recommended)</strong>
+    <p>Download the Tryton desktop client for Windows to access the full GNU Health UI:</p>
+    <p><a href="https://www.tryton.org/download" target="_blank">https://www.tryton.org/download</a></p>
+    <p>
+      Host: <code>localhost</code>&nbsp;&nbsp;
+      Port: <code>8069</code><br>
+      Database: <code>gnuhealth</code><br>
+      Login: <code>admin</code>
+    </p>
+  </div>
+
+  <div class="card">
+    <strong>WellnestScribe Integration</strong>
+    <p>XML-RPC API: <code>http://localhost:8069/</code> (POST only — XML-RPC protocol)</p>
+    <p>Status check: <a href="http://localhost:9093/emr/api/gnuhealth/status/" target="_blank">localhost:9093/emr/api/gnuhealth/status/</a></p>
+    <p>To enable the "Push to GNU Health" button, set in <code>.env</code>:<br>
+    <code>EMR_BACKEND=gnuhealth</code><br>
+    <code>GNUHEALTH_PASSWORD=change_me_before_deploy</code>
+    </p>
+  </div>
+
+  <hr>
+  <p class="tip">GNU Health 5.0.6 / Tryton 7.0.50</p>
+</body>
+</html>

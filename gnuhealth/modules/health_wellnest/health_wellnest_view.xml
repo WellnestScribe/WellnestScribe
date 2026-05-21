@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<tryton>
+  <data>
+
+    <!-- URL action (target overridden dynamically by the wizard) -->
+    <record model="ir.action.url" id="act_wellnest_url">
+      <field name="name">Open WellnestScribe</field>
+      <field name="url">http://localhost:9093</field>
+    </record>
+
+    <!-- Wizard action wired to the button on the patient form -->
+    <record model="ir.action.wizard" id="act_open_wellnest_wizard">
+      <field name="name">Open WellnestScribe</field>
+      <field name="wiz_name">health_wellnest.open_wellnest</field>
+    </record>
+
+    <!-- Tree view for WellnestScribe sessions -->
+    <record model="ir.ui.view" id="wellnest_session_tree">
+      <field name="model">gnuhealth.wellnest.session</field>
+      <field name="type">tree</field>
+      <field name="name">wellnest_session_tree</field>
+    </record>
+
+    <!-- Form view for a single WellnestScribe session -->
+    <record model="ir.ui.view" id="wellnest_session_form">
+      <field name="model">gnuhealth.wellnest.session</field>
+      <field name="type">form</field>
+      <field name="name">wellnest_session_form</field>
+    </record>
+
+    <!-- Extend gnuhealth.patient form — no type on inherited views -->
+    <record model="ir.ui.view" id="patient_form_extend">
+      <field name="model">gnuhealth.patient</field>
+      <field name="inherit" ref="health.gnuhealth_patient_view_form"/>
+      <field name="name">patient_form_extend</field>
+    </record>
+
+  </data>
+</tryton>

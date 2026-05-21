@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<form>
+  <label name="patient"/>
+  <field name="patient"/>
+  <label name="session_date"/>
+  <field name="session_date"/>
+  <label name="status"/>
+  <field name="status"/>
+  <label name="chief_complaint"/>
+  <field name="chief_complaint" colspan="3"/>
+  <separator id="sep_gnuhealth" string="GNU Health Link" colspan="4"/>
+  <label name="encounter_id"/>
+  <field name="encounter_id"/>
+  <label name="django_session_id"/>
+  <field name="django_session_id"/>
+  <separator id="sep_wellnest" string="Open in WellnestScribe" colspan="4"/>
+  <label name="review_url"/>
+  <field name="review_url" widget="url" colspan="3"/>
+  <separator id="sep_notes" string="Notes" colspan="4"/>
+  <field name="notes" colspan="4"/>
+</form>

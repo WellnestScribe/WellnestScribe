@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<data>
+  <xpath expr="//notebook" position="inside">
+    <page string="WellnestScribe" id="wellnest_page">
+      <group id="wellnest_action_group" colspan="4" col="4">
+        <label id="lbl_wellnest_action" string="Start a new AI-assisted clinical note for this patient:"/>
+        <button name="open_wellnest" string="Open WellnestScribe" icon="tryton-forward" colspan="1"/>
+      </group>
+      <separator id="sep_past_sessions" string="Past Sessions" colspan="4"/>
+      <field name="wellnest_sessions" mode="tree,form" colspan="4"/>
+    </page>
+  </xpath>
+</data>

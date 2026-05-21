@@ -1,0 +1,59 @@
+
+msgid ""
+msgstr "Content-Type: text/plain; charset=utf-8\n"
+
+msgctxt "model:gnuhealth.wellnest.session,name:"
+msgid "WellnestScribe Session"
+msgstr "WellnestScribe Session"
+
+msgctxt "field:gnuhealth.wellnest.session,patient:"
+msgid "Patient"
+msgstr "Patient"
+
+msgctxt "field:gnuhealth.wellnest.session,session_date:"
+msgid "Session Date"
+msgstr "Session Date"
+
+msgctxt "field:gnuhealth.wellnest.session,chief_complaint:"
+msgid "Chief Complaint"
+msgstr "Chief Complaint"
+
+msgctxt "field:gnuhealth.wellnest.session,status:"
+msgid "Status"
+msgstr "Status"
+
+msgctxt "field:gnuhealth.wellnest.session,encounter_id:"
+msgid "GNU Health Encounter ID"
+msgstr "GNU Health Encounter ID"
+
+msgctxt "field:gnuhealth.wellnest.session,django_session_id:"
+msgid "WellnestScribe Session ID"
+msgstr "WellnestScribe Session ID"
+
+msgctxt "field:gnuhealth.wellnest.session,notes:"
+msgid "Notes"
+msgstr "Notes"
+
+msgctxt "field:gnuhealth.wellnest.session,review_url:"
+msgid "Review in WellnestScribe (URL)"
+msgstr "Review in WellnestScribe (URL)"
+
+msgctxt "field:gnuhealth.patient,wellnest_sessions:"
+msgid "WellnestScribe Sessions"
+msgstr "WellnestScribe Sessions"
+
+msgctxt "field:gnuhealth.patient,wellnest_record_url:"
+msgid "Record New Session (URL)"
+msgstr "Record New Session (URL)"
+
+msgctxt "selection:gnuhealth.wellnest.session,status:"
+msgid "Draft — not yet pushed"
+msgstr "Draft — not yet pushed"
+
+msgctxt "selection:gnuhealth.wellnest.session,status:"
+msgid "Pushed to Encounter"
+msgstr "Pushed to Encounter"
+
+msgctxt "selection:gnuhealth.wellnest.session,status:"
+msgid "Push Error"
+msgstr "Push Error"

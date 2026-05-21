@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<tree>
+  <field name="session_date"/>
+  <field name="chief_complaint"/>
+  <field name="status"/>
+  <field name="encounter_id"/>
+</tree>
