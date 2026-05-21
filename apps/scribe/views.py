@@ -25,6 +25,7 @@ from accounts.models import DoctorProfile
 from .models import NoteShare, ScribeSession, SessionEvent, SOAPNote
 from .services.export import make_share_token, qr_data_url, whatsapp_url
 from .services.pipeline import (
+    run_extract_demographics,
     run_interpret_patois,
     run_note_generation,
     run_polish_grammar,
@@ -305,6 +306,167 @@ class TriageView(LoginRequiredMixin, View):
         )
 
 
+class DrugCheckView(LoginRequiredMixin, View):
+    """Drug interaction checker — Jamaican context.
+
+    Open to all authenticated clinicians: this is a clinical decision-support
+    feature, not a sandbox. AI advisory only — disclaimer is rendered into the
+    UI and into every result.
+    """
+
+    template_name = "scribe/drug_check.html"
+
+    def get(self, request):
+        return render(request, self.template_name, {})
+
+
+@login_required
+def drug_search_api(request):
+    """Autocomplete search across DrugAlias for the drug-check screen.
+
+    GET /scribe/api/drug-search/?q=lis&limit=10
+    Returns: { ok, results: [{label, generic, drug_class}] }
+    Searches brand and generic with a starts-with first, then contains.
+    """
+    from .models import DrugAlias
+
+    q = (request.GET.get("q") or "").strip()
+    if len(q) < 2:
+        return JsonResponse({"ok": True, "results": []})
+    try:
+        limit = max(1, min(20, int(request.GET.get("limit") or 12)))
+    except ValueError:
+        limit = 12
+
+    from django.db.models import Q
+    starts = (
+        DrugAlias.objects
+        .filter(Q(brand_name__istartswith=q) | Q(generic_name__istartswith=q))
+        .order_by("-jamaican_common", "brand_name")[: limit * 2]
+    )
+    if starts.count() < limit:
+        contains = (
+            DrugAlias.objects
+            .filter(Q(brand_name__icontains=q) | Q(generic_name__icontains=q))
+            .exclude(pk__in=[d.pk for d in starts])
+            .order_by("-jamaican_common", "brand_name")[: limit]
+        )
+        merged = list(starts) + list(contains)
+    else:
+        merged = list(starts)
+
+    seen = set()
+    results = []
+    for d in merged:
+        # Prefer the original brand for display, with generic + class hint.
+        label = d.brand_name
+        key = label.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append({
+            "label": label,
+            "generic": d.generic_name,
+            "drug_class": d.drug_class,
+            "jamaican_common": d.jamaican_common,
+        })
+        # Also surface generic as its own row (so typing the generic finds it).
+        gen_key = d.generic_name.lower()
+        if gen_key not in seen and d.generic_name.lower() != d.brand_name.lower():
+            seen.add(gen_key)
+            results.append({
+                "label": d.generic_name,
+                "generic": d.generic_name,
+                "drug_class": d.drug_class,
+                "jamaican_common": d.jamaican_common,
+            })
+        if len(results) >= limit:
+            break
+    return JsonResponse({"ok": True, "results": results[:limit]})
+
+
+# Common Jamaican / Caribbean herbal remedies + bush teas used in the
+# drug-check screen autocomplete. Free text is still allowed; this is just
+# a suggestion list so doctors don't have to spell unfamiliar names.
+COMMON_HERBS = [
+    "cerasee", "leaf of life", "fever grass (lemongrass)", "soursop leaf",
+    "ginger root", "moringa", "bissy (kola nut)", "lime bud", "guinea hen weed",
+    "aloe vera (sinkle bible)", "noni", "neem", "comfrey", "annatto",
+    "rosemary tea", "mint tea", "search me heart", "vervain", "cannabis (ganja) tea",
+    "blue vervain", "dandelion", "sage tea", "thyme tea",
+]
+
+
+@login_required
+def herb_search_api(request):
+    """Simple substring filter over the common herbs list — no DB required."""
+    q = (request.GET.get("q") or "").strip().lower()
+    if len(q) < 2:
+        return JsonResponse({"ok": True, "results": []})
+    results = [{"label": h} for h in COMMON_HERBS if q in h.lower()][:12]
+    return JsonResponse({"ok": True, "results": results})
+
+
+@login_required
+@require_POST
+@csrf_protect
+def drug_check_api(request):
+    """Run an interaction check.
+
+    Body:
+        current_meds: list[str]   — whatever the doctor typed
+        proposed_med: str         — drug being considered
+        herbs: list[str]          — optional bush teas / herbal remedies
+        patient_context: {age, sex, conditions[], allergies[]}
+    """
+    from .services.drug_check import check_interactions  # local: heavy import
+    import time
+
+    payload = _json_body(request)
+    current = payload.get("current_meds") or []
+    proposed = (payload.get("proposed_med") or "").strip()
+    herbs = payload.get("herbs") or []
+    context = payload.get("patient_context") or {}
+
+    if not isinstance(current, list) or not isinstance(herbs, list):
+        return JsonResponse({"ok": False, "error": "current_meds and herbs must be lists."}, status=400)
+    if not proposed:
+        return JsonResponse({"ok": False, "error": "proposed_med is required."}, status=400)
+
+    started = time.perf_counter()
+    try:
+        result = check_interactions(
+            current_meds=[str(x) for x in current],
+            proposed_med=proposed,
+            herbs=[str(x) for x in herbs],
+            patient_context=context if isinstance(context, dict) else {},
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("drug check failed")
+        return JsonResponse({"ok": False, "error": str(exc)}, status=500)
+    duration_ms = int((time.perf_counter() - started) * 1000)
+
+    # Audit row — keep verbatim for later safety review.
+    try:
+        from .models import DrugInteractionCheck
+        DrugInteractionCheck.objects.create(
+            doctor=request.user,
+            inputs={
+                "current_meds": current,
+                "proposed_med": proposed,
+                "herbs": herbs,
+                "patient_context": context,
+            },
+            result=result,
+            duration_ms=duration_ms,
+            model_used=getattr(dj_settings, "SCRIBE_AZURE_OPENAI_DEPLOYMENT", "")[:120],
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("could not persist DrugInteractionCheck row")
+
+    return JsonResponse({"ok": True, "result": result, "duration_ms": duration_ms})
+
+
 @login_required
 @require_POST
 @csrf_protect
@@ -570,6 +732,29 @@ def triage_probe_api(request):
 @login_required
 @require_POST
 @csrf_protect
+@login_required
+@require_POST
+@csrf_protect
+def triage_extract_demographics_api(request):
+    """Pull patient + vitals from the conversation-mode clinical English text.
+
+    Returns a strict JSON skeleton for an editable side-panel. Not persisted —
+    the doctor uses it to verify what the transcript captured.
+    """
+    if not _triage_visible(request.user):
+        return JsonResponse({"ok": False, "error": "Not authorized."}, status=403)
+    payload = _json_body(request)
+    text = (payload.get("text") or "").strip()
+    if not text:
+        return JsonResponse({"ok": False, "error": "No text provided."}, status=400)
+    try:
+        data = run_extract_demographics(text)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("demographics extraction failed")
+        return JsonResponse({"ok": False, "error": str(exc)}, status=500)
+    return JsonResponse({"ok": True, "data": data})
+
+
 def triage_interpret_api(request):
     """Interpret raw Patois text into clinical English.
 

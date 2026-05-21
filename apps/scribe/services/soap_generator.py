@@ -20,6 +20,7 @@ from openai import BadRequestError
 from .clients import get_chat_client
 from .prompts import (
     CHART_USER_PROMPT,
+    DEMOGRAPHICS_EXTRACTION_PROMPT,
     IMPROVE_PROMPT,
     JAMAICAN_CONTEXT_ADDENDUM,
     MASTER_SYSTEM_PROMPT,
@@ -420,6 +421,69 @@ def polish_grammar(note_text: str) -> str:
             {"role": "user", "content": POLISH_PROMPT.format(note=note_text)},
         ]
     )
+
+
+# Default skeleton returned when AI yields nothing parseable. Mirrors the
+# DEMOGRAPHICS_EXTRACTION_PROMPT output shape so the UI can render an empty
+# editable form instead of crashing.
+DEMOGRAPHICS_EMPTY = {
+    "patient": {"name": "", "age": "", "dob": "", "sex": "", "id_or_record_number": ""},
+    "vitals": {"bp": "", "hr": "", "temp": "", "rr": "", "spo2": "",
+               "weight": "", "height": "", "bmi": "", "glucose": ""},
+    "allergies": [],
+    "current_medications": [],
+    "chief_complaint": "",
+    "history_summary": "",
+}
+
+
+def extract_demographics(transcript: str) -> dict:
+    """Pull patient + vitals + complaints from clinical text into a strict dict.
+
+    Used by the Triage conversation-mode demographics panel as a verification
+    aid for the doctor. Nothing here is persisted — output is for display only.
+    """
+    text = (transcript or "").strip()
+    if not text:
+        return dict(DEMOGRAPHICS_EMPTY)
+    import json as _json
+    import copy as _copy
+    raw = _chat(
+        [
+            {"role": "system", "content": "You are a strict JSON-only clinical data extractor."},
+            {"role": "user", "content": DEMOGRAPHICS_EXTRACTION_PROMPT.format(transcript=text)},
+        ],
+        max_tokens=1200,
+    )
+    # Strip accidental markdown fences from reasoning-model output.
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z]*\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+    try:
+        parsed = _json.loads(cleaned)
+    except Exception:
+        # Last-ditch: find the first {...} block.
+        m = re.search(r"\{[\s\S]*\}", cleaned)
+        if not m:
+            return dict(DEMOGRAPHICS_EMPTY)
+        try:
+            parsed = _json.loads(m.group(0))
+        except Exception:
+            return dict(DEMOGRAPHICS_EMPTY)
+    # Merge with empty skeleton so the UI always sees every key.
+    out = _copy.deepcopy(DEMOGRAPHICS_EMPTY)
+    if isinstance(parsed.get("patient"), dict):
+        out["patient"].update({k: str(v) for k, v in parsed["patient"].items() if k in out["patient"]})
+    if isinstance(parsed.get("vitals"), dict):
+        out["vitals"].update({k: str(v) for k, v in parsed["vitals"].items() if k in out["vitals"]})
+    if isinstance(parsed.get("allergies"), list):
+        out["allergies"] = [str(x) for x in parsed["allergies"] if str(x).strip()]
+    if isinstance(parsed.get("current_medications"), list):
+        out["current_medications"] = [str(x) for x in parsed["current_medications"] if str(x).strip()]
+    out["chief_complaint"] = str(parsed.get("chief_complaint") or "")
+    out["history_summary"] = str(parsed.get("history_summary") or "")
+    return out
 
 
 # ---- Patois ASR post-processor ----

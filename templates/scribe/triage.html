@@ -12,10 +12,6 @@
                     <h4 class="mb-1 fw-semibold">Triage Lab
                         <span class="badge bg-primary-subtle text-primary ms-1" style="font-size:0.7rem;">internal</span>
                     </h4>
-                    <p class="text-muted mb-0 small">
-                        Sandbox for testing Patois ASR (MMS) + on-device rewrite models.
-                        Hidden from regular pilot doctors.
-                    </p>
                 </div>
                 <div class="d-flex align-items-center gap-2 flex-wrap">
                     <div class="form-check form-switch m-0">
@@ -37,21 +33,192 @@
     <div id="triageConversationPanel" class="mb-4" style="display:none;">
         <div class="card">
             <div class="card-body p-4 text-center">
-                <h6 class="fw-semibold mb-2">Conversation mode</h6>
-                <p class="text-muted small mb-3">
-                    Tap, talk, stop. The pipeline runs end-to-end (denoise → ASR → diarize → interpret) and only the final clinical English is shown.
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                    <h6 class="fw-semibold m-0">Conversation mode</h6>
+                    <label class="suggestive-assist-chip" for="convoClinicalOnlyToggle"
+                           title="Hides pipeline stages and internal details — shows only the clinical summary">
+                        <input type="checkbox" id="convoClinicalOnlyToggle">
+                        <span class="suggestive-assist-chip-body">
+                            <iconify-icon icon="iconamoon:eye-off-duotone" class="me-1"></iconify-icon>
+                            Clinical summary only
+                        </span>
+                    </label>
+                </div>
+                <p class="text-muted small mb-3" id="convoModeDesc">
+                    Tap, talk, stop — your clinical summary appears when processing completes.
                 </p>
-                <div class="d-flex justify-content-center mb-3">
+                <div class="d-flex justify-content-center mb-2">
                     <button type="button" class="record-cta" id="convoRecordBtn" aria-label="Record">
                         <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
                         <span data-record-label>Talk</span>
                     </button>
                 </div>
+                <div class="text-center mb-1">
+                    <button type="button" class="btn btn-link btn-sm p-0 text-muted" id="micSettingsToggle"
+                            style="font-size:0.78rem;">
+                        <iconify-icon icon="iconamoon:settings-duotone" class="me-1" style="font-size:0.85rem;"></iconify-icon>
+                        Mic settings
+                    </button>
+                </div>
+                <div id="micSettingsPanel" class="mb-2" style="display:none;">
+                    <div class="d-flex gap-2 align-items-center justify-content-center flex-wrap">
+                        <select class="form-select form-select-sm" id="micDeviceSelect" style="max-width:260px;">
+                            <option value="">Default microphone</option>
+                        </select>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="micTestBtn">Test mic</button>
+                    </div>
+                    <div class="mt-2 px-3" id="micLevelWrap" style="display:none;">
+                        <div style="height:6px; background:var(--bs-border-color); border-radius:3px; overflow:hidden; max-width:300px; margin:0 auto;">
+                            <div id="micLevelBar" style="height:100%; width:0%; background:#2d8a4e; border-radius:3px; transition:width 80ms;"></div>
+                        </div>
+                        <p class="small text-muted text-center mt-1 mb-0" id="micLevelHint">Speak — bar should move.</p>
+                    </div>
+                </div>
                 <div class="recorder-timer" id="convoTimer">0:00</div>
-                <p class="small text-muted mt-2" id="convoStage">Idle — pipeline runs with the toggles + backend chosen below.</p>
-                <textarea class="note-textarea narrative mt-3" id="convoFinalOut" rows="8"
-                          placeholder="Final clinical English appears here once the pipeline finishes."></textarea>
+                <div id="convoProgressWrap" class="mt-3 px-3" style="display:none;">
+                    <div class="progress" style="height:5px; border-radius:3px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated"
+                             id="convoProgressBar" role="progressbar"
+                             style="width:0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                    <p class="small text-muted mt-1 mb-0 text-center" id="convoProgressLabel"></p>
+                </div>
+                <p class="small mt-2 mb-0" id="convoStage" style="display:none;"></p>
+                <textarea class="note-textarea narrative mt-3" id="convoFinalOut" rows="4"
+                          placeholder="Clinical summary"></textarea>
                 <p class="small text-muted mt-2" id="convoTimings"></p>
+            </div>
+        </div>
+
+        {% comment %}
+          Demographics panel — auto-populates from the final clinical English.
+          Editable, per-field mic for corrections, not persisted (verification
+          aid only). Hidden until the first extraction returns.
+        {% endcomment %}
+        <div class="card mt-3" id="convoDemographicsCard">
+            <div class="card-body p-4 text-start">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                    <div>
+                        <h6 class="fw-semibold mb-1">Captured from conversation</h6>
+                        <p class="small text-muted mb-0">
+                            Visible the whole time. Fill in any field manually as you ask the patient — use the mic to dictate. When the pipeline finishes the AI fills the blanks but never overwrites what you already typed.
+                        </p>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="convoDemoReRun">
+                        <iconify-icon icon="iconamoon:restart-duotone" class="me-1 align-middle"></iconify-icon>
+                        Re-extract
+                    </button>
+                </div>
+
+                <div class="small text-uppercase fw-semibold text-muted mb-2">Patient</div>
+                <div class="row g-2 mb-3">
+                    <div class="col-12 col-md-6 col-lg-3">
+                        <label class="form-label small text-muted mb-1">Name / initials</label>
+                        <div class="quick-mic-wrap">
+                            <input type="text" class="form-control form-control-sm" data-demo="patient.name">
+                            <button type="button" class="quick-mic-btn" data-quick-mic="[data-demo='patient.name']" aria-label="Dictate name">
+                                <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3 col-lg-2">
+                        <label class="form-label small text-muted mb-1">Age</label>
+                        <input type="text" class="form-control form-control-sm" data-demo="patient.age">
+                    </div>
+                    <div class="col-6 col-md-3 col-lg-2">
+                        <label class="form-label small text-muted mb-1">Sex</label>
+                        <input type="text" class="form-control form-control-sm" data-demo="patient.sex" placeholder="M / F / other">
+                    </div>
+                    <div class="col-6 col-md-3 col-lg-2">
+                        <label class="form-label small text-muted mb-1">DOB</label>
+                        <input type="text" class="form-control form-control-sm" data-demo="patient.dob">
+                    </div>
+                    <div class="col-6 col-md-3 col-lg-3">
+                        <label class="form-label small text-muted mb-1">ID / record #</label>
+                        <input type="text" class="form-control form-control-sm" data-demo="patient.id_or_record_number">
+                    </div>
+                </div>
+
+                <div class="small text-uppercase fw-semibold text-muted mb-2">Vitals</div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6 col-md-3 col-lg-2">
+                        <label class="form-label small text-muted mb-1">BP</label>
+                        <input type="text" class="form-control form-control-sm" data-demo="vitals.bp" placeholder="120/80">
+                    </div>
+                    <div class="col-6 col-md-3 col-lg-2">
+                        <label class="form-label small text-muted mb-1">HR</label>
+                        <input type="text" class="form-control form-control-sm" data-demo="vitals.hr">
+                    </div>
+                    <div class="col-6 col-md-3 col-lg-2">
+                        <label class="form-label small text-muted mb-1">Temp</label>
+                        <input type="text" class="form-control form-control-sm" data-demo="vitals.temp">
+                    </div>
+                    <div class="col-6 col-md-3 col-lg-2">
+                        <label class="form-label small text-muted mb-1">RR</label>
+                        <input type="text" class="form-control form-control-sm" data-demo="vitals.rr">
+                    </div>
+                    <div class="col-6 col-md-3 col-lg-2">
+                        <label class="form-label small text-muted mb-1">SpO₂</label>
+                        <input type="text" class="form-control form-control-sm" data-demo="vitals.spo2">
+                    </div>
+                    <div class="col-6 col-md-3 col-lg-2">
+                        <label class="form-label small text-muted mb-1">Glucose</label>
+                        <input type="text" class="form-control form-control-sm" data-demo="vitals.glucose">
+                    </div>
+                    <div class="col-6 col-md-3 col-lg-2">
+                        <label class="form-label small text-muted mb-1">Weight</label>
+                        <input type="text" class="form-control form-control-sm" data-demo="vitals.weight">
+                    </div>
+                    <div class="col-6 col-md-3 col-lg-2">
+                        <label class="form-label small text-muted mb-1">Height</label>
+                        <input type="text" class="form-control form-control-sm" data-demo="vitals.height">
+                    </div>
+                    <div class="col-6 col-md-3 col-lg-2">
+                        <label class="form-label small text-muted mb-1">BMI</label>
+                        <input type="text" class="form-control form-control-sm" data-demo="vitals.bmi">
+                    </div>
+                </div>
+
+                <div class="row g-2">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label small text-muted mb-1">Allergies (comma-separated)</label>
+                        <div class="quick-mic-wrap">
+                            <input type="text" class="form-control form-control-sm" data-demo-list="allergies">
+                            <button type="button" class="quick-mic-btn" data-quick-mic="[data-demo-list='allergies']" aria-label="Dictate allergies">
+                                <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label small text-muted mb-1">Current medications (comma-separated)</label>
+                        <div class="quick-mic-wrap">
+                            <input type="text" class="form-control form-control-sm" data-demo-list="current_medications">
+                            <button type="button" class="quick-mic-btn" data-quick-mic="[data-demo-list='current_medications']" aria-label="Dictate meds">
+                                <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small text-muted mb-1 mt-2">Chief complaint</label>
+                        <div class="quick-mic-wrap">
+                            <input type="text" class="form-control form-control-sm" data-demo="chief_complaint">
+                            <button type="button" class="quick-mic-btn" data-quick-mic="[data-demo='chief_complaint']" aria-label="Dictate complaint">
+                                <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small text-muted mb-1 mt-2">History summary</label>
+                        <div class="quick-mic-wrap">
+                            <textarea class="form-control form-control-sm" rows="3" data-demo="history_summary"></textarea>
+                            <button type="button" class="quick-mic-btn" data-quick-mic="[data-demo='history_summary']" aria-label="Dictate history">
+                                <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="small text-muted mb-0 mt-3" id="convoDemoStatus"></p>
             </div>
         </div>
     </div>
@@ -62,6 +229,7 @@
                 <div class="card-body p-4">
                     <h6 class="fw-semibold mb-3">1. Audio in</h6>
                     <div class="recorder-shell text-center">
+                        <div class="mic-live-dot" id="micLiveDotTriage"></div>
                         <div class="recorder-timer" id="triageTimer">0:00</div>
                         <div class="waveform-bars" id="triageWaveform"></div>
                         <div class="d-flex justify-content-center align-items-center mt-3 gap-3 flex-wrap">
@@ -208,15 +376,22 @@
                         <div class="col-md-4">
                             <label class="form-label small text-muted" for="triageGemmaModelId">Local model id</label>
                             <input type="text" class="form-control form-control-sm" id="triageGemmaModelId"
-                                   value="Qwen/Qwen3-1.7B"
-                                   placeholder="e.g. Qwen/Qwen3-1.7B">
+                                   value="google/gemma-4-E2B-it"
+                                   placeholder="e.g. google/gemma-4-E2B-it"
+                                   list="gemmaModelPresets" autocomplete="off">
+                            <datalist id="gemmaModelPresets">
+                                <option value="google/gemma-4-E2B-it">Gemma 4 E2B — recommended, no login needed</option>
+                                <option value="google/gemma-3-4b-it">Gemma 3 4B — needs HF token</option>
+                                <option value="google/gemma-2-2b-it">Gemma 2 2B — no login needed</option>
+                                <option value="microsoft/Phi-3.5-mini-instruct">Phi-3.5 mini — 3.8B, no login needed</option>
+                                <option value="Qwen/Qwen3-1.7B">Qwen3-1.7B — fast, 1.7B</option>
+                            </datalist>
                         </div>
                     </div>
                     <p class="small text-muted mb-2">
-                        Same Patois system prompt for both. Azure is fast (cloud). Qwen3-1.7B
-                        runs locally — ~3.4 GB download then ~30–60 s cold start; subsequent
-                        calls a few seconds. Override the model id to try Gemma, Llama 3.2 1B,
-                        Phi-3-mini, etc.
+                        Azure is fast (cloud). Local models download on first use — cold start ~30–60 s, subsequent calls a few seconds.
+                        <strong>Gemma 4 E2B</strong> is the recommended local model — 2.3 B effective params, Apache 2.0, no HF token needed.
+                        Gemma 3 4B requires a HuggingFace token (<code>huggingface-cli login</code>).
                     </p>
                     <textarea class="note-textarea" id="triageCleanOut" rows="6"
                               placeholder="Clean clinical English will appear here…"></textarea>
@@ -280,7 +455,7 @@
                     {% if env.torch and not env.cuda and is_triage_admin %}
                     <div class="alert alert-info small mt-3 mb-2 p-2">
                         torch is installed but no CUDA — likely the CPU-only build. To
-                        unlock your RTX 2060, force-reinstall the CUDA build:
+                        unlock your GPU{% if env.cuda_device %} ({{ env.cuda_device }}){% endif %}, force-reinstall the CUDA build:
                         <button type="button"
                                 class="btn btn-outline-primary btn-sm mt-2"
                                 id="reinstallCudaBtn"

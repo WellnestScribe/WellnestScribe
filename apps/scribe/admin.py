@@ -3,7 +3,14 @@ from django.db.models import Count
 from django.urls import reverse
 from django.utils.html import format_html
 
-from .models import NoteShare, ScribeSession, SessionEvent, SOAPNote
+from .models import (
+    DrugAlias,
+    DrugInteractionCheck,
+    NoteShare,
+    ScribeSession,
+    SessionEvent,
+    SOAPNote,
+)
 
 
 class SessionEventInline(admin.TabularInline):
@@ -80,3 +87,20 @@ class NoteShareAdmin(admin.ModelAdmin):
     list_filter = ("created_at",)
     search_fields = ("token", "session__title")
     readonly_fields = ("token", "expires_at", "opened_count", "created_at")
+
+
+@admin.register(DrugAlias)
+class DrugAliasAdmin(admin.ModelAdmin):
+    list_display = ("brand_name", "generic_name", "drug_class", "jamaican_common", "updated_at")
+    list_filter = ("jamaican_common", "drug_class")
+    search_fields = ("brand_name", "generic_name", "drug_class", "notes")
+    list_editable = ("generic_name", "drug_class", "jamaican_common")
+
+
+@admin.register(DrugInteractionCheck)
+class DrugInteractionCheckAdmin(admin.ModelAdmin):
+    list_display = ("id", "doctor", "model_used", "duration_ms", "created_at")
+    list_filter = ("model_used", "doctor")
+    search_fields = ("doctor__username",)
+    readonly_fields = ("doctor", "inputs", "result", "duration_ms", "model_used", "created_at")
+    date_hierarchy = "created_at"

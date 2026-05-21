@@ -451,23 +451,42 @@ def gemma_interpret_patois(text: str, *, device: str = "cpu",
     tok, mdl, dev = _load_gemma(device=device, model_id=model_id)
     prompt = _GEMMA_PATOIS_PROMPT.format(transcript=text or "")
 
-    # Most Gemma checkpoints expose a chat template; fall back to raw prompt.
+    # apply_chat_template returns a plain tensor (Gemma) or BatchEncoding (Qwen).
+    # Normalise both into a dict so generate() always receives **kwargs.
+    # enable_thinking=False suppresses Qwen3 <think> blocks; ignored by other models.
     try:
         messages = [{"role": "user", "content": prompt}]
-        input_ids = tok.apply_chat_template(
-            messages, return_tensors="pt", add_generation_prompt=True
-        ).to(dev)
+        try:
+            enc = tok.apply_chat_template(
+                messages, return_tensors="pt", add_generation_prompt=True,
+                enable_thinking=False,
+            )
+        except TypeError:
+            enc = tok.apply_chat_template(
+                messages, return_tensors="pt", add_generation_prompt=True
+            )
+        if hasattr(enc, "input_ids"):
+            # BatchEncoding — move every tensor to device
+            gen_inputs = {k: v.to(dev) for k, v in enc.items()}
+        else:
+            # Plain tensor
+            gen_inputs = {"input_ids": enc.to(dev)}
     except Exception:  # noqa: BLE001
-        input_ids = tok(prompt, return_tensors="pt").input_ids.to(dev)
+        gen_inputs = {"input_ids": tok(prompt, return_tensors="pt").input_ids.to(dev)}
+
+    prompt_len = gen_inputs["input_ids"].shape[-1]
 
     with torch.no_grad():
         out_ids = mdl.generate(
-            input_ids,
+            **gen_inputs,
             max_new_tokens=max_new_tokens,
             do_sample=False,
-            temperature=0.0,
             repetition_penalty=1.05,
         )
     # Trim the prompt off the front so we only return the completion.
-    completion_ids = out_ids[0][input_ids.shape[-1]:]
-    return tok.decode(completion_ids, skip_special_tokens=True).strip()
+    completion_ids = out_ids[0][prompt_len:]
+    text = tok.decode(completion_ids, skip_special_tokens=True).strip()
+    # Strip Qwen3 chain-of-thought blocks that leak when thinking mode is on.
+    import re as _re
+    text = _re.sub(r"<think>.*?</think>", "", text, flags=_re.DOTALL).strip()
+    return text

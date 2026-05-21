@@ -37,6 +37,16 @@ and the dismiss attribute can interfere with click handling on desktop.
     </a>
 </li>
 
+{% url 'scribe:drug_check' as drug_check_url %}
+<li class="nav-item">
+    <a class="nav-link {% if request.path == drug_check_url %}active{% endif %}" href="{{ drug_check_url }}">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:pill-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">Drug check</span>
+    </a>
+</li>
+
 {% if triage_visible %}
 {% url 'scribe:triage' as triage_url %}
 <li class="nav-item">

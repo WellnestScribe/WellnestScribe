@@ -180,6 +180,66 @@ class NoteShare(models.Model):
         return f"Share for {self.session_id} (until {self.expires_at:%Y-%m-%d %H:%M})"
 
 
+class DrugAlias(models.Model):
+    """Brand <-> generic <-> class mapping for the drug-interaction checker.
+
+    Why this exists (Dr Adrian concern): GPT-class models don't reliably know
+    Jamaican brand names (Vita-Cax = Diclofenac, Panadol = Paracetamol, etc.).
+    Before sending a list of drugs to the AI we resolve aliases through this
+    table so the prompt always sees a canonical generic + drug class. The
+    doctor / admin can extend this in the Django admin without redeploying.
+    """
+
+    brand_name = models.CharField(max_length=120, db_index=True)
+    generic_name = models.CharField(max_length=120, db_index=True)
+    drug_class = models.CharField(
+        max_length=120,
+        blank=True,
+        help_text="e.g. NSAID, ACE inhibitor, biguanide, PPI, statin",
+    )
+    jamaican_common = models.BooleanField(
+        default=False,
+        help_text="Tick if this brand is commonly prescribed/used in Jamaica.",
+    )
+    notes = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("brand_name", "generic_name")
+        ordering = ("brand_name",)
+        verbose_name_plural = "Drug aliases"
+
+    def __str__(self) -> str:
+        return f"{self.brand_name} → {self.generic_name}"
+
+
+class DrugInteractionCheck(models.Model):
+    """Audit trail for every interaction check the doctor runs.
+
+    Kept for compliance + research. Inputs and AI output are stored verbatim
+    so we can later evaluate model drift / safety.
+    """
+
+    doctor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="drug_checks",
+    )
+    inputs = models.JSONField(default=dict, blank=True)
+    result = models.JSONField(default=dict, blank=True)
+    duration_ms = models.PositiveIntegerField(default=0)
+    model_used = models.CharField(max_length=120, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+
+    def __str__(self) -> str:
+        return f"Drug check #{self.pk} by {self.doctor_id} @ {self.created_at:%Y-%m-%d %H:%M}"
+
+
 class SessionEvent(models.Model):
     """Lightweight audit log entry per session. Useful for debugging + pilot."""
 

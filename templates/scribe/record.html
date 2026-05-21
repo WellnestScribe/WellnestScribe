@@ -20,8 +20,10 @@
         </div>
     </div>
 
-    {# Patient identity at the very top — Dr Elizabeth feedback. Optional.
-       Pilot rule: initials + DOB, avoid full names. #}
+    {% comment %}
+      Patient identity at the very top — Dr Elizabeth feedback. Optional.
+      Pilot rule: initials + DOB, avoid full names.
+    {% endcomment %}
     <div class="patient-bar mb-3">
         <div class="patient-bar-label">
             <iconify-icon icon="iconamoon:profile-duotone" class="me-1 align-middle"></iconify-icon>
@@ -113,17 +115,45 @@
                     </div>
 
                     <div class="recorder-shell text-center">
+                        <div class="mic-live-dot" id="micLiveDot"></div>
                         <div class="recorder-timer" id="recordTimer">0:00</div>
                         <div class="waveform-bars" id="recordWaveform"></div>
-                        <div class="d-flex justify-content-center align-items-center mt-3">
+                        <div class="d-flex justify-content-center align-items-center mt-3 gap-3">
                             <button type="button" class="record-cta" id="recordBtn" aria-label="Record">
                                 <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
                                 <span data-record-label>Record</span>
+                            </button>
+                            <button type="button" class="btn btn-outline-danger btn-sm" id="recordCancelBtn"
+                                    style="display:none;" aria-label="Cancel recording">
+                                <iconify-icon icon="iconamoon:close-circle-1-duotone" class="me-1 align-middle"></iconify-icon>
+                                Cancel
                             </button>
                         </div>
                         <p class="text-muted small mt-3 mb-0 mx-auto" style="max-width: 420px;">
                             Tap to start. Speak naturally for as long as you need — short dictations or long encounters.
                         </p>
+
+                        <div class="mt-2 text-center">
+                            <button type="button" class="btn btn-link btn-sm p-0 text-muted" id="micSettingsToggle"
+                                    style="font-size:0.78rem;">
+                                <iconify-icon icon="iconamoon:settings-duotone" class="me-1" style="font-size:0.85rem;"></iconify-icon>
+                                Mic settings
+                            </button>
+                        </div>
+                        <div id="micSettingsPanel" class="mt-2" style="display:none;">
+                            <div class="d-flex gap-2 align-items-center justify-content-center flex-wrap">
+                                <select class="form-select form-select-sm" id="micDeviceSelect" style="max-width:260px;">
+                                    <option value="">Default microphone</option>
+                                </select>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="micTestBtn">Test mic</button>
+                            </div>
+                            <div class="mt-2 px-3" id="micLevelWrap" style="display:none;">
+                                <div style="height:6px; background:var(--bs-border-color); border-radius:3px; overflow:hidden; max-width:300px; margin:0 auto;">
+                                    <div id="micLevelBar" style="height:100%; width:0%; background:#2d8a4e; border-radius:3px; transition:width 80ms;"></div>
+                                </div>
+                                <p class="small text-muted text-center mt-1 mb-0" id="micLevelHint">Speak — bar should move.</p>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="row g-3 mt-3">

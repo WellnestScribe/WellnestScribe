@@ -445,6 +445,132 @@ def specialty_addendum(specialty: str) -> str:
 # Suggest improvements
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Demographics + vitals extraction (Triage conversation-mode panel)
+# ---------------------------------------------------------------------------
+# Returns a strict JSON object with patient and encounter facts. Used to
+# pre-fill an editable form so the doctor can verify/correct what the AI heard.
+# Nothing is persisted — the form is a sanity check on the transcript only.
+
+DEMOGRAPHICS_EXTRACTION_PROMPT = """You are a clinical data extractor. Read
+the clinical English transcript below and return a SINGLE JSON object with the
+patient and encounter facts present.
+
+CRITICAL RULES:
+1. EXTRACT, DON'T INVENT. If a field is not stated in the transcript, return
+   an empty string "" (or empty list for lists). Never guess.
+2. Output ONLY the JSON object. No prose, no markdown fences, no commentary.
+3. Use exact units as stated by the doctor. If a unit is ambiguous, leave
+   the value as the doctor said it (e.g. "120" rather than "120 mmHg").
+
+OUTPUT SCHEMA (return EVERY key, with "" / [] when absent):
+
+{{
+  "patient": {{
+    "name": "",
+    "age": "",
+    "dob": "",
+    "sex": "",
+    "id_or_record_number": ""
+  }},
+  "vitals": {{
+    "bp": "",
+    "hr": "",
+    "temp": "",
+    "rr": "",
+    "spo2": "",
+    "weight": "",
+    "height": "",
+    "bmi": "",
+    "glucose": ""
+  }},
+  "allergies": [],
+  "current_medications": [],
+  "chief_complaint": "",
+  "history_summary": ""
+}}
+
+TRANSCRIPT:
+{transcript}
+"""
+
+
+# ---------------------------------------------------------------------------
+# Drug interaction checker (Jamaican context)
+# ---------------------------------------------------------------------------
+# Notes on safety design (Dr Adrian feedback):
+#   - We pre-resolve brand → generic + drug_class via the DrugAlias table
+#     BEFORE the AI call. The AI never sees raw brand names, so it can't
+#     hallucinate that "Vita-Cax" is something unrelated.
+#   - The AI must label every finding with severity + confidence + mechanism.
+#     Low-confidence findings are surfaced as advisories, not directives.
+#   - We require the AI to flag an *unresolved* drug (when the alias table
+#     didn't resolve and the AI can't confidently identify it) rather than
+#     guess — see UNRECOGNIZED handling in the schema.
+#   - Output is strict JSON so the UI can render without parsing prose.
+
+DRUG_INTERACTION_PROMPT = """You are a clinical pharmacology assistant for a
+Jamaican-Caribbean medical scribe. The doctor has supplied:
+- Current medications the patient is already on
+- Optional bush teas / herbal remedies the patient uses
+- A PROPOSED medication the doctor is considering adding
+- Optional patient context (age, sex, conditions, allergies)
+
+Every drug has been pre-resolved (where possible) to its generic name and
+drug class. Items marked UNRECOGNIZED could not be resolved — treat them with
+caution: if you do not confidently know the substance, say so in the
+"unrecognized" array rather than guessing.
+
+YOUR JOB:
+Identify clinically relevant interactions between the PROPOSED medication and:
+  (a) each current medication
+  (b) each herbal remedy
+  (c) the patient's listed conditions / allergies / age
+Also flag duplications (same drug class already on board), contraindications,
+and dosage considerations.
+
+OUTPUT — return a SINGLE JSON object. No prose outside the JSON. No markdown.
+
+SCHEMA (return every key; use [] / "" / null for absent values):
+
+{{
+  "summary": "1-2 sentence headline for the doctor (plain English).",
+  "overall_severity": "critical | major | moderate | minor | none",
+  "findings": [
+    {{
+      "type": "interaction | duplication | contraindication | dosing | monitoring",
+      "severity": "critical | major | moderate | minor",
+      "confidence": "high | medium | low",
+      "involves": ["<generic name A>", "<generic name B or condition>"],
+      "mechanism": "1-2 sentence explanation a GP would understand.",
+      "clinical_effect": "What actually happens to the patient.",
+      "recommendation": "What the doctor could do (alternative, monitor, dose-adjust, avoid).",
+      "alternatives": ["<safer generic option>"],
+      "evidence_strength": "well-established | reported | theoretical"
+    }}
+  ],
+  "unrecognized": [
+    {{
+      "input": "<exactly what the doctor typed>",
+      "reason": "Why you could not confidently identify it.",
+      "ask_doctor": "What clarification would help."
+    }}
+  ],
+  "disclaimer": "AI advisory only — not a substitute for clinical judgment. Always cross-check with a current drug reference."
+}}
+
+RULES:
+1. Only report findings you can defend pharmacologically. If unsure: confidence=low or move to "unrecognized".
+2. Do NOT invent dose numbers. If a dose adjustment is needed, say "consider dose reduction" — never quote a specific mg figure unless the doctor supplied one.
+3. Herb interactions: be honest about evidence_strength — most herb/drug data is "reported" at best.
+4. If there are no clinically relevant issues, return an empty findings array, overall_severity="none", and summary saying so.
+5. Critical/major severity must include a clear recommendation.
+
+INPUT:
+{payload}
+"""
+
+
 IMPROVE_PROMPT = """Read the note and list 3 to 6 specific, actionable
 improvements. Focus on:
 - Missing fields a clinician would expect (e.g. vitals, plan timing)

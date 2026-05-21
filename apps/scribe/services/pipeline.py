@@ -12,7 +12,9 @@ from django.conf import settings
 
 from .clients import AIConfigError
 from .soap_generator import (
+    DEMOGRAPHICS_EMPTY,
     GeneratedNote,
+    extract_demographics,
     generate_modular_soap,
     generate_note,
     interpret_patois,
@@ -123,3 +125,18 @@ def run_interpret_patois(patois_text: str) -> str:
     except AIConfigError as exc:
         logger.warning("Interpret patois stub: %s", exc)
         return patois_text
+
+
+def run_extract_demographics(transcript: str) -> dict:
+    """Stub-aware wrapper around extract_demographics().
+
+    In stub mode returns an empty skeleton — the Triage panel is a real-AI
+    feature and there's no realistic deterministic demo for free-text vitals.
+    """
+    if not _use_real_ai():
+        return dict(DEMOGRAPHICS_EMPTY)
+    try:
+        return extract_demographics(transcript)
+    except AIConfigError as exc:
+        logger.warning("Demographics extract stub: %s", exc)
+        return dict(DEMOGRAPHICS_EMPTY)

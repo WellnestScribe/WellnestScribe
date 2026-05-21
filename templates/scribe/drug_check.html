@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Drug check · WellNest Scribe{% endblock %}
+
+{% block content %}
+<div data-screen="drug-check">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+                <div>
+                    <h4 class="mb-1 fw-semibold">Drug interaction check
+                        <span class="badge bg-warning-subtle text-warning ms-1" style="font-size:0.7rem;">advisory</span>
+                    </h4>
+                    <p class="text-muted mb-0 small">
+                        Jamaican-context drug + bush-tea interaction screen. Brand names are resolved against an internal alias table before the AI is asked, so generics/classes drive the analysis. AI advisory only — your clinical judgment owns the prescribing decision.
+                    </p>
+                </div>
+                <a href="{% url 'scribe:record' %}" class="page-back-btn align-self-start">
+                    <iconify-icon icon="iconamoon:arrow-left-2-light"></iconify-icon>
+                    Back to scribe
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-12 col-xl-7">
+            <div class="card">
+                <div class="card-body p-4">
+                    <h6 class="fw-semibold mb-3">Patient context (optional)</h6>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6 col-md-3">
+                            <label class="form-label small text-muted mb-1">Age</label>
+                            <input type="text" id="dcAge" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label small text-muted mb-1">Sex</label>
+                            <select id="dcSex" class="form-select form-select-sm">
+                                <option value="">—</option>
+                                <option value="F">Female</option>
+                                <option value="M">Male</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label small text-muted mb-1">Active conditions (comma-separated)</label>
+                            <input type="text" id="dcConditions" class="form-control form-control-sm"
+                                   placeholder="hypertension, diabetes, CKD stage 3">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small text-muted mb-1">Allergies</label>
+                            <input type="text" id="dcAllergies" class="form-control form-control-sm"
+                                   placeholder="penicillin, sulfa, NSAIDs">
+                        </div>
+                    </div>
+
+                    <hr class="my-3">
+
+                    <h6 class="fw-semibold mb-2">Current medications</h6>
+                    <p class="small text-muted mb-2">
+                        Type one drug per chip — brand or generic. Hit Enter or "+" to add.
+                    </p>
+                    <div class="chip-row mb-2" id="dcCurrentChips"></div>
+                    <div class="d-flex gap-2 mb-3 position-relative" data-typeahead="drug">
+                        <input type="text" id="dcCurrentInput" class="form-control form-control-sm"
+                               placeholder="Start typing — e.g. Lisi… → Lisinopril" autocomplete="off"
+                               data-typeahead-input>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="dcCurrentAddBtn">
+                            <iconify-icon icon="iconamoon:add-duotone"></iconify-icon>
+                        </button>
+                        <ul class="typeahead-list" data-typeahead-list></ul>
+                    </div>
+
+                    <h6 class="fw-semibold mb-2">Bush tea / herbal remedies</h6>
+                    <p class="small text-muted mb-2">
+                        Optional. Evidence for herb/drug interactions is variable — flagged as "reported" or "theoretical" where appropriate.
+                    </p>
+                    <div class="chip-row mb-2" id="dcHerbChips"></div>
+                    <div class="d-flex gap-2 mb-3 position-relative" data-typeahead="herb">
+                        <input type="text" id="dcHerbInput" class="form-control form-control-sm"
+                               placeholder="Start typing — e.g. cera… → cerasee" autocomplete="off"
+                               data-typeahead-input>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="dcHerbAddBtn">
+                            <iconify-icon icon="iconamoon:add-duotone"></iconify-icon>
+                        </button>
+                        <ul class="typeahead-list" data-typeahead-list></ul>
+                    </div>
+
+                    <hr class="my-3">
+
+                    <h6 class="fw-semibold mb-2">Proposed medication</h6>
+                    <p class="small text-muted mb-2">The drug you are considering adding.</p>
+                    <div class="position-relative mb-3" data-typeahead="drug">
+                        <div class="quick-mic-wrap">
+                            <input type="text" id="dcProposed" class="form-control"
+                                   placeholder="Start typing — e.g. Dicl… → Diclofenac"
+                                   autocomplete="off" data-typeahead-input>
+                            <button type="button" class="quick-mic-btn" data-quick-mic="#dcProposed" aria-label="Dictate proposed med">
+                                <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+                            </button>
+                        </div>
+                        <ul class="typeahead-list" data-typeahead-list></ul>
+                    </div>
+
+                    <button type="button" class="btn btn-primary w-100" id="dcRunBtn">
+                        <iconify-icon icon="iconamoon:shield-duotone" class="me-1 align-middle"></iconify-icon>
+                        Check interactions
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-5">
+            <div class="card h-100">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <h6 class="fw-semibold m-0">Result</h6>
+                        <span id="dcSeverityPill" class="status-pill" style="display:none;"></span>
+                    </div>
+                    <p class="small text-muted" id="dcStatus">Fill in the form and run a check. The result panel shows findings ranked by severity.</p>
+                    <div id="dcResult"></div>
+                    <div id="dcUnrecognized"></div>
+                    <p class="small text-muted mt-3 mb-0" id="dcDisclaimer"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

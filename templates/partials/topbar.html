@@ -33,6 +33,22 @@
                     </button>
                 </div>
 
+                {% comment %}
+                  Dedicated font-size affordance — Dr Adrian feedback: the slider
+                  was buried behind the cog icon. This button opens the same
+                  Display dropdown so the existing prefFontScale handler still
+                  wires up unchanged.
+                {% endcomment %}
+                <div class="topbar-item">
+                    <button type="button"
+                            class="topbar-button"
+                            id="topbarFontSizeBtn"
+                            aria-label="Adjust font size"
+                            title="Adjust font size">
+                        <iconify-icon icon="iconamoon:size-duotone" class="fs-22 align-middle"></iconify-icon>
+                    </button>
+                </div>
+
                 <div class="dropdown topbar-item">
                     <button type="button"
                             class="topbar-button"

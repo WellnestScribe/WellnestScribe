@@ -66,7 +66,10 @@
   function autoGrow(el) {
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = Math.min(800, Math.max(el.scrollHeight + 4, 120)) + "px";
+    // Fit to content. Per Dr Adrian feedback: fields should shrink when
+    // empty so the doctor doesn't have to scroll past acres of whitespace.
+    // Floor at ~48px so a single empty row is still tappable on mobile.
+    el.style.height = Math.min(1200, Math.max(el.scrollHeight + 2, 48)) + "px";
   }
   function syncRecordNoteStyle(value) {
     const recordSel = $("#noteFormatSelect");
@@ -100,6 +103,31 @@
   }
   window.WELLNEST_toast = showToast;
 
+  // ---------- confirm dialog (SweetAlert when available) ----------
+  // Falls back to native confirm() if Swal isn't loaded yet (e.g. vendor.js
+  // not on this page). Returns a Promise<boolean>.
+  function confirmDialog(opts) {
+    const cfg = opts || {};
+    if (window.Swal && typeof window.Swal.fire === "function") {
+      return window.Swal.fire({
+        title: cfg.title || "Are you sure?",
+        html: cfg.html || cfg.text || "",
+        icon: cfg.icon || "question",
+        showCancelButton: true,
+        confirmButtonText: cfg.confirmText || "Confirm",
+        cancelButtonText: cfg.cancelText || "Cancel",
+        confirmButtonColor: cfg.confirmColor || "#0f7af2",
+        cancelButtonColor: "#94a3b8",
+        reverseButtons: true,
+        focusCancel: !!cfg.focusCancel,
+      }).then(function (r) { return !!r.isConfirmed; });
+    }
+    const fallbackText = (cfg.title ? cfg.title + "\n\n" : "") +
+      (cfg.html ? cfg.html.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "") : (cfg.text || ""));
+    return Promise.resolve(window.confirm(fallbackText));
+  }
+  window.WELLNEST_confirm = confirmDialog;
+
   // ---------- theme ----------
   const themeBtn = $("#light-dark-mode");
   if (themeBtn) {
@@ -108,6 +136,24 @@
       const next = html.getAttribute("data-bs-theme") === "dark" ? "light" : "dark";
       html.setAttribute("data-bs-theme", next);
       postJSON(W.endpoints.updatePreferences, { theme: next });
+    });
+  }
+
+  // Font-size shortcut button — opens the same Display dropdown as the cog.
+  const fontSizeBtn = $("#topbarFontSizeBtn");
+  if (fontSizeBtn) {
+    fontSizeBtn.addEventListener("click", function (e) {
+      e.preventDefault();
+      const cog = document.querySelector('[aria-label="Display settings"]');
+      if (cog && window.bootstrap && window.bootstrap.Dropdown) {
+        window.bootstrap.Dropdown.getOrCreateInstance(cog).toggle();
+        setTimeout(function () {
+          const r = document.getElementById("prefFontScale");
+          if (r) r.focus();
+        }, 50);
+      } else if (cog) {
+        cog.click();
+      }
     });
   }
 
@@ -202,6 +248,117 @@
     reset();
   }
 
+  // ---------- shared mic settings / calibration ----------
+  const MIC_LS_KEY = "wellnest_mic_device_id";
+
+  function initMicSettings(container) {
+    const toggleBtn = $("#micSettingsToggle", container);
+    const panel = $("#micSettingsPanel", container);
+    const deviceSelect = $("#micDeviceSelect", container);
+    const testBtn = $("#micTestBtn", container);
+    const levelWrap = $("#micLevelWrap", container);
+    const levelBar = $("#micLevelBar", container);
+    const levelHint = $("#micLevelHint", container);
+    if (!toggleBtn || !panel) return;
+
+    let testStream = null, testCtx = null, testAnim = 0;
+
+    async function populateDevices() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const inputs = devices.filter(function (d) { return d.kind === "audioinput"; });
+        if (!deviceSelect) return;
+        const saved = localStorage.getItem(MIC_LS_KEY) || "";
+        deviceSelect.innerHTML = '<option value="">Default microphone</option>';
+        inputs.forEach(function (d) {
+          const opt = document.createElement("option");
+          opt.value = d.deviceId;
+          opt.textContent = d.label || ("Microphone " + d.deviceId.slice(0, 8));
+          if (d.deviceId === saved) opt.selected = true;
+          deviceSelect.appendChild(opt);
+        });
+      } catch (e) {}
+    }
+
+    toggleBtn.addEventListener("click", async function () {
+      const open = panel.style.display !== "none";
+      panel.style.display = open ? "none" : "";
+      if (!open) {
+        // Brief permission probe so device labels show (labels are hidden until
+        // the user has granted mic access at least once).
+        try {
+          const tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
+          tmp.getTracks().forEach(function (t) { t.stop(); });
+        } catch (e) {}
+        await populateDevices();
+      }
+    });
+
+    if (deviceSelect) {
+      deviceSelect.addEventListener("change", function () {
+        localStorage.setItem(MIC_LS_KEY, deviceSelect.value);
+      });
+    }
+
+    function stopTest() {
+      cancelAnimationFrame(testAnim);
+      if (testStream) testStream.getTracks().forEach(function (t) { t.stop(); });
+      if (testCtx && testCtx.state !== "closed") testCtx.close();
+      testStream = null; testCtx = null;
+      if (levelWrap) levelWrap.style.display = "none";
+      if (levelBar) levelBar.style.width = "0%";
+      if (testBtn) testBtn.textContent = "Test mic";
+    }
+
+    if (testBtn) {
+      testBtn.addEventListener("click", async function () {
+        if (testStream) { stopTest(); return; }
+        const deviceId = deviceSelect ? deviceSelect.value : "";
+        const constraint = deviceId
+          ? { audio: { deviceId: { exact: deviceId } } }
+          : { audio: true };
+        try { testStream = await navigator.mediaDevices.getUserMedia(constraint); }
+        catch (err) {
+          if (levelHint) levelHint.textContent = "Cannot open mic: " + err.message;
+          if (levelWrap) levelWrap.style.display = "";
+          return;
+        }
+        testCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const src = testCtx.createMediaStreamSource(testStream);
+        const analyser = testCtx.createAnalyser();
+        analyser.fftSize = 512;
+        src.connect(analyser);
+        const data = new Uint8Array(analyser.fftSize);
+        if (levelWrap) levelWrap.style.display = "";
+        if (levelHint) levelHint.textContent = "Speak — bar should move.";
+        if (testBtn) testBtn.textContent = "Stop test";
+
+        function tick() {
+          analyser.getByteTimeDomainData(data);
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) { const v = (data[i] / 128) - 1; sum += v * v; }
+          const pct = Math.min(100, Math.round(Math.sqrt(sum / data.length) * 300));
+          if (levelBar) {
+            levelBar.style.width = pct + "%";
+            levelBar.style.background = pct > 70 ? "#d33b46" : pct > 35 ? "#e89c1d" : "#2d8a4e";
+          }
+          if (levelHint) {
+            levelHint.textContent = pct < 4
+              ? "No signal — try a different device."
+              : "Good — audio is being captured.";
+          }
+          testAnim = requestAnimationFrame(tick);
+        }
+        tick();
+      });
+    }
+  }
+
+  function getMicConstraint() {
+    const id = localStorage.getItem(MIC_LS_KEY) || "";
+    return id ? { deviceId: { exact: id } } : true;
+  }
+
   // ---------- record screen ----------
   const recordRoot = document.querySelector("[data-screen='record']");
   if (recordRoot) initRecordScreen(recordRoot);
@@ -251,6 +408,7 @@
     const generateBtn = $("#generateBtn", root);
     const fileInput = $("#audioFileInput", root);
     const uploadBtn = $("#audioUploadBtn", root);
+    const cancelBtn = $("#recordCancelBtn", root);
 
     if (noteFormatSel) syncRecordNoteStyle(noteFormatSel.value);
     noteStyleBtns.forEach(function (btn) {
@@ -281,6 +439,9 @@
       transcriptArea.addEventListener("input", function () { autoGrow(transcriptArea); });
     }
 
+    initMicSettings(root);
+    const micDotEl = $("#micLiveDot", root);
+
     let mediaRecorder = null;
     let recordedChunks = [];
     let stream = null;
@@ -291,6 +452,7 @@
     let waveAnimHandle = 0;
     let recordedBlob = null;
     let recordedDuration = 0;
+    let recordCancelled = false;
 
     const BARS = 36;
     if (waveBars) {
@@ -303,10 +465,13 @@
       const spans = waveBars.querySelectorAll("span");
       function tick() {
         analyser.getByteFrequencyData(data);
+        let sum = 0;
         spans.forEach(function (sp, idx) {
           const v = data[idx * 3] || 0;
+          sum += v;
           sp.style.height = Math.max(8, (v / 255) * 46) + "px";
         });
+        if (micDotEl) micDotEl.classList.toggle("is-active", (sum / spans.length) > 10);
         waveAnimHandle = requestAnimationFrame(tick);
       }
       tick();
@@ -314,6 +479,7 @@
     function stopWavePump() {
       cancelAnimationFrame(waveAnimHandle);
       if (waveBars) waveBars.querySelectorAll("span").forEach(function (sp) { sp.style.height = "8px"; });
+      if (micDotEl) micDotEl.classList.remove("is-active");
     }
     function startTimer() {
       startedAt = Date.now();
@@ -326,8 +492,18 @@
       recordedDuration = Math.round((Date.now() - startedAt) / 1000);
     }
     async function startRecording() {
-      try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-      catch (err) { setStatus(statusEl, "Microphone permission denied.", "error"); return; }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: getMicConstraint() });
+      } catch (err) {
+        if (err.name === "OverconstrainedError" || err.name === "NotFoundError") {
+          localStorage.removeItem(MIC_LS_KEY);
+          try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+          catch (err2) { setStatus(statusEl, "Microphone permission denied.", "error"); return; }
+          setStatus(statusEl, "Saved mic unavailable — switched to default.", "error");
+        } else {
+          setStatus(statusEl, "Microphone permission denied.", "error"); return;
+        }
+      }
       recordedChunks = [];
       const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus" : "";
@@ -343,8 +519,10 @@
       source.connect(analyser);
       buildWavePump();
 
+      recordCancelled = false;
       recordBtn.classList.add("is-recording");
       recordBtn.querySelector("[data-record-label]").textContent = "Stop";
+      if (cancelBtn) cancelBtn.style.display = "";
       setStatus(statusEl, "Recording — speak clearly.");
       startTimer();
     }
@@ -356,8 +534,14 @@
       if (audioCtx && audioCtx.state !== "closed") audioCtx.close();
       recordBtn.classList.remove("is-recording");
       recordBtn.querySelector("[data-record-label]").textContent = "Record";
+      if (cancelBtn) cancelBtn.style.display = "none";
     }
     async function onRecordingStopped() {
+      if (recordCancelled) {
+        recordedChunks = [];
+        setStatus(statusEl, "Recording cancelled.");
+        return;
+      }
       const blob = new Blob(recordedChunks, { type: recordedChunks[0]?.type || "audio/webm" });
       recordedBlob = blob;
       setStatus(statusEl, "Captured " + fmtTime(recordedDuration) + " of audio. Uploading…");
@@ -411,6 +595,11 @@
     if (recordBtn) recordBtn.addEventListener("click", function () {
       if (recordBtn.classList.contains("is-recording")) stopRecording(); else startRecording();
     });
+    if (cancelBtn) cancelBtn.addEventListener("click", function () {
+      recordCancelled = true;
+      stopRecording();
+      if (window.WELLNEST_toast) window.WELLNEST_toast("Recording discarded.");
+    });
     if (uploadBtn && fileInput) {
       uploadBtn.addEventListener("click", function () { fileInput.click(); });
       fileInput.addEventListener("change", async function () {
@@ -442,6 +631,19 @@
     if (generateBtn) generateBtn.addEventListener("click", async function () {
       const transcript = transcriptArea ? transcriptArea.value.trim() : "";
       if (transcript.length < 20) { setStatus(statusEl, "Type at least a couple sentences first.", "error"); return; }
+      if (/\[[^\]]{1,60}\]/.test(transcript)) {
+        const go = await confirmDialog({
+          title: "Template not filled in",
+          html: "The note still has unfilled placeholders like <code>[Age]</code> or <code>[findings]</code>.<br><br>" +
+                "If you generate now the AI will <strong>invent values</strong> for every blank — the result will look real but will be fabricated.<br><br>" +
+                "Replace the brackets with this patient's actual details first.",
+          icon: "warning",
+          confirmText: "Generate anyway",
+          cancelText: "Go back and fill in",
+          focusCancel: true,
+        });
+        if (!go) return;
+      }
       const fd = new FormData();
       fd.append("transcript", transcript);
       fd.append("note_format", noteFormatSel ? noteFormatSel.value : "soap");
@@ -452,6 +654,250 @@
       setStatus(statusEl, "Generating note…");
       await runGeneration(res.body.session_id, transcript);
     });
+  }
+
+  // ---------- drug interaction checker ----------
+  const drugCheckRoot = document.querySelector("[data-screen='drug-check']");
+  if (drugCheckRoot) initDrugCheckScreen(drugCheckRoot);
+
+  function initDrugCheckScreen(root) {
+    const currentChipsBox = $("#dcCurrentChips", root);
+    const herbChipsBox = $("#dcHerbChips", root);
+    const currentInput = $("#dcCurrentInput", root);
+    const herbInput = $("#dcHerbInput", root);
+    const currentAddBtn = $("#dcCurrentAddBtn", root);
+    const herbAddBtn = $("#dcHerbAddBtn", root);
+    const proposedInput = $("#dcProposed", root);
+
+    // ---- lightweight typeahead ----
+    // Wire each [data-typeahead] block to its sibling [data-typeahead-list].
+    // Backed by /scribe/api/drug-search/ or /api/herb-search/ depending on
+    // the data-typeahead value. Free text is still allowed — selecting from
+    // the list is convenience, not a constraint.
+    function escHtml(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+    function wireTypeahead(wrap) {
+      const kind = wrap.getAttribute("data-typeahead");
+      const inp = wrap.querySelector("[data-typeahead-input]");
+      const list = wrap.querySelector("[data-typeahead-list]");
+      if (!inp || !list) return;
+      const endpoint = kind === "herb" ? "/scribe/api/herb-search/" : "/scribe/api/drug-search/";
+      let timer = 0;
+      let lastQ = "";
+
+      function hide() { list.classList.remove("is-open"); list.innerHTML = ""; }
+      function open() { list.classList.add("is-open"); }
+      function pick(label) {
+        inp.value = label;
+        hide();
+        inp.dispatchEvent(new Event("typeahead-pick", { bubbles: true }));
+        inp.focus();
+      }
+      async function fetchSuggestions(q) {
+        try {
+          const res = await fetch(endpoint + "?q=" + encodeURIComponent(q), { credentials: "same-origin" });
+          const json = await res.json();
+          return (json && json.results) || [];
+        } catch (e) { return []; }
+      }
+      function render(results) {
+        if (!results.length) { hide(); return; }
+        list.innerHTML = results.map(function (r) {
+          const subParts = [];
+          if (r.generic && r.generic !== r.label) subParts.push(r.generic);
+          if (r.drug_class) subParts.push(r.drug_class);
+          const sub = subParts.join(" · ");
+          return '<li role="option" data-pick="' + escHtml(r.label) + '">' +
+                   '<span class="typeahead-label">' + escHtml(r.label) + '</span>' +
+                   (sub ? '<span class="typeahead-sub">' + escHtml(sub) + '</span>' : '') +
+                 '</li>';
+        }).join("");
+        list.querySelectorAll("li").forEach(function (li) {
+          li.addEventListener("mousedown", function (e) {  // mousedown so input blur doesn't kill the click
+            e.preventDefault();
+            pick(li.getAttribute("data-pick") || "");
+          });
+        });
+        open();
+      }
+      inp.addEventListener("input", function () {
+        const q = inp.value.trim();
+        if (q === lastQ) return;
+        lastQ = q;
+        clearTimeout(timer);
+        if (q.length < 2) { hide(); return; }
+        timer = setTimeout(async function () {
+          const results = await fetchSuggestions(q);
+          render(results);
+        }, 140);
+      });
+      inp.addEventListener("blur", function () { setTimeout(hide, 120); });
+      inp.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") hide();
+        if (e.key === "Tab") hide();
+      });
+    }
+    $$("[data-typeahead]", root).forEach(wireTypeahead);
+    const ageInput = $("#dcAge", root);
+    const sexInput = $("#dcSex", root);
+    const conditionsInput = $("#dcConditions", root);
+    const allergiesInput = $("#dcAllergies", root);
+    const runBtn = $("#dcRunBtn", root);
+    const statusEl = $("#dcStatus", root);
+    const sevPill = $("#dcSeverityPill", root);
+    const resultEl = $("#dcResult", root);
+    const unrecEl = $("#dcUnrecognized", root);
+    const disclaimerEl = $("#dcDisclaimer", root);
+
+    let currentMeds = [];
+    let herbs = [];
+
+    function renderChips(list, box) {
+      box.innerHTML = "";
+      list.forEach(function (name, idx) {
+        const chip = document.createElement("span");
+        chip.className = "drug-chip";
+        chip.innerHTML = escHtml(name) +
+          '<button type="button" class="drug-chip-x" aria-label="Remove">&times;</button>';
+        chip.querySelector(".drug-chip-x").addEventListener("click", function () {
+          list.splice(idx, 1);
+          renderChips(list, box);
+        });
+        box.appendChild(chip);
+      });
+    }
+    function addFrom(inp, list, box) {
+      const v = (inp.value || "").trim();
+      if (!v) return;
+      list.push(v);
+      inp.value = "";
+      renderChips(list, box);
+      inp.focus();
+    }
+    currentAddBtn.addEventListener("click", function () { addFrom(currentInput, currentMeds, currentChipsBox); });
+    herbAddBtn.addEventListener("click", function () { addFrom(herbInput, herbs, herbChipsBox); });
+    [currentInput, herbInput].forEach(function (inp) {
+      inp.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === ",") {
+          e.preventDefault();
+          if (inp === currentInput) addFrom(currentInput, currentMeds, currentChipsBox);
+          else addFrom(herbInput, herbs, herbChipsBox);
+        }
+      });
+    });
+
+    function severityClass(sev) {
+      switch ((sev || "").toLowerCase()) {
+        case "critical": return "sev-critical";
+        case "major": return "sev-major";
+        case "moderate": return "sev-moderate";
+        case "minor": return "sev-minor";
+        default: return "sev-none";
+      }
+    }
+    function renderResult(res) {
+      const findings = (res && res.findings) || [];
+      if (sevPill) {
+        const sev = (res && res.overall_severity) || "none";
+        sevPill.textContent = sev.toUpperCase();
+        sevPill.className = "status-pill " + severityClass(sev);
+        sevPill.style.display = "";
+      }
+      let html = "";
+      if (res && res.summary) {
+        html += '<p class="mb-3 fw-semibold">' + escHtml(res.summary) + '</p>';
+      }
+      if (!findings.length) {
+        html += '<p class="text-success small mb-3">No clinically relevant findings reported.</p>';
+      }
+      findings.forEach(function (f) {
+        html +=
+          '<div class="finding-card ' + severityClass(f.severity) + ' mb-3">' +
+            '<div class="d-flex justify-content-between align-items-start mb-1">' +
+              '<span class="finding-type fw-semibold">' + escHtml((f.type || "").toUpperCase()) + '</span>' +
+              '<span class="badge text-bg-light">' + escHtml(f.severity || "") + ' · ' + escHtml(f.confidence || "") + '</span>' +
+            '</div>' +
+            (f.involves && f.involves.length
+              ? '<div class="small text-muted mb-1">Involves: ' + escHtml(f.involves.join(" + ")) + '</div>'
+              : '') +
+            (f.mechanism ? '<div class="small mb-1"><strong>Mechanism:</strong> ' + escHtml(f.mechanism) + '</div>' : '') +
+            (f.clinical_effect ? '<div class="small mb-1"><strong>Effect:</strong> ' + escHtml(f.clinical_effect) + '</div>' : '') +
+            (f.recommendation ? '<div class="small mb-1"><strong>Recommendation:</strong> ' + escHtml(f.recommendation) + '</div>' : '') +
+            (f.alternatives && f.alternatives.length
+              ? '<div class="small mb-1"><strong>Alternatives:</strong> ' + escHtml(f.alternatives.join(", ")) + '</div>'
+              : '') +
+            (f.evidence_strength
+              ? '<div class="small text-muted">Evidence: ' + escHtml(f.evidence_strength) + '</div>'
+              : '') +
+          '</div>';
+      });
+      resultEl.innerHTML = html;
+
+      const unrec = (res && res.unrecognized) || [];
+      if (unrec.length) {
+        let u = '<div class="alert alert-warning small mb-0 mt-2"><strong>Could not identify:</strong><ul class="mb-0 ps-3">';
+        unrec.forEach(function (x) {
+          u += '<li><strong>' + escHtml(x.input) + '</strong> — ' + escHtml(x.reason || "") +
+               (x.ask_doctor ? ' <em>(' + escHtml(x.ask_doctor) + ')</em>' : '') + '</li>';
+        });
+        u += '</ul></div>';
+        unrecEl.innerHTML = u;
+      } else {
+        unrecEl.innerHTML = "";
+      }
+
+      disclaimerEl.textContent = (res && res.disclaimer) || "";
+    }
+
+    runBtn.addEventListener("click", async function () {
+      const proposed = (proposedInput.value || "").trim();
+      if (!proposed) {
+        statusEl.textContent = "Enter the proposed medication first.";
+        return;
+      }
+      // Flush any unsubmitted text in the chip inputs.
+      if ((currentInput.value || "").trim()) addFrom(currentInput, currentMeds, currentChipsBox);
+      if ((herbInput.value || "").trim()) addFrom(herbInput, herbs, herbChipsBox);
+
+      const payload = {
+        current_meds: currentMeds,
+        proposed_med: proposed,
+        herbs: herbs,
+        patient_context: {
+          age: (ageInput.value || "").trim(),
+          sex: sexInput.value || "",
+          conditions: (conditionsInput.value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean),
+          allergies: (allergiesInput.value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean),
+        },
+      };
+
+      runBtn.disabled = true;
+      statusEl.textContent = "Checking…";
+      if (sevPill) sevPill.style.display = "none";
+      resultEl.innerHTML = "";
+      unrecEl.innerHTML = "";
+      disclaimerEl.textContent = "";
+
+      let r;
+      try { r = await postJSON("/scribe/api/drug-check/", payload); }
+      catch (err) {
+        statusEl.textContent = "Network error: " + err.message;
+        runBtn.disabled = false;
+        return;
+      }
+      runBtn.disabled = false;
+      if (!r.ok || !r.body || !r.body.ok) {
+        statusEl.textContent = (r.body && r.body.error) || "Check failed.";
+        return;
+      }
+      statusEl.textContent = "Result · " + (r.body.duration_ms || 0) + " ms";
+      renderResult(r.body.result || {});
+    });
+
+    initQuickEditMics(root);
   }
 
   // ---------- triage sandbox ----------
@@ -638,6 +1084,7 @@
         // status = done
         const result = job.result || {};
         rawOut.value = result.raw_text || "";
+        autoGrowAny(rawOut);
         const extras = [];
         if (result.denoise_applied) extras.push("denoised");
         if (result.diarize_applied) extras.push("diarized (" + (result.diarize_segments || []).length + " segments)");
@@ -756,6 +1203,7 @@
         return;
       }
       cleanOut.value = r.body.clean_text || "";
+      autoGrowAny(cleanOut);
       // Show timing under the box.
       if (timings && r.body.duration_ms != null) {
         const tag = (r.body.interpreter || "azure") + (r.body.device ? " · " + r.body.device : "");
@@ -989,6 +1437,8 @@
     const convoStageEl = $("#convoStage", root);
     const convoFinalOut = $("#convoFinalOut", root);
     const convoTimingsEl = $("#convoTimings", root);
+    const clinicalOnlyToggle = $("#convoClinicalOnlyToggle", root);
+    const convoModeDesc = $("#convoModeDesc", root);
 
     function syncConvoVisibility() {
       const on = !!(convoToggle && convoToggle.checked);
@@ -998,16 +1448,62 @@
     if (convoToggle) convoToggle.addEventListener("change", syncConvoVisibility);
     syncConvoVisibility();
 
+    function syncClinicalOnlyMode() {
+      const on = !!(clinicalOnlyToggle && clinicalOnlyToggle.checked);
+      if (convoModeDesc) convoModeDesc.style.display = on ? "none" : "";
+      if (convoStageEl) convoStageEl.style.display = on ? "none" : "";
+      if (convoTimingsEl) convoTimingsEl.style.display = on ? "none" : "";
+      if (convoDemoCard) convoDemoCard.style.display = on ? "none" : "";
+      if (convoFinalOut) autoGrow(convoFinalOut);
+    }
+    if (clinicalOnlyToggle) clinicalOnlyToggle.addEventListener("change", syncClinicalOnlyMode);
+
+    initMicSettings($("#triageConversationPanel", root) || root);
+
+    if (convoFinalOut) {
+      autoGrow(convoFinalOut);
+      convoFinalOut.addEventListener("input", function () { autoGrow(convoFinalOut); });
+    }
+
+    const convoProgressWrap = $("#convoProgressWrap", root);
+    const convoProgressBar = $("#convoProgressBar", root);
+    const convoProgressLabel = $("#convoProgressLabel", root);
+
     let convoRecState = { rec: null, stream: null, started: 0, ts: 0, chunks: [] };
     let convoBlob = null;
     let convoPollTimer = 0;
 
+    function extractClinicalSummary(text) {
+      if (!text) return text;
+      const match = text.match(/\*{0,2}clinical summary:?\*{0,2}\s*/i);
+      if (!match) return text;
+      return text.slice(match.index + match[0].length).trim();
+    }
+
+    function setConvoProgress(pct, label) {
+      if (convoProgressWrap) convoProgressWrap.style.display = pct > 0 ? "" : "none";
+      if (convoProgressBar) {
+        convoProgressBar.style.width = pct + "%";
+        convoProgressBar.setAttribute("aria-valuenow", String(pct));
+      }
+      if (convoProgressLabel) convoProgressLabel.textContent = label || "";
+    }
+
     function setConvoStage(text, kind) {
       if (!convoStageEl) return;
-      convoStageEl.textContent = text;
-      convoStageEl.classList.remove("text-danger", "text-success");
-      if (kind === "error") convoStageEl.classList.add("text-danger");
-      if (kind === "success") convoStageEl.classList.add("text-success");
+      convoStageEl.classList.remove("text-danger");
+      if (kind === "error") {
+        convoStageEl.textContent = text;
+        convoStageEl.style.display = "";
+        convoStageEl.classList.add("text-danger");
+        setConvoProgress(0, "");
+      } else if (kind === "success") {
+        convoStageEl.style.display = "none";
+        setConvoProgress(100, "Done");
+        setTimeout(function () { setConvoProgress(0, ""); }, 1500);
+      } else {
+        convoStageEl.style.display = "none";
+      }
     }
 
     function resetConvoBtn() {
@@ -1025,7 +1521,7 @@
         const job = j.job;
         const elapsed = Date.now() - startMs;
         if (job.status === "running" || job.status === "pending") {
-          setConvoStage(job.stage + " · elapsed " + fmtElapsed(elapsed));
+          setConvoProgress(Math.min(30 + Math.floor(elapsed / 2000) * 5, 72), "Processing…");
           return;
         }
         clearInterval(convoPollTimer);
@@ -1035,19 +1531,92 @@
         }
         const raw = (job.result && job.result.raw_text) || "";
         // Pipe raw output → cloud interpret automatically.
-        setConvoStage("running cloud interpretation… · elapsed " + fmtElapsed(elapsed));
+        setConvoProgress(82, "Processing…");
         let r2;
         try {
           r2 = await postJSON("/scribe/api/triage/interpret/", buildInterpretPayload(raw));
         } catch (err) { setConvoStage("network error: " + err.message, "error"); return; }
         const finalText = (r2.body && r2.body.ok) ? (r2.body.clean_text || "") : raw;
-        if (convoFinalOut) convoFinalOut.value = finalText || raw;
+        if (convoFinalOut) {
+          convoFinalOut.value = extractClinicalSummary(finalText || raw);
+          autoGrow(convoFinalOut);
+        }
         const total = Date.now() - startMs;
         if (convoTimingsEl) {
           convoTimingsEl.textContent = job.backend + " · " + job.device + " · total " + fmtElapsed(total);
         }
         setConvoStage("done", "success");
+        // Kick off demographics extraction on whatever the doctor sees in the
+        // final output. Best-effort: failures stay quiet, panel just doesn't show.
+        runConvoDemographics(finalText || raw);
       } catch (err) { /* keep polling */ }
+    }
+
+    // ---- Conversation-mode demographics panel ----
+    const convoDemoCard = $("#convoDemographicsCard", root);
+    const convoDemoStatus = $("#convoDemoStatus", root);
+    const convoDemoReRun = $("#convoDemoReRun", root);
+
+    function getNested(obj, path) {
+      const parts = path.split(".");
+      let cur = obj;
+      for (let i = 0; i < parts.length; i++) {
+        if (cur == null) return "";
+        cur = cur[parts[i]];
+      }
+      return cur == null ? "" : cur;
+    }
+    function applyDemographics(data) {
+      if (!convoDemoCard) return;
+      // Only fill BLANK fields — never overwrite what the nurse already
+      // typed/dictated. The AI is a fallback, not the source of truth.
+      $$("[data-demo]", convoDemoCard).forEach(function (el) {
+        if ((el.value || "").trim()) return;
+        el.value = String(getNested(data, el.getAttribute("data-demo")) || "");
+      });
+      $$("[data-demo-list]", convoDemoCard).forEach(function (el) {
+        if ((el.value || "").trim()) return;
+        const k = el.getAttribute("data-demo-list");
+        const arr = Array.isArray(data[k]) ? data[k] : [];
+        el.value = arr.join(", ");
+      });
+    }
+    let convoDemoMicsBound = false;
+    // Wire field-level mics up front so the nurse can dictate INTO the
+    // demographics fields while talking to the patient — not just after
+    // the pipeline runs. initQuickEditMics is idempotent over per-button
+    // listeners (each button only ever gets one).
+    if (convoDemoCard && !convoDemoMicsBound) {
+      initQuickEditMics(convoDemoCard);
+      convoDemoMicsBound = true;
+      if (convoDemoStatus) {
+        convoDemoStatus.textContent = "Type or use the mic on any field. AI fills the blanks when the pipeline finishes.";
+      }
+    }
+    async function runConvoDemographics(text) {
+      if (!convoDemoCard || !text || !text.trim()) return;
+      if (convoDemoStatus) convoDemoStatus.textContent = "Extracting demographics…";
+      let r;
+      try {
+        r = await postJSON("/scribe/api/triage/extract-demographics/", { text: text });
+      } catch (err) {
+        if (convoDemoStatus) convoDemoStatus.textContent = "Could not extract: " + err.message;
+        return;
+      }
+      if (!r.ok || !r.body || !r.body.ok) {
+        if (convoDemoStatus) convoDemoStatus.textContent = (r.body && r.body.error) || "Extraction failed.";
+        return;
+      }
+      applyDemographics(r.body.data || {});
+      if (convoDemoStatus) {
+        convoDemoStatus.textContent = "AI filled the blank fields. Anything you'd typed first stayed put. Edit or dictate corrections freely.";
+      }
+    }
+    if (convoDemoReRun) {
+      convoDemoReRun.addEventListener("click", function () {
+        const txt = convoFinalOut ? convoFinalOut.value : "";
+        runConvoDemographics(txt);
+      });
     }
 
     async function startConvoRun() {
@@ -1059,7 +1628,7 @@
                     (convoBlob.type.indexOf("mpeg") >= 0 ? "mp3" : "webm");
         fd.set("audio", convoBlob, "convo." + ext);
       }
-      setConvoStage("submitting…");
+      setConvoProgress(15, "Processing…");
       let r;
       try { r = await postForm("/scribe/api/triage/run/", fd); }
       catch (err) { setConvoStage("network error: " + err.message, "error"); return; }
@@ -1082,8 +1651,15 @@
         resetConvoBtn();
         return;
       }
-      try { convoRecState.stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-      catch (err) { setConvoStage("microphone permission denied", "error"); return; }
+      try {
+        convoRecState.stream = await navigator.mediaDevices.getUserMedia({ audio: getMicConstraint() });
+      } catch (err) {
+        if (err.name === "OverconstrainedError" || err.name === "NotFoundError") {
+          localStorage.removeItem(MIC_LS_KEY);
+          try { convoRecState.stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+          catch (err2) { setConvoStage("microphone permission denied", "error"); return; }
+        } else { setConvoStage("microphone permission denied", "error"); return; }
+      }
       const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus" : "";
       convoRecState.chunks = [];
@@ -1105,13 +1681,15 @@
       convoRecordBtn.classList.add("is-recording");
       const lbl = convoRecordBtn.querySelector("[data-record-label]");
       if (lbl) lbl.textContent = "Stop";
-      setConvoStage("recording…");
+      setConvoProgress(5, "Recording…");
     });
   }
 
   // ---------- review screen ----------
+  // NB: invocation is moved to AFTER the NATVNS option-list `const`s further
+  // below — otherwise initBodyDiagram() hits a TDZ ReferenceError on
+  // WOUND_TYPES the first time the review screen renders.
   const reviewRoot = document.querySelector("[data-screen='review']");
-  if (reviewRoot) initReviewScreen(reviewRoot);
 
   function initReviewScreen(root) {
     const sessionId = root.getAttribute("data-session-id");
@@ -1327,12 +1905,16 @@
 
     if (saveBtn) saveBtn.addEventListener("click", function () { autosave(); });
     if (finalizeBtn) finalizeBtn.addEventListener("click", async function () {
-      const ok = confirm(
-        "Mark this note as reviewed?\n\n" +
-        "Once reviewed, all fields lock — no further edits allowed " +
-        "(including transcript, body diagram, and SOAP sections).\n\n" +
-        "Make any final tweaks first. This protects the clinical record."
-      );
+      const ok = await confirmDialog({
+        title: "Mark this note as reviewed?",
+        html:
+          "Once reviewed, all fields lock — no further edits allowed " +
+          "(including transcript, body diagram, and SOAP sections)." +
+          "<br><br>Make any final tweaks first. This protects the clinical record.",
+        icon: "warning",
+        confirmText: "Yes, mark reviewed",
+        cancelText: "Keep editing",
+      });
       if (!ok) return;
       await autosave();
       const r = await postJSON("/scribe/api/sessions/" + sessionId + "/finalize/", {});
@@ -1539,6 +2121,9 @@
     ["hydration", "Hydration"], ["protection", "Protect / promote healing"],
     ["palliative", "Palliative / conservative"], ["reduce_bacterial_load", "Reduce bacterial load"],
   ];
+
+  // Now safe to boot the review screen — all NATVNS option lists exist.
+  if (reviewRoot) initReviewScreen(reviewRoot);
 
   function initBodyDiagram(root, sessionId) {
     const overlay = $("#bodyDiagramOverlay", root);
