@@ -28,6 +28,7 @@ urlpatterns = [
     # AJAX API
     path("api/board/", views.board_json, name="api_board"),
     path("api/visits/<int:pk>/esi/", views.esi_ai_api, name="api_esi"),
+    path("api/visits/<int:pk>/triage-voice/", views.triage_voice_extract_api, name="api_triage_voice"),
     path("api/visits/<int:pk>/zone/", views.zone_assign_api, name="api_zone"),
     path("api/shifts/<int:pk>/handover/generate/", views.handover_generate_api, name="api_handover_generate"),
 ]

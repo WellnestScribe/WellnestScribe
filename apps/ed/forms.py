@@ -14,7 +14,26 @@ from .models import (
 )
 
 
-class NewVisitForm(forms.ModelForm):
+class BootstrapMixin:
+    """Add Bootstrap classes to every field widget automatically."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            w = field.widget
+            cls = w.attrs.get("class", "")
+            if isinstance(w, (forms.Select, forms.SelectMultiple)):
+                if "form-select" not in cls:
+                    w.attrs["class"] = (cls + " form-select").strip()
+            elif isinstance(w, forms.CheckboxInput):
+                if "form-check-input" not in cls:
+                    w.attrs["class"] = (cls + " form-check-input").strip()
+            elif not isinstance(w, (forms.HiddenInput, forms.RadioSelect, forms.CheckboxSelectMultiple)):
+                if "form-control" not in cls:
+                    w.attrs["class"] = (cls + " form-control").strip()
+
+
+class NewVisitForm(BootstrapMixin, forms.ModelForm):
     """Registration clerk / triage nurse creates a new ED visit."""
 
     patient_name_unregistered = forms.CharField(
@@ -49,7 +68,7 @@ class NewVisitForm(forms.ModelForm):
         self.fields["arrived_at"].initial = now.strftime("%Y-%m-%dT%H:%M")
 
 
-class TriageAssessmentForm(forms.ModelForm):
+class TriageAssessmentForm(BootstrapMixin, forms.ModelForm):
     """Full triage nurse assessment form."""
 
     class Meta:
@@ -132,7 +151,7 @@ class TriageAssessmentForm(forms.ModelForm):
         return val
 
 
-class ZoneAssignForm(forms.Form):
+class ZoneAssignForm(BootstrapMixin, forms.Form):
     """Quick zone reassignment (used from board or visit detail)."""
 
     zone = forms.ChoiceField(choices=ZONE_CHOICES, widget=forms.Select(attrs={"class": "form-select"}))
@@ -147,7 +166,7 @@ class ZoneAssignForm(forms.Form):
     )
 
 
-class DispositionForm(forms.ModelForm):
+class DispositionForm(BootstrapMixin, forms.ModelForm):
     """Physician finalizes visit disposition."""
 
     class Meta:
@@ -168,7 +187,7 @@ class DispositionForm(forms.ModelForm):
         }
 
 
-class ShiftOpenForm(forms.ModelForm):
+class ShiftOpenForm(BootstrapMixin, forms.ModelForm):
     """Open a new shift."""
 
     class Meta:
@@ -183,7 +202,7 @@ class ShiftOpenForm(forms.ModelForm):
         }
 
 
-class HandoverNoteForm(forms.ModelForm):
+class HandoverNoteForm(BootstrapMixin, forms.ModelForm):
     """Edit a single SBAR note for a patient."""
 
     class Meta:

@@ -45,6 +45,33 @@ from .services.handover import generate_sbar, generate_all_sbar
 
 logger = logging.getLogger(__name__)
 
+_VITALS_EXTRACT_PROMPT = """\
+You are a clinical data extraction assistant for an ED triage system.
+Extract structured vital sign data and chief complaint from the nurse's transcript.
+
+Return ONLY valid JSON — no text outside the JSON object:
+{
+  "chief_complaint": "<concise chief complaint or empty string>",
+  "bp_systolic": <integer or null>,
+  "bp_diastolic": <integer or null>,
+  "pulse_bpm": <integer or null>,
+  "rr_rpm": <integer or null>,
+  "temp_celsius": <number or null>,
+  "spo2_percent": <number or null>,
+  "pain_score": <integer 0-10 or null>,
+  "weight_kg": <number or null>,
+  "blood_glucose_mmol": <number or null>
+}
+
+Rules:
+- Only include fields explicitly mentioned in the transcript
+- For blood pressure spoken as "130 over 85" → systolic=130, diastolic=85
+- For temperature convert Fahrenheit to Celsius if "F" mentioned
+- For pain: "pain 7 out of 10" → 7
+- If a value is not mentioned, set it to null
+- chief_complaint: if the patient describes symptoms, summarize as a clinical complaint
+"""
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -548,6 +575,50 @@ class DispositionView(LoginRequiredMixin, View):
 # ---------------------------------------------------------------------------
 # AI ESI Suggestion API
 # ---------------------------------------------------------------------------
+
+@login_required
+def triage_voice_extract_api(request, pk):
+    """POST: extract triage fields from a spoken transcript.
+
+    Body: {"transcript": "patient says chest pain, BP 140 over 90, HR 102…"}
+    Returns: JSON with field suggestions the JS can auto-fill into the form.
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=405)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    transcript = (data.get("transcript") or "").strip()
+    if not transcript:
+        return JsonResponse({"error": "No transcript provided"}, status=400)
+
+    try:
+        from scribe.services.clients import get_chat_client
+        from django.conf import settings as _settings
+        client = get_chat_client()
+        deployment = getattr(_settings, "SCRIBE_AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini")
+        resp = client.chat.completions.create(
+            model=deployment,
+            messages=[
+                {"role": "system", "content": _VITALS_EXTRACT_PROMPT},
+                {"role": "user", "content": f"Transcript:\n{transcript}"},
+            ],
+            max_tokens=300,
+            temperature=0.1,
+        )
+        raw = resp.choices[0].message.content.strip()
+        result = json.loads(raw)
+        result["transcript"] = transcript
+        return JsonResponse({"ok": True, "fields": result})
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "AI returned non-JSON", "transcript": transcript})
+    except Exception as exc:
+        logger.error("Triage voice extract failed: %s", exc)
+        return JsonResponse({"ok": False, "error": str(exc), "transcript": transcript})
+
 
 @login_required
 def esi_ai_api(request, pk):

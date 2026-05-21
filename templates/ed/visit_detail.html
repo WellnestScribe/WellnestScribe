@@ -328,9 +328,18 @@
         Team
       </div>
       <div class="card-body" style="font-size:0.85rem;">
-        <div class="mb-1"><span class="text-muted">Triage nurse:</span> {{ visit.triage_nurse.get_full_name|default:visit.triage_nurse.username|default:"—" }}</div>
-        <div class="mb-1"><span class="text-muted">Attending:</span> {{ visit.attending_physician.get_full_name|default:visit.attending_physician.username|default:"—" }}</div>
-        <div><span class="text-muted">Charge nurse:</span> {{ visit.charge_nurse.get_full_name|default:visit.charge_nurse.username|default:"—" }}</div>
+        <div class="mb-1">
+          <span class="text-muted">Triage nurse:</span>
+          {% if visit.triage_nurse %}{{ visit.triage_nurse.get_full_name|default:visit.triage_nurse.username }}{% else %}—{% endif %}
+        </div>
+        <div class="mb-1">
+          <span class="text-muted">Attending:</span>
+          {% if visit.attending_physician %}{{ visit.attending_physician.get_full_name|default:visit.attending_physician.username }}{% else %}—{% endif %}
+        </div>
+        <div>
+          <span class="text-muted">Charge nurse:</span>
+          {% if visit.charge_nurse %}{{ visit.charge_nurse.get_full_name|default:visit.charge_nurse.username }}{% else %}—{% endif %}
+        </div>
       </div>
     </div>
 

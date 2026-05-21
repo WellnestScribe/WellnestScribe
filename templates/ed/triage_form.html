@@ -19,10 +19,26 @@
   .esi-3-btn input:checked + label { background: rgba(13,110,253,0.12); border-color: #0d6efd; color: #0d6efd; }
   .esi-4-btn input:checked + label { background: rgba(25,135,84,0.12); border-color: #198754; color: #198754; }
   .esi-5-btn input:checked + label { background: rgba(13,202,240,0.1); border-color: #0dcaf0; color: #0dcaf0; }
-  .vital-warning { background: rgba(253,126,20,0.08); border-left: 3px solid #fd7e14; }
-  .vital-critical { background: rgba(220,53,69,0.08); border-left: 3px solid #dc3545; }
   .section-card { border-radius: 0.5rem; margin-bottom: 1rem; }
   #ai-esi-result { display: none; }
+
+  /* Voice capture */
+  .mic-btn {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.25rem 0.6rem; border-radius: 1rem; font-size: 0.78rem;
+    border: 1.5px solid var(--bs-border-color); background: transparent;
+    cursor: pointer; transition: all 0.15s; color: var(--bs-body-color);
+  }
+  .mic-btn:hover { border-color: #0d6efd; color: #0d6efd; }
+  .mic-btn.recording { border-color: #dc3545; color: #dc3545; animation: pulse-red 1s infinite; }
+  .mic-btn .mic-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  @keyframes pulse-red { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .voice-transcript-box {
+    margin-top: 0.4rem; padding: 0.4rem 0.6rem; font-size: 0.78rem;
+    border: 1px dashed var(--bs-border-color); border-radius: 0.35rem;
+    color: var(--bs-secondary-color); display: none;
+  }
+  .voice-filled-badge { font-size: 0.65rem; vertical-align: middle; }
 </style>
 {% endblock %}
 
@@ -61,15 +77,24 @@
     <div class="card-header fw-semibold d-flex align-items-center gap-2">
       <iconify-icon icon="iconamoon:comment-duotone"></iconify-icon>
       Presenting Problem
+      <span class="ms-auto">
+        <button type="button" class="mic-btn" id="complaint-mic-btn" onclick="startComplaintRecord()" title="Record patient conversation — AI extracts chief complaint">
+          <span class="mic-dot"></span> Record conversation
+        </button>
+      </span>
     </div>
     <div class="card-body">
       <div class="row g-3">
         <div class="col-12">
-          <label class="form-label fw-semibold">Chief complaint <span class="text-danger">*</span></label>
+          <label class="form-label fw-semibold">
+            Chief complaint <span class="text-danger">*</span>
+            <span id="complaint-filled-badge" class="badge bg-primary-subtle text-primary voice-filled-badge d-none">voice filled</span>
+          </label>
           {{ form.chief_complaint }}
           {% if form.chief_complaint.errors %}
           <div class="text-danger small">{{ form.chief_complaint.errors }}</div>
           {% endif %}
+          <div class="voice-transcript-box" id="complaint-transcript-box"></div>
         </div>
         <div class="col-md-4">
           <label class="form-label">Onset</label>
@@ -96,10 +121,16 @@
     <div class="card-header fw-semibold d-flex align-items-center gap-2">
       <iconify-icon icon="iconamoon:chart-bar-duotone"></iconify-icon>
       Vital Signs
+      <span class="ms-2">
+        <button type="button" class="mic-btn" id="vitals-mic-btn" onclick="startVitalsRecord()" title="Dictate vitals — AI auto-fills fields">
+          <span class="mic-dot"></span> Dictate vitals
+        </button>
+      </span>
       <span class="ms-auto">
         <small id="vitals-flag-summary" class="text-danger fw-normal"></small>
       </span>
     </div>
+    <div class="voice-transcript-box mx-3 mt-2" id="vitals-transcript-box"></div>
     <div class="card-body">
       <div class="row g-3">
         <!-- Temperature -->
@@ -509,6 +540,137 @@ function getAIESI() {
   .finally(function() {
     btn.disabled = false;
     btn.innerHTML = '<iconify-icon icon="iconamoon:flash-duotone" class="me-1"></iconify-icon>AI assessment';
+  });
+}
+
+// ----------------------------------------------------------------
+// Voice capture — shared MediaRecorder utility
+// ----------------------------------------------------------------
+var VOICE_EXTRACT_URL = "{% url 'ed:api_triage_voice' visit.pk %}";
+var TRANSCRIBE_URL = "{% url 'scribe:api_quick_transcribe' %}";
+
+var _recorder = null;
+var _chunks = [];
+var _activeMode = null; // 'complaint' | 'vitals'
+
+function _startRecord(mode) {
+  if (_recorder && _recorder.state === "recording") {
+    _recorder.stop();
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({audio: true}).then(function(stream) {
+    _activeMode = mode;
+    _chunks = [];
+    _recorder = new MediaRecorder(stream, {mimeType: "audio/webm"});
+    _recorder.ondataavailable = function(e) { if (e.data.size > 0) _chunks.push(e.data); };
+    _recorder.onstop = function() {
+      stream.getTracks().forEach(function(t) { t.stop(); });
+      var blob = new Blob(_chunks, {type: "audio/webm"});
+      _transcribeAndExtract(blob, _activeMode);
+    };
+    _recorder.start();
+    _setMicState(mode, true);
+  }).catch(function(e) {
+    alert("Microphone access denied: " + e.message);
+  });
+}
+
+function _stopRecord() {
+  if (_recorder && _recorder.state === "recording") {
+    _recorder.stop();
+    _setMicState(_activeMode, false);
+  }
+}
+
+function _setMicState(mode, recording) {
+  var btnId = mode === "complaint" ? "complaint-mic-btn" : "vitals-mic-btn";
+  var btn = document.getElementById(btnId);
+  if (!btn) return;
+  if (recording) {
+    btn.classList.add("recording");
+    btn.innerHTML = '<span class="mic-dot"></span> Stop recording';
+  } else {
+    btn.classList.remove("recording");
+    btn.innerHTML = '<span class="mic-dot"></span> ' + (mode === "complaint" ? "Record conversation" : "Dictate vitals");
+  }
+}
+
+function startComplaintRecord() {
+  if (_recorder && _recorder.state === "recording") { _stopRecord(); return; }
+  _startRecord("complaint");
+}
+
+function startVitalsRecord() {
+  if (_recorder && _recorder.state === "recording") { _stopRecord(); return; }
+  _startRecord("vitals");
+}
+
+function _transcribeAndExtract(blob, mode) {
+  // Step 1: transcribe audio
+  var fd = new FormData();
+  fd.append("audio", blob, "triage.webm");
+  var transcriptBox = document.getElementById(mode === "complaint" ? "complaint-transcript-box" : "vitals-transcript-box");
+  if (transcriptBox) { transcriptBox.style.display = ""; transcriptBox.textContent = "Transcribing…"; }
+
+  fetch(TRANSCRIBE_URL, {
+    method: "POST",
+    headers: {"X-CSRFToken": CSRF},
+    body: fd,
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    var text = d.text || d.transcript || "";
+    if (!text) { if (transcriptBox) transcriptBox.textContent = "No speech detected."; return; }
+    if (transcriptBox) transcriptBox.textContent = "“" + text + "”";
+
+    // Step 2: extract structured fields from transcript
+    return fetch(VOICE_EXTRACT_URL, {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-CSRFToken": CSRF},
+      body: JSON.stringify({transcript: text}),
+    })
+    .then(function(r2) { return r2.json(); })
+    .then(function(d2) {
+      if (!d2.ok || !d2.fields) return;
+      var f = d2.fields;
+      if (mode === "complaint") {
+        // Fill chief complaint from transcript
+        var cc = document.querySelector("[name=chief_complaint]");
+        if (cc && f.chief_complaint) {
+          cc.value = f.chief_complaint;
+          var badge = document.getElementById("complaint-filled-badge");
+          if (badge) badge.classList.remove("d-none");
+        }
+      } else if (mode === "vitals") {
+        // Auto-fill vital sign fields
+        var fieldMap = {
+          bp_systolic: "[name=bp_systolic]",
+          bp_diastolic: "[name=bp_diastolic]",
+          pulse_bpm: "[name=pulse_bpm]",
+          rr_rpm: "[name=rr_rpm]",
+          temp_celsius: "[name=temp_celsius]",
+          spo2_percent: "[name=spo2_percent]",
+          pain_score: "[name=pain_score]",
+          weight_kg: "[name=weight_kg]",
+          blood_glucose_mmol: "[name=blood_glucose_mmol]",
+        };
+        var filled = [];
+        Object.keys(fieldMap).forEach(function(key) {
+          if (f[key] !== null && f[key] !== undefined) {
+            var el = document.querySelector(fieldMap[key]);
+            if (el) { el.value = f[key]; filled.push(key); el.dispatchEvent(new Event("input")); }
+          }
+        });
+        if (filled.length > 0 && transcriptBox) {
+          transcriptBox.textContent += " → Filled: " + filled.join(", ");
+        }
+        updateGCSTotal();
+        checkVitals();
+      }
+    });
+  })
+  .catch(function(e) {
+    if (transcriptBox) transcriptBox.textContent = "Error: " + e.message;
   });
 }
 </script>
