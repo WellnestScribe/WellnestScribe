@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Export — {{ visit.visit_number }} — WellNest{% endblock %}
+
+{% block extra_head %}
+<style>
+  .format-card { cursor: pointer; transition: all 0.15s; }
+  .format-card:hover { border-color: var(--bs-primary) !important; }
+  .copy-btn { min-width: 110px; }
+  #summary-preview {
+    font-family: monospace; font-size: 0.8rem;
+    background: var(--bs-body-bg); border: 1px solid var(--bs-border-color);
+    border-radius: 0.35rem; padding: 1rem; white-space: pre-wrap; line-height: 1.5;
+    max-height: 380px; overflow-y: auto;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-4">
+  <a href="{% url 'ed:visit_detail' visit.pk %}" class="btn btn-sm btn-outline-secondary">
+    <iconify-icon icon="iconamoon:arrow-left-2-duotone"></iconify-icon>
+  </a>
+  <div>
+    <h5 class="mb-0 fw-semibold">Export &amp; Transfer — {{ visit.visit_number }}</h5>
+    <small class="text-muted">{{ visit.display_name }} · {{ visit.arrived_at|date:"d M Y H:i" }}</small>
+  </div>
+</div>
+
+<div class="row g-3">
+
+  <!-- Left: format options -->
+  <div class="col-lg-5">
+
+    <!-- Clinical Summary -->
+    <div class="card mb-3 format-card" id="card-summary">
+      <div class="card-body">
+        <div class="d-flex align-items-start gap-3">
+          <iconify-icon icon="iconamoon:clipboard-duotone" style="font-size:1.6rem; flex-shrink:0; margin-top:2px;"></iconify-icon>
+          <div class="flex-grow-1">
+            <div class="fw-semibold">Clinical Summary</div>
+            <div class="small text-muted mb-2">Formatted text block — paste into any EHR notes field or referral letter.</div>
+            <button class="btn btn-sm btn-outline-primary copy-btn" onclick="copySummary('text')">
+              <iconify-icon icon="iconamoon:copy-duotone" class="me-1"></iconify-icon>Copy text
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FHIR R4 -->
+    <div class="card mb-3 format-card" id="card-fhir">
+      <div class="card-body">
+        <div class="d-flex align-items-start gap-3">
+          <iconify-icon icon="iconamoon:code-duotone" style="font-size:1.6rem; flex-shrink:0; margin-top:2px;"></iconify-icon>
+          <div class="flex-grow-1">
+            <div class="fw-semibold">FHIR R4 Bundle <span class="badge bg-primary-subtle text-primary border ms-1" style="font-size:0.6rem;">JSON</span></div>
+            <div class="small text-muted mb-2">Standard interoperability format. Import into any FHIR-capable EHR.</div>
+            <a class="btn btn-sm btn-outline-success copy-btn" href="{% url 'ed:visit_export' visit.pk %}?format=fhir" download>
+              <iconify-icon icon="iconamoon:arrow-bottom-right-4-duotone" class="me-1"></iconify-icon>Download JSON
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HL7 v2 -->
+    <div class="card mb-3 format-card" id="card-hl7">
+      <div class="card-body">
+        <div class="d-flex align-items-start gap-3">
+          <iconify-icon icon="iconamoon:arrow-right-3-duotone" style="font-size:1.6rem; flex-shrink:0; margin-top:2px;"></iconify-icon>
+          <div class="flex-grow-1">
+            <div class="fw-semibold">HL7 v2 Segment</div>
+            <div class="small text-muted mb-2">ADT^A01 admit message for legacy HIS/lab systems that receive HL7 pipes.</div>
+            <button class="btn btn-sm btn-outline-secondary copy-btn" onclick="copySummary('hl7')">
+              <iconify-icon icon="iconamoon:copy-duotone" class="me-1"></iconify-icon>Copy HL7
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Print -->
+    <div class="card mb-3 format-card">
+      <div class="card-body">
+        <div class="d-flex align-items-start gap-3">
+          <iconify-icon icon="iconamoon:print-duotone" style="font-size:1.6rem; flex-shrink:0; margin-top:2px;"></iconify-icon>
+          <div class="flex-grow-1">
+            <div class="fw-semibold">Print / PDF</div>
+            <div class="small text-muted mb-2">Opens print dialog. Use "Save as PDF" to generate a portable document.</div>
+            <button class="btn btn-sm btn-outline-secondary copy-btn" onclick="window.print()">
+              <iconify-icon icon="iconamoon:print-duotone" class="me-1"></iconify-icon>Print
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card bg-body-secondary border-0">
+      <div class="card-body small text-muted py-2">
+        <iconify-icon icon="iconamoon:information-circle-duotone" class="me-1"></iconify-icon>
+        <strong>Clipboard paste tip:</strong> After copying, paste directly into the target EHR's chief complaint or
+        notes field. Most EHRs accept plain text. For structured import use the FHIR JSON download.
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right: live preview -->
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header d-flex align-items-center justify-content-between py-2">
+        <span class="fw-semibold small">Preview</span>
+        <div class="btn-group btn-group-sm" role="group">
+          <button class="btn btn-outline-secondary active" onclick="setPreview('text', this)">Text</button>
+          <button class="btn btn-outline-secondary" onclick="setPreview('hl7', this)">HL7</button>
+        </div>
+      </div>
+      <div class="card-body p-2">
+        <div id="summary-preview">{{ clinical_text }}</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{# Hidden data for JS #}
+<script id="data-clinical" type="application/json">{{ clinical_text_json }}</script>
+<script id="data-hl7" type="application/json">{{ hl7_text_json }}</script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+var previewEl = document.getElementById("summary-preview");
+var textData = JSON.parse(document.getElementById("data-clinical").textContent);
+var hl7Data  = JSON.parse(document.getElementById("data-hl7").textContent);
+
+function setPreview(fmt, btn) {
+  previewEl.textContent = fmt === "hl7" ? hl7Data : textData;
+  document.querySelectorAll(".btn-group .btn").forEach(function(b) { b.classList.remove("active"); });
+  btn.classList.add("active");
+}
+
+function copySummary(fmt) {
+  var text = fmt === "hl7" ? hl7Data : textData;
+  navigator.clipboard.writeText(text).then(function() {
+    var btn = event.target.closest("button");
+    var orig = btn.innerHTML;
+    btn.innerHTML = '<iconify-icon icon="iconamoon:check-circle-duotone" class="me-1"></iconify-icon>Copied!';
+    setTimeout(function() { btn.innerHTML = orig; }, 2000);
+  }).catch(function() {
+    prompt("Copy this text:", text);
+  });
+}
+</script>
+{% endblock %}

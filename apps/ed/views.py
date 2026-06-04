@@ -15,7 +15,7 @@ from datetime import date
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views import View
@@ -191,16 +191,27 @@ class VisitListView(LoginRequiredMixin, TemplateView):
         today = date.today()
 
         status_filter = self.request.GET.get("status", "")
+        search_q = self.request.GET.get("q", "").strip()
         qs = EDVisit.objects.filter(organisation=org, arrived_at__date=today).select_related(
             "patient", "triage_nurse", "attending_physician"
         ).prefetch_related("triage")
 
         if status_filter:
             qs = qs.filter(current_status=status_filter)
+        if search_q:
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(patient_name_unregistered__icontains=search_q)
+                | Q(patient__legal_first_name__icontains=search_q)
+                | Q(patient__legal_last_name__icontains=search_q)
+                | Q(visit_number__icontains=search_q)
+                | Q(triage__chief_complaint__icontains=search_q)
+            )
 
         ctx["visits"] = qs.order_by("-arrived_at")
         ctx["today"] = today
         ctx["status_filter"] = status_filter
+        ctx["search_q"] = search_q
         ctx["total_today"] = EDVisit.objects.filter(
             organisation=org, arrived_at__date=today
         ).count()
@@ -321,10 +332,38 @@ class TriageFormView(LoginRequiredMixin, View):
         except TriageAssessment.DoesNotExist:
             form = TriageAssessmentForm()
             is_retriage = False
+
+        # --- Past life reminder (DKA story) ---
+        # Surface the patient's known history BEFORE the nurse has to ask.
+        prior_pmh: list[str] = []
+        prior_visits: list[dict] = []
+        if visit.patient:
+            past_triages = (
+                TriageAssessment.objects
+                .filter(visit__patient=visit.patient, visit__organisation=visit.organisation)
+                .exclude(visit=visit)
+                .select_related("visit")
+                .order_by("-assessed_at")[:5]
+            )
+            pmh_seen: set[str] = set()
+            for t in past_triages:
+                for flag in t.pmh_list:
+                    if flag not in pmh_seen:
+                        prior_pmh.append(flag)
+                        pmh_seen.add(flag)
+                if t.chief_complaint:
+                    prior_visits.append({
+                        "date": t.assessed_at,
+                        "cc": t.chief_complaint,
+                        "esi": t.esi_score,
+                    })
+
         return render(request, self.template_name, {
             "form": form,
             "visit": visit,
             "is_retriage": is_retriage,
+            "prior_pmh": prior_pmh,
+            "prior_visits": prior_visits[:3],
         })
 
     def post(self, request, pk):
@@ -522,7 +561,19 @@ class DispositionView(LoginRequiredMixin, View):
             form = DispositionForm(instance=existing)
         except DispositionRecord.DoesNotExist:
             form = DispositionForm()
-        return render(request, self.template_name, {"form": form, "visit": visit})
+
+        # Discharge safety check — surface any abnormal vitals to the doctor
+        vital_flags: list[str] = []
+        try:
+            vital_flags = visit.triage.vital_flags
+        except TriageAssessment.DoesNotExist:
+            pass
+
+        return render(request, self.template_name, {
+            "form": form,
+            "visit": visit,
+            "vital_flags": vital_flags,
+        })
 
     def post(self, request, pk):
         visit = self._get_visit(request, pk)
@@ -808,4 +859,343 @@ def handover_generate_api(request, pk):
         "ok": True,
         "generated": saved,
         "total": active.count(),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Triage Voice — combined audio-to-fields (single round-trip)
+# ---------------------------------------------------------------------------
+
+@login_required
+def triage_voice_audio_api(request, pk):
+    """POST multipart/form-data with 'audio' file.
+
+    Server-side: transcribe (cloud Whisper) → extract structured triage fields
+    (GPT-4o-mini) in one round-trip, eliminating the extra browser↔server hop.
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=405)
+
+    audio = request.FILES.get("audio")
+    if not audio:
+        return JsonResponse({"ok": False, "error": "No audio file received."}, status=400)
+
+    import os
+    import tempfile
+
+    suffix = os.path.splitext(audio.name or "")[1] or ".webm"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        for chunk in audio.chunks():
+            tmp.write(chunk)
+        tmp_path = tmp.name
+
+    transcript = ""
+    try:
+        from scribe.services.pipeline import run_transcription
+        transcript = (run_transcription(tmp_path) or "").strip()
+    except Exception as exc:
+        logger.error("ED triage voice transcription failed: %s", exc)
+        return JsonResponse({"ok": False, "error": f"Transcription failed: {exc}"}, status=500)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+    if not transcript:
+        return JsonResponse({"ok": False, "error": "No speech detected — please try again."})
+
+    fields: dict = {}
+    try:
+        from scribe.services.clients import get_chat_client
+        from django.conf import settings as _settings
+        client = get_chat_client()
+        deployment = getattr(_settings, "SCRIBE_AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini")
+        resp = client.chat.completions.create(
+            model=deployment,
+            messages=[
+                {"role": "system", "content": _VITALS_EXTRACT_PROMPT},
+                {"role": "user", "content": f"Transcript:\n{transcript}"},
+            ],
+            max_tokens=300,
+            temperature=0.1,
+        )
+        raw = resp.choices[0].message.content.strip()
+        fields = json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    except Exception as exc:
+        logger.error("ED triage voice extraction failed: %s", exc)
+
+    return JsonResponse({"ok": True, "transcript": transcript, "fields": fields})
+
+
+# ---------------------------------------------------------------------------
+# ED Settings — AI voice config status
+# ---------------------------------------------------------------------------
+
+@login_required
+def ed_settings_view(request):
+    """Read-only diagnostics page showing which AI providers are wired up."""
+    from urllib.parse import urlparse
+    from django.conf import settings as _s
+
+    def _host(url: str) -> str:
+        try:
+            return urlparse(url).hostname or url
+        except Exception:
+            return url
+
+    # Transcription
+    if _s.SCRIBE_AZURE_OPENAI_TRANSCRIBE_KEY and _s.SCRIBE_AZURE_OPENAI_TRANSCRIBE_ENDPOINT:
+        transcription = {
+            "provider": "Azure OpenAI",
+            "model": _s.SCRIBE_AZURE_OPENAI_TRANSCRIBE_DEPLOYMENT or "gpt-4o-transcribe",
+            "endpoint": _host(_s.SCRIBE_AZURE_OPENAI_TRANSCRIBE_ENDPOINT),
+            "ok": True,
+        }
+    elif _s.SCRIBE_OPENAI_API_KEY:
+        transcription = {
+            "provider": "OpenAI",
+            "model": getattr(_s, "SCRIBE_OPENAI_TRANSCRIBE_MODEL", "gpt-4o-transcribe"),
+            "endpoint": "api.openai.com",
+            "ok": True,
+        }
+    else:
+        transcription = {"provider": "Not configured", "model": "—", "endpoint": "—", "ok": False}
+
+    # Extraction (chat)
+    if getattr(_s, "SCRIBE_AZURE_OPENAI_KEY", "") and getattr(_s, "SCRIBE_AZURE_OPENAI_ENDPOINT", ""):
+        extraction = {
+            "provider": "Azure OpenAI",
+            "model": getattr(_s, "SCRIBE_AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini"),
+            "endpoint": _host(_s.SCRIBE_AZURE_OPENAI_ENDPOINT),
+            "ok": True,
+        }
+    else:
+        extraction = {"provider": "Not configured", "model": "—", "endpoint": "—", "ok": False}
+
+    return render(request, "ed/settings.html", {
+        "transcription": transcription,
+        "extraction": extraction,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Visit Export — FHIR R4 JSON + smart clinical summary
+# ---------------------------------------------------------------------------
+
+def _build_fhir_bundle(visit: EDVisit) -> dict:
+    """Minimal FHIR R4 collection bundle for a single ED visit."""
+    import uuid as _uuid
+
+    bundle_id = str(_uuid.uuid4())
+    now_iso = timezone.now().isoformat()
+    entries = []
+
+    # Patient
+    patient_id = f"patient-{visit.pk}"
+    if visit.patient:
+        p = visit.patient
+        name_entry = [{"family": p.legal_last_name, "given": [p.legal_first_name]}]
+        gender = (getattr(p, "sex", None) or "unknown").lower()
+        dob = p.date_of_birth.isoformat() if getattr(p, "date_of_birth", None) else None
+    else:
+        parts = (visit.patient_name_unregistered or "Unknown").split(" ", 1)
+        given = parts[0]
+        family = parts[1] if len(parts) > 1 else parts[0]
+        name_entry = [{"family": family, "given": [given]}]
+        gender = "unknown"
+        dob = None
+
+    patient_res = {"resourceType": "Patient", "id": patient_id, "name": name_entry, "gender": gender}
+    if dob:
+        patient_res["birthDate"] = dob
+    entries.append({"fullUrl": f"urn:uuid:{patient_id}", "resource": patient_res})
+
+    # Encounter
+    encounter_id = f"encounter-{visit.pk}"
+    encounter_res = {
+        "resourceType": "Encounter",
+        "id": encounter_id,
+        "status": "in-progress" if visit.is_active else "finished",
+        "class": {"system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "EMER", "display": "Emergency"},
+        "subject": {"reference": f"urn:uuid:{patient_id}"},
+        "period": {"start": visit.arrived_at.isoformat()},
+        "identifier": [{"value": visit.visit_number}],
+    }
+    if visit.exited_at:
+        encounter_res["period"]["end"] = visit.exited_at.isoformat()
+    entries.append({"fullUrl": f"urn:uuid:{encounter_id}", "resource": encounter_res})
+
+    # Vitals + chief complaint from triage
+    try:
+        t = visit.triage
+        vital_map = [
+            ("bp_systolic",        "8480-6",  "Systolic blood pressure",  "mmHg"),
+            ("bp_diastolic",       "8462-4",  "Diastolic blood pressure", "mmHg"),
+            ("pulse_bpm",          "8867-4",  "Heart rate",               "/min"),
+            ("rr_rpm",             "9279-1",  "Respiratory rate",         "/min"),
+            ("temp_celsius",       "8310-5",  "Body temperature",         "Cel"),
+            ("spo2_percent",       "2708-6",  "Oxygen saturation",        "%"),
+            ("pain_score",         "72514-3", "Pain severity",            "score"),
+            ("weight_kg",          "29463-7", "Body weight",              "kg"),
+            ("blood_glucose_mmol", "15074-8", "Glucose",                  "mmol/L"),
+        ]
+        effective = t.assessed_at.isoformat() if t.assessed_at else now_iso
+        for field, loinc, display, unit in vital_map:
+            val = getattr(t, field, None)
+            if val is None:
+                continue
+            obs_id = f"obs-{visit.pk}-{field}"
+            obs_res = {
+                "resourceType": "Observation",
+                "id": obs_id,
+                "status": "final",
+                "category": [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/observation-category", "code": "vital-signs"}]}],
+                "code": {"coding": [{"system": "http://loinc.org", "code": loinc, "display": display}]},
+                "subject": {"reference": f"urn:uuid:{patient_id}"},
+                "encounter": {"reference": f"urn:uuid:{encounter_id}"},
+                "effectiveDateTime": effective,
+                "valueQuantity": {"value": float(val), "unit": unit, "system": "http://unitsofmeasure.org"},
+            }
+            entries.append({"fullUrl": f"urn:uuid:{obs_id}", "resource": obs_res})
+
+        if t.chief_complaint:
+            cond_id = f"cond-{visit.pk}"
+            entries.append({"fullUrl": f"urn:uuid:{cond_id}", "resource": {
+                "resourceType": "Condition",
+                "id": cond_id,
+                "clinicalStatus": {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": "active"}]},
+                "subject": {"reference": f"urn:uuid:{patient_id}"},
+                "encounter": {"reference": f"urn:uuid:{encounter_id}"},
+                "code": {"text": t.chief_complaint},
+            }})
+    except TriageAssessment.DoesNotExist:
+        pass
+
+    return {
+        "resourceType": "Bundle",
+        "id": bundle_id,
+        "type": "collection",
+        "timestamp": now_iso,
+        "entry": entries,
+    }
+
+
+def _build_clinical_summary(visit: EDVisit, triage) -> str:
+    """Plain-text clinical summary for clipboard / paste-into-EHR."""
+    lines = [
+        "── WellnestScribe Clinical Export ──",
+        f"Visit:    {visit.visit_number}",
+        f"Date:     {visit.arrived_at.strftime('%d %b %Y  %H:%M')}",
+        f"Patient:  {visit.display_name}",
+        f"Status:   {visit.get_current_status_display()}",
+        f"Zone:     {visit.get_current_zone_display()}",
+        "",
+    ]
+    if triage:
+        lines += [
+            f"CHIEF COMPLAINT: {triage.chief_complaint or '—'}",
+            f"ESI Score: {triage.esi_score or '—'}",
+            "",
+            "VITALS:",
+        ]
+        v_pairs = [
+            ("  BP",       f"{triage.bp_systolic}/{triage.bp_diastolic} mmHg" if triage.bp_systolic else "—"),
+            ("  HR",       f"{triage.pulse_bpm} bpm" if triage.pulse_bpm else "—"),
+            ("  RR",       f"{triage.rr_rpm} rpm" if triage.rr_rpm else "—"),
+            ("  SpO2",     f"{triage.spo2_percent}%" if triage.spo2_percent else "—"),
+            ("  Temp",     f"{triage.temp_celsius} °C" if triage.temp_celsius else "—"),
+            ("  Weight",   f"{triage.weight_kg} kg" if triage.weight_kg else "—"),
+            ("  Pain",     f"{triage.pain_score}/10" if triage.pain_score is not None else "—"),
+            ("  BGL",      f"{triage.blood_glucose_mmol} mmol/L" if triage.blood_glucose_mmol else "—"),
+        ]
+        if triage.gcs_total:
+            v_pairs.append(("  GCS", str(triage.gcs_total)))
+        for label, val in v_pairs:
+            lines.append(f"{label:<10}{val}")
+        lines += [
+            "",
+            f"ALLERGIES:    {triage.allergies or 'NKDA'}",
+            f"PMH:          {', '.join(triage.pmh_list) or 'None documented'}",
+        ]
+        if triage.current_medications:
+            lines += ["", "MEDICATIONS:", triage.current_medications]
+        if triage.triage_notes:
+            lines += ["", "TRIAGE NOTES:", triage.triage_notes]
+    if visit.attending_physician:
+        lines += ["", f"PHYSICIAN:    {visit.attending_physician.get_full_name() or visit.attending_physician.username}"]
+    lines += ["", "── Generated by WellnestScribe ──"]
+    return "\n".join(lines)
+
+
+def _build_hl7_adt(visit: EDVisit, triage) -> str:
+    """Minimal HL7 v2.5 ADT^A01 message for legacy HIS integration."""
+    from datetime import datetime
+    now = datetime.now().strftime("%Y%m%d%H%M%S")
+    arrived = visit.arrived_at.strftime("%Y%m%d%H%M")
+    name = visit.display_name.replace(" ", "^")
+    dob = ""
+    sex = "U"
+    if visit.patient:
+        p = visit.patient
+        if getattr(p, "date_of_birth", None):
+            dob = p.date_of_birth.strftime("%Y%m%d")
+        sex_map = {"male": "M", "female": "F"}
+        sex = sex_map.get((getattr(p, "sex", "") or "").lower(), "U")
+
+    segments = [
+        f"MSH|^~\\&|WELLNEST|ED|RECEIVING|EHR|{now}||ADT^A01|{visit.visit_number}|P|2.5",
+        f"EVN|A01|{now}",
+        f"PID|1||{visit.pk}^^^WELLNEST||{name}||{dob}|{sex}",
+        f"PV1|1|E|ED^{visit.current_zone}^{visit.current_bed or ''}|{visit.get_current_status_display()}||||||||",
+    ]
+    if triage:
+        segments.append(
+            f"OBX|1|NM|8480-6^Systolic BP^LN||{triage.bp_systolic or ''}|mmHg"
+        )
+        segments.append(
+            f"OBX|2|NM|8867-4^Heart rate^LN||{triage.pulse_bpm or ''}|/min"
+        )
+        segments.append(
+            f"OBX|3|NM|2708-6^SpO2^LN||{triage.spo2_percent or ''}|%"
+        )
+        if triage.chief_complaint:
+            segments.append(f"NTE|1||{triage.chief_complaint}")
+    return "\r".join(segments)
+
+
+@login_required
+def visit_export_view(request, pk):
+    """Export visit data.  ?format=fhir → FHIR R4 JSON download."""
+    org = _get_user_org(request)
+    visit = get_object_or_404(
+        EDVisit.objects.select_related("patient", "triage_nurse", "attending_physician")
+                       .prefetch_related("triage"),
+        pk=pk, organisation=org,
+    )
+    fmt = request.GET.get("format", "page")
+
+    if fmt == "fhir":
+        bundle = _build_fhir_bundle(visit)
+        body = json.dumps(bundle, indent=2)
+        resp = HttpResponse(body, content_type="application/fhir+json")
+        resp["Content-Disposition"] = f'attachment; filename="visit-{visit.visit_number}-fhir.json"'
+        return resp
+
+    try:
+        triage = visit.triage
+    except TriageAssessment.DoesNotExist:
+        triage = None
+
+    clinical_text = _build_clinical_summary(visit, triage)
+    hl7_text = _build_hl7_adt(visit, triage)
+
+    return render(request, "ed/visit_export.html", {
+        "visit": visit,
+        "triage": triage,
+        "clinical_text": clinical_text,
+        "clinical_text_json": json.dumps(clinical_text),
+        "hl7_text_json": json.dumps(hl7_text),
     })

@@ -55,6 +55,30 @@ clearly and structured.
 """
 
 
+SENSITIVE_ENCOUNTER_ADDENDUM = """SENSITIVE ENCOUNTER — enhanced PHI protection active:
+
+This encounter has been flagged as containing sensitive personal data under
+Jamaica's Data Protection Act 2020 (health data category). Apply these rules:
+
+1. DO NOT repeat the patient's name, date of birth, or ID number anywhere
+   in the note body — use "the patient" or "Pt" only.
+2. For HIV/AIDS status: document exactly what the doctor stated. Do not
+   expand, elaborate, or add clinical commentary beyond the transcript.
+   Use the doctor's exact clinical wording. If the doctor said "HIV positive"
+   write "HIV positive" — do not substitute euphemisms.
+3. For mental health content: capture mood, affect, SI/HI risk, and plan
+   only as the doctor verbalized them. Do not infer or add MSE elements
+   that were not spoken.
+4. For reproductive / sexual health: document only what was explicitly stated.
+5. For substance use: use the doctor's exact terminology. Do not add
+   "substance use disorder" or diagnostic labels the doctor did not apply.
+6. End the note with a [SENSITIVE] tag on its own line immediately before
+   the standard disclaimer line.
+
+The purpose is to minimize the amount of identifiable sensitive data
+in the AI-generated draft while preserving clinical accuracy.
+"""
+
 SUGGESTIVE_ASSIST_ADDENDUM = """SUGGESTIVE ASSIST MODE:
 
 - The doctor has explicitly enabled cautious suggestive phrasing for this note.

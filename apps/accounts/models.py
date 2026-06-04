@@ -26,13 +26,21 @@ class DoctorProfile(models.Model):
         ("chart", "Chart / progress note"),
     ]
 
-    ROLE_CLINICIAN = "clinician"
-    ROLE_LEAD = "lead"
-    ROLE_ADMIN = "admin"
+    ROLE_CLINICIAN    = "clinician"
+    ROLE_LEAD         = "lead"
+    ROLE_ADMIN        = "admin"
+    ROLE_SCRIBE       = "scribe"       # Medical scribe — record + view, cannot finalize
+    ROLE_ED_NURSE     = "ed_nurse"     # ED nurse — ED board + triage access
+    ROLE_NURSE        = "nurse"        # General nurse — view & assist, no finalize
+    ROLE_RECEPTIONIST = "receptionist" # Reception — read-only session list
     ROLE_CHOICES = [
-        (ROLE_CLINICIAN, "Clinician"),
-        (ROLE_LEAD, "Clinical lead"),
-        (ROLE_ADMIN, "Administrator"),
+        (ROLE_CLINICIAN,    "Clinician"),
+        (ROLE_LEAD,         "Clinical lead"),
+        (ROLE_ADMIN,        "Administrator"),
+        (ROLE_SCRIBE,       "Medical scribe"),
+        (ROLE_ED_NURSE,     "ED nurse"),
+        (ROLE_NURSE,        "Nurse"),
+        (ROLE_RECEPTIONIST, "Receptionist"),
     ]
 
     user = models.OneToOneField(
@@ -60,6 +68,14 @@ class DoctorProfile(models.Model):
     )
 
     custom_instructions = models.TextField(blank=True)
+    custom_terms = models.TextField(
+        blank=True,
+        help_text=(
+            "Regional or personal abbreviations, one per line. "
+            "e.g. 'HTN = hypertension', 'SLE = systemic lupus erythematosus'. "
+            "Added to every note-generation prompt."
+        ),
+    )
 
     role = models.CharField(
         max_length=20, choices=ROLE_CHOICES, default=ROLE_CLINICIAN
@@ -88,3 +104,28 @@ class DoctorProfile(models.Model):
     def can_access_triage(self) -> bool:
         """Triage Lab access: admins, leads, or staff/superuser."""
         return self.is_lead
+
+    def can_use_scribe(self) -> bool:
+        """Can record sessions and generate notes."""
+        return self.role in (
+            self.ROLE_CLINICIAN, self.ROLE_LEAD, self.ROLE_ADMIN, self.ROLE_SCRIBE
+        ) or self.user.is_staff or self.user.is_superuser
+
+    def can_finalize(self) -> bool:
+        """Can mark a note as clinically reviewed and lock it."""
+        return self.role in (
+            self.ROLE_CLINICIAN, self.ROLE_LEAD, self.ROLE_ADMIN
+        ) or self.user.is_staff or self.user.is_superuser
+
+    def can_use_ed_board(self) -> bool:
+        """Can access Emergency Department board and triage."""
+        return self.role in (
+            self.ROLE_CLINICIAN, self.ROLE_LEAD, self.ROLE_ADMIN,
+            self.ROLE_ED_NURSE, self.ROLE_NURSE,
+        ) or self.user.is_staff or self.user.is_superuser
+
+    def is_read_only(self) -> bool:
+        """Receptionist: can view sessions list but not edit or generate."""
+        return self.role == self.ROLE_RECEPTIONIST and not (
+            self.user.is_staff or self.user.is_superuser
+        )

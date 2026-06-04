@@ -1,7 +1,6 @@
 {% comment %}
 Shared nav items used in both desktop sidebar and mobile bottom-sheet.
-No data-bs-dismiss on links — page navigation closes the offcanvas naturally
-and the dismiss attribute can interfere with click handling on desktop.
+Sections are collapsible — state saved in localStorage.
 {% endcomment %}
 {% url 'scribe:record' as record_url %}
 {% url 'scribe:history' as history_url %}
@@ -12,79 +11,66 @@ and the dismiss attribute can interfere with click handling on desktop.
 {% url 'ed:visit_list' as ed_list_url %}
 {% url 'ed:shifts' as ed_shifts_url %}
 
-<li class="menu-title">Emergency Department</li>
-
+{# ── ED Section ── #}
+<li class="menu-title nav-section-toggle" data-section="nav-ed" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;">
+  <span>Emergency Department</span>
+  <iconify-icon icon="iconamoon:arrow-up-2-duotone" id="nav-ed-chevron" style="font-size:0.8rem;transition:transform 0.2s;"></iconify-icon>
+</li>
+<div id="nav-ed">
 <li class="nav-item">
     <a class="nav-link {% if request.path == ed_board_url %}active{% endif %}" href="{{ ed_board_url }}">
-        <span class="nav-icon">
-            <iconify-icon icon="iconamoon:clipboard-duotone"></iconify-icon>
-        </span>
+        <span class="nav-icon"><iconify-icon icon="iconamoon:clipboard-duotone"></iconify-icon></span>
         <span class="nav-text">ED Board</span>
     </a>
 </li>
-
 <li class="nav-item">
     <a class="nav-link {% if request.path == ed_new_url %}active{% endif %}" href="{{ ed_new_url }}">
-        <span class="nav-icon">
-            <iconify-icon icon="iconamoon:sign-plus-circle-duotone"></iconify-icon>
-        </span>
+        <span class="nav-icon"><iconify-icon icon="iconamoon:sign-plus-circle-duotone"></iconify-icon></span>
         <span class="nav-text">New arrival</span>
     </a>
 </li>
-
 <li class="nav-item">
     <a class="nav-link {% if request.path == ed_list_url %}active{% endif %}" href="{{ ed_list_url }}">
-        <span class="nav-icon">
-            <iconify-icon icon="iconamoon:calendar-2-duotone"></iconify-icon>
-        </span>
+        <span class="nav-icon"><iconify-icon icon="iconamoon:calendar-2-duotone"></iconify-icon></span>
         <span class="nav-text">Today's visits</span>
     </a>
 </li>
-
 <li class="nav-item">
     <a class="nav-link {% if request.path == ed_shifts_url %}active{% endif %}" href="{{ ed_shifts_url }}">
-        <span class="nav-icon">
-            <iconify-icon icon="iconamoon:arrow-right-circle-duotone"></iconify-icon>
-        </span>
+        <span class="nav-icon"><iconify-icon icon="iconamoon:arrow-right-circle-duotone"></iconify-icon></span>
         <span class="nav-text">Shifts &amp; handover</span>
     </a>
 </li>
+</div>
 
-<li class="menu-title">Workspace</li>
-
+{# ── Workspace Section ── #}
+<li class="menu-title nav-section-toggle" data-section="nav-workspace" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;">
+  <span>Scribe</span>
+  <iconify-icon icon="iconamoon:arrow-up-2-duotone" id="nav-workspace-chevron" style="font-size:0.8rem;transition:transform 0.2s;"></iconify-icon>
+</li>
+<div id="nav-workspace">
 <li class="nav-item">
     <a class="nav-link {% if request.path == record_url %}active{% endif %}" href="{{ record_url }}">
-        <span class="nav-icon">
-            <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
-        </span>
+        <span class="nav-icon"><iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon></span>
         <span class="nav-text">New session</span>
     </a>
 </li>
-
 <li class="nav-item">
     <a class="nav-link {% if request.path == history_url %}active{% endif %}" href="{{ history_url }}">
-        <span class="nav-icon">
-            <iconify-icon icon="iconamoon:folder-duotone"></iconify-icon>
-        </span>
+        <span class="nav-icon"><iconify-icon icon="iconamoon:folder-duotone"></iconify-icon></span>
         <span class="nav-text">Sessions</span>
     </a>
 </li>
-
 <li class="nav-item">
     <a class="nav-link {% if request.path|slice:":5" == '/emr/' %}active{% endif %}" href="{{ emr_url }}">
-        <span class="nav-icon">
-            <iconify-icon icon="iconamoon:files-duotone"></iconify-icon>
-        </span>
+        <span class="nav-icon"><iconify-icon icon="iconamoon:files-duotone"></iconify-icon></span>
         <span class="nav-text">EMR</span>
     </a>
 </li>
-
 {% url 'scribe:drug_check' as drug_check_url %}
 <li class="nav-item">
     <a class="nav-link {% if request.path == drug_check_url %}active{% endif %}" href="{{ drug_check_url }}">
-        <span class="nav-icon">
-            <iconify-icon icon="iconamoon:pill-duotone"></iconify-icon>
-        </span>
+        <span class="nav-icon"><iconify-icon icon="iconamoon:pill-duotone"></iconify-icon></span>
         <span class="nav-text">Drug check</span>
     </a>
 </li>
@@ -100,12 +86,17 @@ and the dismiss attribute can interfere with click handling on desktop.
     </a>
 </li>
 {% endif %}
+</div>
 
 {% if is_admin %}
 {% url 'scribe:audit_log' as audit_url %}
 {% url 'scribe:compliance' as compliance_url %}
 
-<li class="menu-title">Admin</li>
+<li class="menu-title nav-section-toggle" data-section="nav-admin" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;">
+  <span>Admin</span>
+  <iconify-icon icon="iconamoon:arrow-up-2-duotone" id="nav-admin-chevron" style="font-size:0.8rem;transition:transform 0.2s;"></iconify-icon>
+</li>
+<div id="nav-admin">
 
 <li class="nav-item">
     <a class="nav-link {% if request.path == audit_url %}active{% endif %}" href="{{ audit_url }}">
@@ -133,6 +124,7 @@ and the dismiss attribute can interfere with click handling on desktop.
         <span class="nav-text">Django admin</span>
     </a>
 </li>
+</div>
 {% endif %}
 
 <li class="menu-title">Account</li>

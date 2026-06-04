@@ -58,6 +58,7 @@ def probe_environment() -> dict[str, Any]:
         "cuda_device": None,
         "transformers": False,
         "transformers_version": None,
+        "nemo": False,
         "librosa": False,
         "noisereduce": False,
         "deepfilternet": False,
@@ -68,6 +69,7 @@ def probe_environment() -> dict[str, Any]:
         "model_cached_t5": False,
         "model_cached_gemma": False,
         "model_cached_qwen": False,
+        "model_cached_parakeet": False,
         "model_cached_local_llm": False,
         "local_llm_dir": "",
     }
@@ -84,6 +86,11 @@ def probe_environment() -> dict[str, Any]:
         import transformers  # type: ignore
         info["transformers"] = True
         info["transformers_version"] = transformers.__version__
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import nemo  # noqa: F401  # type: ignore
+        info["nemo"] = True
     except Exception:  # noqa: BLE001
         pass
     try:
@@ -113,6 +120,7 @@ def probe_environment() -> dict[str, Any]:
         )
         info["model_cached_gemma"] = any(p.name.startswith("models--google--gemma") for p in items)
         info["model_cached_qwen"] = any(p.name.startswith("models--Qwen--") for p in items)
+        info["model_cached_parakeet"] = any(p.name.startswith("models--nvidia--parakeet") for p in items)
 
     # Local <BASE_DIR>/models/ fallback for any small interpreter LLM.
     for slug in ("Qwen--Qwen3-1.7B", "Qwen3-1.7B", "google--gemma-4-E2B", "gemma-4-E2B"):
@@ -490,3 +498,129 @@ def gemma_interpret_patois(text: str, *, device: str = "cpu",
     import re as _re
     text = _re.sub(r"<think>.*?</think>", "", text, flags=_re.DOTALL).strip()
     return text
+
+
+# ---- NVIDIA Parakeet TDT 0.6B v2 (NeMo ASR, English) -----------------------
+
+_PARAKEET_CACHE: dict[str, Any] = {}
+
+
+def _load_parakeet(device: str = "cpu"):
+    """Lazy-load nvidia/parakeet-tdt-0.6b-v2 via NeMo. Cached per device."""
+    if device in _PARAKEET_CACHE:
+        return _PARAKEET_CACHE[device]
+
+    try:
+        import nemo.collections.asr as nemo_asr  # type: ignore
+    except ImportError as exc:
+        raise TriageDependencyError(
+            "NeMo ASR not installed. From a terminal run:\n"
+            "    pip install nemo_toolkit[asr]\n"
+            "First download is ~600 MB of model weights."
+        ) from exc
+
+    try:
+        import torch  # type: ignore
+        if device == "cuda" and not torch.cuda.is_available():
+            raise TriageDependencyError(
+                "CUDA requested but no CUDA-capable GPU visible to PyTorch."
+            )
+    except ImportError as exc:
+        raise TriageDependencyError("torch not installed") from exc
+
+    logger.info("Loading nvidia/parakeet-tdt-0.6b-v2 on %s …", device)
+    model = nemo_asr.models.ASRModel.from_pretrained("nvidia/parakeet-tdt-0.6b-v2")
+    if device == "cuda":
+        model = model.cuda()
+    else:
+        model = model.cpu()
+    model.eval()
+    _PARAKEET_CACHE[device] = model
+    return model
+
+
+def transcribe_parakeet(audio_path: str | Path, *, device: str = "cpu") -> str:
+    """Run nvidia/parakeet-tdt-0.6b-v2 and return the English transcript.
+
+    Converts input audio to 16kHz mono WAV (what Parakeet expects), runs
+    inference on CPU (default), then cleans up the temp file.
+    """
+    import os
+    import tempfile
+
+    try:
+        import librosa  # type: ignore
+        import soundfile as sf  # type: ignore
+    except ImportError as exc:
+        raise TriageDependencyError(
+            "Missing audio libs. Run: pip install librosa soundfile"
+        ) from exc
+
+    try:
+        import torch  # type: ignore
+    except ImportError as exc:
+        raise TriageDependencyError("torch not installed") from exc
+
+    model = _load_parakeet(device=device)
+
+    audio, _ = librosa.load(str(audio_path), sr=16000, mono=True)
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        tmp_path = tmp.name
+    try:
+        sf.write(tmp_path, audio, 16000)
+        with torch.no_grad():
+            output = model.transcribe([tmp_path])
+        # NeMo returns Hypothesis objects or plain strings depending on version.
+        if output:
+            first = output[0]
+            text = first.text if hasattr(first, "text") else str(first)
+        else:
+            text = ""
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+    return text.strip()
+
+
+# TEMPORARY — Modal L4 GPU endpoint for ambient-mode latency testing.
+# Remove this function once the testing phase is complete.
+def transcribe_modal_mms(
+    audio_path: str | Path,
+    *,
+    target_lang: str = "jam",
+) -> dict:
+    """POST audio to the Modal-hosted MMS endpoint and return the full response dict.
+
+    Response keys: ok, transcript, audio_seconds, preprocessing_ms,
+    inference_ms, total_ms, realtime_factor, model_id, device.
+    """
+    try:
+        import requests  # type: ignore
+    except ImportError as exc:
+        raise TriageDependencyError(
+            "requests not installed. Run: pip install requests"
+        ) from exc
+
+    url = settings.MODAL_MMS_URL
+    if not url:
+        raise TriageDependencyError(
+            "MODAL_MMS_URL is not set in .env. "
+            "Add it or switch AMBIENT_BACKEND=local."
+        )
+
+    with open(audio_path, "rb") as f:
+        resp = requests.post(
+            url,
+            files={"file": (Path(audio_path).name, f)},
+            data={"backend": "mms", "target_lang": target_lang},
+            timeout=300,
+        )
+    resp.raise_for_status()
+    data = resp.json()
+    if not data.get("ok"):
+        raise RuntimeError(f"Modal MMS returned error: {data}")
+    return data

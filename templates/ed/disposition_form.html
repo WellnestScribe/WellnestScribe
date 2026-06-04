@@ -35,6 +35,22 @@
   </div>
 </div>
 
+{% if vital_flags %}
+{# ── Discharge safety check (Epic feature Dr Yom called out explicitly) ── #}
+<div class="alert alert-danger d-flex gap-3 align-items-start mb-3" role="alert">
+  <iconify-icon icon="iconamoon:alert-circle-duotone" style="font-size:1.4rem; flex-shrink:0; margin-top:2px;"></iconify-icon>
+  <div>
+    <strong>Abnormal vital signs at triage</strong> — please verify before discharging.
+    <div class="mt-1">
+      {% for flag in vital_flags %}
+      <span class="badge bg-danger-subtle text-danger border border-danger me-1">{{ flag }}</span>
+      {% endfor %}
+    </div>
+    <div class="small text-danger-emphasis mt-1 opacity-75">Document your clinical reasoning if discharging with abnormal vitals.</div>
+  </div>
+</div>
+{% endif %}
+
 <form method="post">
   {% csrf_token %}
 

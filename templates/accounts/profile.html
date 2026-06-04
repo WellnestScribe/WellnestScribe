@@ -100,11 +100,20 @@
 
                     <h6 class="fw-semibold">Custom instructions</h6>
                     <p class="text-muted small">
-                        Anything you&rsquo;d always like the AI to do — preferred abbreviations,
-                        reminders to include foot pulses on diabetic patients, etc. We append
-                        these to every prompt for your account.
+                        Anything you&rsquo;d always like the AI to do — reminders to include
+                        foot pulses on diabetic patients, preferred phrasings, etc. Appended
+                        to every note-generation prompt.
                     </p>
                     {{ form.custom_instructions }}
+
+                    <h6 class="fw-semibold mt-4">Custom terminology</h6>
+                    <p class="text-muted small">
+                        Regional or personal abbreviations the AI should recognise — one per
+                        line. The AI uses these when interpreting your dictation and writing
+                        notes. Common across Caribbean practice (e.g. Jamaican health centre
+                        shorthand).
+                    </p>
+                    {{ form.custom_terms }}
 
                     <div class="d-flex justify-content-end mt-4">
                         <button type="submit" class="btn btn-primary">Save preferences</button>

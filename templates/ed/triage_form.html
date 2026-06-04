@@ -39,6 +39,21 @@
     color: var(--bs-secondary-color); display: none;
   }
   .voice-filled-badge { font-size: 0.65rem; vertical-align: middle; }
+  #ai-esi-result { display: none; }
+
+  /* Listen to encounter bar */
+  #encounter-bar {
+    border-left: 4px solid #0d6efd !important;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  #encounter-bar.is-recording {
+    border-left-color: #dc3545 !important;
+    background: rgba(220,53,69,0.04) !important;
+    animation: pulse-border 1.5s infinite;
+  }
+  @keyframes pulse-border { 0%,100%{border-left-color:#dc3545} 50%{border-left-color:rgba(220,53,69,0.4)} }
+  #encounter-bar .voice-transcript-box { display: none; margin-top: 0.3rem; }
+  #encounter-bar .voice-transcript-box.is-visible { display: block; }
 </style>
 {% endblock %}
 
@@ -60,6 +75,9 @@
   <span class="badge bg-{{ visit.zone_color_class }} px-3 py-2">
     {{ visit.get_current_zone_display }}
   </span>
+  <a href="{% url 'ed:settings' %}" class="btn btn-sm btn-outline-secondary" title="Voice AI settings" style="opacity:0.6;">
+    <iconify-icon icon="iconamoon:settings-duotone"></iconify-icon>
+  </a>
 </div>
 
 {% if is_retriage %}
@@ -68,6 +86,55 @@
   <div><strong>Re-triage</strong> — Patient condition may have changed. Previous ESI: <strong>{{ visit.triage.esi_score }}</strong></div>
 </div>
 {% endif %}
+
+{% if prior_pmh or prior_visits %}
+{# ── Past-life reminder (Dr Yom: "Give yourself a reminder of the past life this person led.") ── #}
+<div class="card mb-3 border-warning" style="border-width:2px!important;">
+  <div class="card-header py-2 d-flex align-items-center gap-2" style="background:rgba(253,126,20,0.08);">
+    <iconify-icon icon="iconamoon:history-duotone" style="font-size:1.1rem; color:#fd7e14;"></iconify-icon>
+    <span class="fw-semibold text-warning-emphasis" style="font-size:0.9rem;">Known patient history</span>
+    <span class="badge bg-warning-subtle text-warning border border-warning ms-1" style="font-size:0.65rem;">auto-loaded</span>
+  </div>
+  <div class="card-body py-2 px-3">
+    {% if prior_pmh %}
+    <div class="mb-1">
+      <span class="small text-muted me-2">PMH:</span>
+      {% for cond in prior_pmh %}
+      <span class="badge bg-danger-subtle text-danger border border-danger me-1" style="font-size:0.72rem;">{{ cond }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if prior_visits %}
+    <div class="small text-muted mt-1">
+      <span class="me-2">Recent visits:</span>
+      {% for pv in prior_visits %}
+      <span class="me-3">
+        <span class="badge bg-secondary-subtle text-secondary border" style="font-size:0.65rem;">ESI {{ pv.esi }}</span>
+        {{ pv.date|date:"d M Y" }} — {{ pv.cc }}
+      </span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Listen to encounter — single button for full patient assessment recording -->
+<div id="encounter-bar" class="card mb-3" style="background:rgba(13,110,253,0.03);">
+  <div class="card-body py-2 px-3 d-flex align-items-start gap-3">
+    <button type="button" id="encounter-listen-btn" onclick="toggleEncounterRecord()"
+            class="btn btn-primary btn-sm flex-shrink-0 d-flex align-items-center gap-2" style="min-width:160px;">
+      <span class="mic-dot" id="encounter-dot" style="background:white;"></span>
+      <span id="encounter-btn-txt">Listen to encounter</span>
+    </button>
+    <div style="flex:1;">
+      <div style="font-size:0.8rem;color:var(--bs-secondary-color);" id="encounter-hint">
+        Record the full patient encounter — AI fills complaint, vitals &amp; more in one go
+      </div>
+      <div class="voice-transcript-box" id="encounter-transcript-box"></div>
+    </div>
+  </div>
+</div>
 
 <form method="post" id="triage-form" novalidate>
   {% csrf_token %}
@@ -95,6 +162,10 @@
           <div class="text-danger small">{{ form.chief_complaint.errors }}</div>
           {% endif %}
           <div class="voice-transcript-box" id="complaint-transcript-box"></div>
+        </div>
+        {# ── Protocol nudges — fire on chief complaint + PMH + vitals ── #}
+        <div class="col-12" id="protocol-nudges-container" style="display:none;">
+          <div id="protocol-nudges" class="d-flex flex-wrap gap-2"></div>
         </div>
         <div class="col-md-4">
           <label class="form-label">Onset</label>
@@ -220,7 +291,7 @@
     <div class="card-body">
 
       <!-- AI result box -->
-      <div id="ai-esi-result" class="alert mb-3 d-flex gap-3 align-items-start">
+      <div id="ai-esi-result" class="alert mb-3 gap-3 align-items-start" style="display:none;">
         <div style="font-size:2rem;" id="ai-esi-badge"></div>
         <div class="flex-grow-1">
           <div class="fw-semibold">AI suggests ESI <span id="ai-esi-level"></span>
@@ -280,41 +351,6 @@
         </div>
       </div>
 
-      <!-- PMH checkboxes -->
-      <div class="mb-3">
-        <label class="form-label fw-semibold">Past medical history</label>
-        <div class="row g-2">
-          {% for fname, label in pmh_fields %}
-          <div class="col-6 col-md-3">
-            <div class="form-check">
-              {{ form|default_if_none:'' }}
-              <input class="form-check-input" type="checkbox"
-                     name="{{ fname }}" id="id_{{ fname }}"
-                     {% if form|default_if_none:'' %}{% endif %}>
-              <label class="form-check-label" for="id_{{ fname }}">{{ label }}</label>
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-        <div class="mt-2">
-          <label class="form-label">Other</label>
-          {{ form.pmh_other }}
-        </div>
-      </div>
-
-      <!-- PMH raw checkboxes (direct from form) -->
-      <div class="mb-3 d-none" id="pmh-raw">
-        <div class="row g-2">
-          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_htn }}<label class="form-check-label">Hypertension</label></div></div>
-          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_dm }}<label class="form-check-label">Diabetes</label></div></div>
-          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_asthma }}<label class="form-check-label">Asthma</label></div></div>
-          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_cardiac }}<label class="form-check-label">Cardiac disease</label></div></div>
-          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_renal }}<label class="form-check-label">Renal disease</label></div></div>
-          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_hiv }}<label class="form-check-label">HIV</label></div></div>
-          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_sickle_cell }}<label class="form-check-label">Sickle cell</label></div></div>
-          <div class="col-6 col-md-3"><div class="form-check">{{ form.pmh_stroke }}<label class="form-check-label">Stroke/TIA</label></div></div>
-        </div>
-      </div>
       <!-- Show raw form checkboxes properly -->
       <div class="mb-3">
         <label class="form-label fw-semibold">Past medical history</label>
@@ -390,9 +426,13 @@ var aiSuggestedESI = null;
 
 // GCS total
 function updateGCSTotal() {
-  var e = parseInt(document.getElementById("id_gcs_eye").value) || 0;
-  var v = parseInt(document.getElementById("id_gcs_verbal").value) || 0;
-  var m = parseInt(document.getElementById("id_gcs_motor").value) || 0;
+  var eyeEl = document.getElementById("id_gcs_eye");
+  var verEl = document.getElementById("id_gcs_verbal");
+  var motEl = document.getElementById("id_gcs_motor");
+  if (!eyeEl || !verEl || !motEl) return;
+  var e = parseInt(eyeEl.value) || 0;
+  var v = parseInt(verEl.value) || 0;
+  var m = parseInt(motEl.value) || 0;
   var total = (e && v && m) ? e + v + m : null;
   var el = document.getElementById("gcs-total-display");
   if (el) el.textContent = total ? "Total: " + total + "/15" : "Total: —";
@@ -502,23 +542,31 @@ function getAIESI() {
     headers: {"Content-Type": "application/json", "X-CSRFToken": CSRF},
     body: JSON.stringify(payload),
   })
-  .then(function(r) { return r.json(); })
+  .then(function(r) {
+    if (!r.ok && r.status !== 200) { return r.json().then(function(d) { throw new Error(d.error || "Server error " + r.status); }); }
+    return r.json();
+  })
   .then(function(d) {
     var resultBox = document.getElementById("ai-esi-result");
     var colorMap = {1:"danger",2:"warning",3:"primary",4:"success",5:"info"};
-    var esi = d.esi;
+    var esi = d.esi || 3;
     aiSuggestedESI = esi;
     var c = colorMap[esi] || "secondary";
-    resultBox.className = "alert alert-" + c + " mb-3 d-flex gap-3 align-items-start";
+    resultBox.className = "alert alert-" + c + " mb-3 gap-3 align-items-start";
+    resultBox.style.display = "flex";
     document.getElementById("ai-esi-badge").textContent = esi;
     document.getElementById("ai-esi-level").textContent = esi;
     document.getElementById("ai-confidence-badge").textContent = d.confidence || "";
-    document.getElementById("ai-esi-rationale").textContent = d.rationale || "";
+    var rationaleEl = document.getElementById("ai-esi-rationale");
+    if (d.error && !d.rationale) {
+      rationaleEl.textContent = "AI service not configured — showing clinical default. (" + d.error + ")";
+    } else {
+      rationaleEl.textContent = d.rationale || "";
+    }
     var flagsEl = document.getElementById("ai-esi-flags");
     flagsEl.innerHTML = (d.flags || []).map(function(f) {
       return '<span class="badge bg-' + c + '-subtle text-' + c + ' me-1">' + f + '</span>';
     }).join("");
-    resultBox.style.display = "";
 
     // Auto-select ESI if nothing chosen
     var currentChecked = document.querySelector("[name=esi_score]:checked");
@@ -536,7 +584,10 @@ function getAIESI() {
       });
     });
   })
-  .catch(function(e) { alert("AI ESI request failed: " + e); })
+  .catch(function(e) {
+    console.error("AI ESI failed:", e);
+    alert("AI assessment failed: " + e.message);
+  })
   .finally(function() {
     btn.disabled = false;
     btn.innerHTML = '<iconify-icon icon="iconamoon:flash-duotone" class="me-1"></iconify-icon>AI assessment';
@@ -546,8 +597,7 @@ function getAIESI() {
 // ----------------------------------------------------------------
 // Voice capture — shared MediaRecorder utility
 // ----------------------------------------------------------------
-var VOICE_EXTRACT_URL = "{% url 'ed:api_triage_voice' visit.pk %}";
-var TRANSCRIBE_URL = "{% url 'scribe:api_quick_transcribe' %}";
+var VOICE_AUDIO_URL = "{% url 'ed:api_triage_voice_audio' visit.pk %}";
 
 var _recorder = null;
 var _chunks = [];
@@ -558,20 +608,37 @@ function _startRecord(mode) {
     _recorder.stop();
     return;
   }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert("Voice recording requires a secure connection (HTTPS). If you are accessing this over the network (not localhost), please use HTTPS.");
+    return;
+  }
   navigator.mediaDevices.getUserMedia({audio: true}).then(function(stream) {
     _activeMode = mode;
     _chunks = [];
-    _recorder = new MediaRecorder(stream, {mimeType: "audio/webm"});
+    // Pick the best supported mimeType
+    var mimeType = "";
+    var candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
+    for (var i = 0; i < candidates.length; i++) {
+      if (MediaRecorder.isTypeSupported(candidates[i])) { mimeType = candidates[i]; break; }
+    }
+    try {
+      _recorder = mimeType ? new MediaRecorder(stream, {mimeType: mimeType}) : new MediaRecorder(stream);
+    } catch (e) {
+      _recorder = new MediaRecorder(stream);
+      mimeType = "";
+    }
+    var blobType = mimeType || "audio/webm";
     _recorder.ondataavailable = function(e) { if (e.data.size > 0) _chunks.push(e.data); };
     _recorder.onstop = function() {
       stream.getTracks().forEach(function(t) { t.stop(); });
-      var blob = new Blob(_chunks, {type: "audio/webm"});
+      var blob = new Blob(_chunks, {type: blobType});
       _transcribeAndExtract(blob, _activeMode);
     };
     _recorder.start();
     _setMicState(mode, true);
   }).catch(function(e) {
-    alert("Microphone access denied: " + e.message);
+    console.error("Microphone error:", e);
+    alert("Microphone access failed: " + e.message + "\n\nMake sure you allow microphone access when prompted.");
   });
 }
 
@@ -583,6 +650,24 @@ function _stopRecord() {
 }
 
 function _setMicState(mode, recording) {
+  if (mode === "encounter") {
+    var bar = document.getElementById("encounter-bar");
+    var btn = document.getElementById("encounter-listen-btn");
+    var txt = document.getElementById("encounter-btn-txt");
+    var hint = document.getElementById("encounter-hint");
+    if (recording) {
+      if (bar) bar.classList.add("is-recording");
+      if (btn) { btn.classList.add("btn-danger"); btn.classList.remove("btn-primary"); }
+      if (txt) txt.textContent = "Stop listening";
+      if (hint) hint.textContent = "Recording encounter — tap to stop";
+    } else {
+      if (bar) bar.classList.remove("is-recording");
+      if (btn) { btn.classList.remove("btn-danger"); btn.classList.add("btn-primary"); }
+      if (txt) txt.textContent = "Listen to encounter";
+      if (hint) hint.textContent = "Record the full patient encounter — AI fills complaint, vitals & more in one go";
+    }
+    return;
+  }
   var btnId = mode === "complaint" ? "complaint-mic-btn" : "vitals-mic-btn";
   var btn = document.getElementById(btnId);
   if (!btn) return;
@@ -605,73 +690,235 @@ function startVitalsRecord() {
   _startRecord("vitals");
 }
 
+function toggleEncounterRecord() {
+  if (_recorder && _recorder.state === "recording" && _activeMode === "encounter") {
+    _stopRecord();
+  } else {
+    _startRecord("encounter");
+  }
+}
+
 function _transcribeAndExtract(blob, mode) {
-  // Step 1: transcribe audio
+  var transcriptBox = document.getElementById(
+    mode === "complaint" ? "complaint-transcript-box" :
+    mode === "encounter"  ? "encounter-transcript-box" :
+    "vitals-transcript-box"
+  );
+  if (transcriptBox) transcriptBox.classList.add("is-visible");
+  if (transcriptBox) { transcriptBox.style.display = ""; transcriptBox.textContent = "Processing…"; }
+
   var fd = new FormData();
   fd.append("audio", blob, "triage.webm");
-  var transcriptBox = document.getElementById(mode === "complaint" ? "complaint-transcript-box" : "vitals-transcript-box");
-  if (transcriptBox) { transcriptBox.style.display = ""; transcriptBox.textContent = "Transcribing…"; }
 
-  fetch(TRANSCRIBE_URL, {
+  // Single round-trip: audio → transcribe + extract on server
+  fetch(VOICE_AUDIO_URL, {
     method: "POST",
     headers: {"X-CSRFToken": CSRF},
     body: fd,
   })
   .then(function(r) { return r.json(); })
   .then(function(d) {
-    var text = d.text || d.transcript || "";
-    if (!text) { if (transcriptBox) transcriptBox.textContent = "No speech detected."; return; }
-    if (transcriptBox) transcriptBox.textContent = "“" + text + "”";
+    if (!d.ok) {
+      if (transcriptBox) transcriptBox.textContent = d.error || "Failed.";
+      return;
+    }
+    var text = d.transcript || "";
+    if (transcriptBox) transcriptBox.textContent = ““” + text + “””;
 
-    // Step 2: extract structured fields from transcript
-    return fetch(VOICE_EXTRACT_URL, {
-      method: "POST",
-      headers: {"Content-Type": "application/json", "X-CSRFToken": CSRF},
-      body: JSON.stringify({transcript: text}),
-    })
-    .then(function(r2) { return r2.json(); })
-    .then(function(d2) {
-      if (!d2.ok || !d2.fields) return;
-      var f = d2.fields;
-      if (mode === "complaint") {
-        // Fill chief complaint from transcript
-        var cc = document.querySelector("[name=chief_complaint]");
-        if (cc && f.chief_complaint) {
-          cc.value = f.chief_complaint;
-          var badge = document.getElementById("complaint-filled-badge");
-          if (badge) badge.classList.remove("d-none");
-        }
-      } else if (mode === "vitals") {
-        // Auto-fill vital sign fields
-        var fieldMap = {
-          bp_systolic: "[name=bp_systolic]",
-          bp_diastolic: "[name=bp_diastolic]",
-          pulse_bpm: "[name=pulse_bpm]",
-          rr_rpm: "[name=rr_rpm]",
-          temp_celsius: "[name=temp_celsius]",
-          spo2_percent: "[name=spo2_percent]",
-          pain_score: "[name=pain_score]",
-          weight_kg: "[name=weight_kg]",
-          blood_glucose_mmol: "[name=blood_glucose_mmol]",
-        };
-        var filled = [];
-        Object.keys(fieldMap).forEach(function(key) {
-          if (f[key] !== null && f[key] !== undefined) {
-            var el = document.querySelector(fieldMap[key]);
-            if (el) { el.value = f[key]; filled.push(key); el.dispatchEvent(new Event("input")); }
-          }
-        });
-        if (filled.length > 0 && transcriptBox) {
-          transcriptBox.textContent += " → Filled: " + filled.join(", ");
-        }
-        updateGCSTotal();
-        checkVitals();
+    var f = d.fields || {};
+    if (mode === "complaint") {
+      var cc = document.querySelector("[name=chief_complaint]");
+      if (cc && f.chief_complaint) {
+        cc.value = f.chief_complaint;
+        var badge = document.getElementById("complaint-filled-badge");
+        if (badge) badge.classList.remove("d-none");
       }
-    });
+    } else if (mode === "vitals" || mode === "encounter") {
+      var vitalsFieldMap = {
+        bp_systolic: "[name=bp_systolic]",
+        bp_diastolic: "[name=bp_diastolic]",
+        pulse_bpm: "[name=pulse_bpm]",
+        rr_rpm: "[name=rr_rpm]",
+        temp_celsius: "[name=temp_celsius]",
+        spo2_percent: "[name=spo2_percent]",
+        pain_score: "[name=pain_score]",
+        weight_kg: "[name=weight_kg]",
+        blood_glucose_mmol: "[name=blood_glucose_mmol]",
+      };
+      if (mode === "encounter" && f.chief_complaint) {
+        var cc = document.querySelector("[name=chief_complaint]");
+        if (cc) { cc.value = f.chief_complaint; }
+        var badge = document.getElementById("complaint-filled-badge");
+        if (badge) badge.classList.remove("d-none");
+      }
+      var filled = [];
+      Object.keys(vitalsFieldMap).forEach(function(key) {
+        if (f[key] !== null && f[key] !== undefined) {
+          var el = document.querySelector(vitalsFieldMap[key]);
+          if (el) { el.value = f[key]; filled.push(key); el.dispatchEvent(new Event("input")); }
+        }
+      });
+      if (filled.length > 0 && transcriptBox) {
+        transcriptBox.textContent += " → Filled: " + filled.join(", ");
+      }
+      updateGCSTotal();
+      checkVitals();
+      if (mode === "encounter") runNudges();
+    }
   })
   .catch(function(e) {
     if (transcriptBox) transcriptBox.textContent = "Error: " + e.message;
   });
 }
+
+// ----------------------------------------------------------------
+// Clinical protocol nudges
+// (Dr Yom: "You need a way to make it unobtrusive but still prominent enough
+//  to be incorporated into habits" — these fire silently, no popups.)
+// ----------------------------------------------------------------
+var NUDGE_RULES = [
+  {
+    id: "dka",
+    level: "warning",
+    label: "DKA risk",
+    msg: "Nausea/vomiting in known diabetic — consider DKA. Check BGL, ketones.",
+    check: function(cc, pmh, vitals) {
+      return /nausea|vomit|abdom|stomach|belly|cramp/i.test(cc) && pmh.dm;
+    },
+  },
+  {
+    id: "dka-bgl",
+    level: "danger",
+    label: "High BGL + DM",
+    msg: "BGL >20 in diabetic — urgent DKA/HHS assessment. IV fluids, insulin protocol.",
+    check: function(cc, pmh, vitals) {
+      return pmh.dm && vitals.bgl && vitals.bgl > 20;
+    },
+  },
+  {
+    id: "sepsis",
+    level: "danger",
+    label: "Sepsis screen",
+    msg: "Tachycardia with infection source — apply qSOFA (RR>22, AMS, SBP<100). Don't delay antibiotics.",
+    check: function(cc, pmh, vitals) {
+      return /fever|infect|uti|urine|pee|burn|wound|cough|pneumon|cellulitis|sepsis|dysuria/i.test(cc)
+             && vitals.hr && vitals.hr > 100;
+    },
+  },
+  {
+    id: "heart",
+    level: "info",
+    label: "HEART score",
+    msg: "Chest pain — consider HEART score (History / ECG / Age / Risk factors / Troponin) for ACS stratification.",
+    check: function(cc, pmh, vitals) {
+      return /chest pain|chest tight|chest pressure|cardiac|heart attack/i.test(cc);
+    },
+  },
+  {
+    id: "stroke",
+    level: "info",
+    label: "Stroke screen",
+    msg: "Neuro presentation — apply FAST (Face, Arms, Speech, Time). NIH stroke scale if FAST positive. Window: 4.5 h.",
+    check: function(cc, pmh, vitals) {
+      return /dizz|vertigo|facial droop|arm.*weak|speech.*slur|slurr|sudden headache|thunderclap|vision.*loss|one.*side/i.test(cc)
+             || (pmh.stroke && /headache|weak|numb|confus/i.test(cc));
+    },
+  },
+  {
+    id: "hypotension",
+    level: "danger",
+    label: "Hypotension",
+    msg: "SBP <90 — assess for shock. IV access, fluid challenge. Consider: sepsis, hemorrhage, cardiac tamponade, PE.",
+    check: function(cc, pmh, vitals) {
+      return vitals.sbp && vitals.sbp < 90;
+    },
+  },
+  {
+    id: "sickle",
+    level: "warning",
+    label: "Sickle cell crisis",
+    msg: "Pain in known sickle cell patient — consider VOC, acute chest syndrome, stroke. Analgesia should not be delayed.",
+    check: function(cc, pmh, vitals) {
+      return pmh.sickle_cell && /pain|chest|breath|back|leg|arm/i.test(cc);
+    },
+  },
+  {
+    id: "asthma",
+    level: "warning",
+    label: "Severe asthma",
+    msg: "Respiratory distress in asthmatic — check SpO₂ <92%, can't complete sentences, silent chest = SEVERE. IV salbutamol + MgSO₄.",
+    check: function(cc, pmh, vitals) {
+      return pmh.asthma && (/breath|wheeze|tight|resp/i.test(cc) || (vitals.spo2 && vitals.spo2 < 92));
+    },
+  },
+  {
+    id: "renal",
+    level: "info",
+    label: "Renal caution",
+    msg: "Known renal disease — avoid nephrotoxic agents (NSAIDs, contrast, aminoglycosides). Review hydration status.",
+    check: function(cc, pmh, vitals) {
+      return pmh.renal;
+    },
+  },
+];
+
+var NUDGE_COLORS = {danger: "danger", warning: "warning", info: "info"};
+
+function _readPMH() {
+  return {
+    htn:        !!document.querySelector("[name=pmh_htn]:checked"),
+    dm:         !!document.querySelector("[name=pmh_dm]:checked"),
+    asthma:     !!document.querySelector("[name=pmh_asthma]:checked"),
+    cardiac:    !!document.querySelector("[name=pmh_cardiac]:checked"),
+    renal:      !!document.querySelector("[name=pmh_renal]:checked"),
+    hiv:        !!document.querySelector("[name=pmh_hiv]:checked"),
+    sickle_cell:!!document.querySelector("[name=pmh_sickle_cell]:checked"),
+    stroke:     !!document.querySelector("[name=pmh_stroke]:checked"),
+  };
+}
+
+function _readVitals() {
+  function num(sel) { var el = document.querySelector(sel); return el && el.value ? parseFloat(el.value) : null; }
+  return {
+    sbp:  num("[name=bp_systolic]"),
+    dbp:  num("[name=bp_diastolic]"),
+    hr:   num("[name=pulse_bpm]"),
+    rr:   num("[name=rr_rpm]"),
+    spo2: num("[name=spo2_percent]"),
+    temp: num("[name=temp_celsius]"),
+    bgl:  num("[name=blood_glucose_mmol]"),
+  };
+}
+
+function runNudges() {
+  var cc    = (document.querySelector("[name=chief_complaint]") || {}).value || "";
+  var pmh   = _readPMH();
+  var vitals = _readVitals();
+  var container = document.getElementById("protocol-nudges");
+  var wrapper   = document.getElementById("protocol-nudges-container");
+  if (!container) return;
+
+  var active = NUDGE_RULES.filter(function(r) { return r.check(cc, pmh, vitals); });
+  if (active.length === 0) { wrapper.style.display = "none"; container.innerHTML = ""; return; }
+
+  wrapper.style.display = "";
+  container.innerHTML = active.map(function(r) {
+    var c = NUDGE_COLORS[r.level] || "secondary";
+    return '<div class="d-flex align-items-start gap-2 p-2 rounded border border-' + c + ' bg-' + c + '-subtle" style="font-size:0.78rem;max-width:100%;">'
+      + '<iconify-icon icon="iconamoon:alert-circle-duotone" style="color:var(--bs-' + c + ');font-size:1rem;flex-shrink:0;margin-top:1px;"></iconify-icon>'
+      + '<div><strong class="text-' + c + '-emphasis">' + r.label + '</strong> — ' + r.msg + '</div></div>';
+  }).join("");
+}
+
+// Wire up nudges to all relevant inputs
+document.addEventListener("DOMContentLoaded", function() {
+  ["[name=chief_complaint]","[name=bp_systolic]","[name=pulse_bpm]","[name=spo2_percent]","[name=blood_glucose_mmol]"].forEach(function(sel) {
+    var el = document.querySelector(sel);
+    if (el) el.addEventListener("input", runNudges);
+  });
+  document.querySelectorAll("[name^=pmh_]").forEach(function(el) {
+    el.addEventListener("change", runNudges);
+  });
+});
 </script>
 {% endblock %}

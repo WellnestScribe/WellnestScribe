@@ -260,6 +260,9 @@
                                 <option value="omni" {% if not env.transformers %}disabled{% endif %}>
                                     Omni-ASR (Meta omnilingual / configurable){% if not env.transformers %} — install transformers{% endif %}
                                 </option>
+                                <option value="parakeet" {% if not env.nemo %}disabled{% endif %}>
+                                    Parakeet TDT 0.6B v2 (NVIDIA, English){% if not env.nemo %} — install nemo_toolkit[asr]{% endif %}
+                                </option>
                                 <option value="t5_paraphrase" {% if not env.transformers %}disabled{% endif %}>
                                     FLAN-T5 base (text rewrite){% if not env.transformers %} — install transformers{% endif %}
                                 </option>
@@ -410,10 +413,12 @@
                         <li>librosa: {{ env.librosa|yesno:"yes,no" }}</li>
                         <li>noisereduce: {{ env.noisereduce|yesno:"yes,no" }} · DeepFilterNet: {{ env.deepfilternet|yesno:"yes,no" }}</li>
                         <li>pyannote.audio: {{ env.pyannote|yesno:"yes,no" }} · diarize: {{ env.diarize_lib|yesno:"yes,no" }}</li>
+                        <li>NeMo: {{ env.nemo|yesno:"yes,no" }}</li>
                         <li>MMS cached: <span data-env-mms>{{ env.model_cached_mms|yesno:"yes,no" }}</span></li>
                         <li>T5 cached: <span data-env-t5>{{ env.model_cached_t5|yesno:"yes,no" }}</span></li>
                         <li>Qwen cached: <span data-env-qwen>{{ env.model_cached_qwen|yesno:"yes,no" }}</span></li>
                         <li>Gemma cached: <span data-env-gemma>{{ env.model_cached_gemma|yesno:"yes,no" }}</span>{% if env.local_llm_dir %} <span class="text-success">(local fallback active)</span>{% endif %}</li>
+                        <li>Parakeet cached: {{ env.model_cached_parakeet|yesno:"yes,no" }}</li>
                     </ul>
                     {% if env.local_llm_dir %}
                     <p class="small text-muted mt-2 mb-0"><code>{{ env.local_llm_dir }}</code></p>
@@ -560,6 +565,7 @@
                             <li>First run downloads ~4 GB of weights to the HuggingFace cache.</li>
                             <li>CPU is fine for batch / post-encounter; CUDA needed for live streaming.</li>
                             <li>Set <code>SCRIBE_ENABLE_TRIAGE=True</code> in <code>.env</code> to share with non-staff.</li>
+                            <li><strong>Parakeet:</strong> install NeMo first — <code>pip install nemo_toolkit[asr]</code> (large, ~2 GB). Model weights (~600 MB) download on first run. Runs on CPU; English only; ~6% avg WER on HF leaderboard.</li>
                         </ul>
                     </details>
                 </div>

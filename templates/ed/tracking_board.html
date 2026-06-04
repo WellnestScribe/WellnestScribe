@@ -5,47 +5,61 @@
 
 {% block extra_head %}
 <style>
+  /* Board scrolls horizontally when font scale is large or viewport is narrow */
+  #zone-board-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* Hide scrollbar when not needed — visible only while actually scrolling */
+  #zone-board-scroll::-webkit-scrollbar { height: 4px; }
+  #zone-board-scroll::-webkit-scrollbar-thumb { background: var(--bs-secondary-bg); border-radius: 4px; }
+  #zone-board-scroll { scrollbar-width: thin; scrollbar-color: var(--bs-secondary-bg) transparent; }
+
   .board-zone {
-    min-height: 120px;
+    min-height: 140px;
     border-radius: 0.5rem;
-    border: 1.5px solid var(--bs-border-color);
+    border: 2px solid var(--bs-border-color);
   }
   .zone-header {
     border-radius: 0.4rem 0.4rem 0 0;
-    padding: 0.5rem 0.75rem;
-    font-weight: 600;
-    font-size: 0.82rem;
-    letter-spacing: 0.04em;
+    padding: 0.6rem 0.9rem;
+    font-weight: 700;
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
+    border-bottom: 1px solid var(--bs-border-color);
   }
   .patient-card {
-    border-left: 4px solid transparent;
-    border-radius: 0.35rem;
+    border-left: 5px solid transparent;
+    border-radius: 0.4rem;
     margin-bottom: 0.5rem;
     background: var(--bs-body-bg);
-    transition: box-shadow 0.15s;
+    border: 1px solid var(--bs-border-color);
+    border-left-width: 5px;
+    transition: box-shadow 0.15s, transform 0.1s;
     cursor: pointer;
   }
-  .patient-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,0.15); }
+  .patient-card:hover { box-shadow: 0 3px 12px rgba(0,0,0,0.15); transform: translateY(-1px); }
   .patient-card.esi-1 { border-left-color: #dc3545; }
   .patient-card.esi-2 { border-left-color: #fd7e14; }
   .patient-card.esi-3 { border-left-color: #0d6efd; }
   .patient-card.esi-4 { border-left-color: #198754; }
   .patient-card.esi-5 { border-left-color: #0dcaf0; }
-  .esi-badge { font-size: 0.7rem; padding: 0.25em 0.5em; font-weight: 700; }
-  .time-counter { font-size: 0.72rem; color: var(--bs-secondary-color); }
+  .esi-badge { font-size: 0.68rem; padding: 0.2em 0.5em; font-weight: 700; }
+  .time-counter { font-size: 0.71rem; color: var(--bs-secondary-color); }
   .time-warning { color: #fd7e14 !important; font-weight: 600; }
   .time-critical { color: #dc3545 !important; font-weight: 700; animation: pulse 1.5s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
-  .zone-resus .zone-header { background: rgba(220,53,69,0.15); color: #dc3545; }
-  .zone-acute .zone-header { background: rgba(253,126,20,0.15); color: #fd7e14; }
-  .zone-observation .zone-header { background: rgba(13,110,253,0.12); color: #0d6efd; }
-  .zone-fast-track .zone-header { background: rgba(25,135,84,0.12); color: #198754; }
-  .zone-isolation .zone-header { background: rgba(111,66,193,0.12); color: #6f42c1; }
-  .zone-waiting .zone-header { background: rgba(108,117,125,0.12); color: #6c757d; }
-  .board-stats-bar { border-radius: 0.5rem; }
+  /* Zone colours */
+  .zone-resus   { border-color: rgba(220,53,69,0.4) !important; }
+  .zone-resus   .zone-header { background: rgba(220,53,69,0.12); color: #dc3545; }
+  .zone-acute   .zone-header { background: rgba(253,126,20,0.12); color: #fd7e14; }
+  .zone-observation .zone-header { background: rgba(13,110,253,0.1); color: #0d6efd; }
+  .zone-fast-track  .zone-header { background: rgba(25,135,84,0.1); color: #198754; }
+  .zone-isolation   .zone-header { background: rgba(111,66,193,0.1); color: #6f42c1; }
+  .zone-waiting     .zone-header { background: rgba(108,117,125,0.1); color: #6c757d; }
   .vital-flag-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: #dc3545; margin-right: 3px; }
   #board-timestamp { font-size: 0.72rem; color: var(--bs-secondary-color); }
+  /* Patient card name is larger so it's readable at big font scale */
+  .patient-name { font-size: 0.87rem; font-weight: 600; line-height: 1.2; }
+  .patient-cc   { font-size: 0.77rem; color: var(--bs-secondary-color); margin-top: 2px; }
 </style>
 {% endblock %}
 
@@ -94,12 +108,13 @@
 </div>
 {% else %}
 
-<!-- Board grid -->
-<div class="row g-3" id="zone-board">
+<!-- Board grid — horizontal scroll at large font or narrow viewport -->
+<div id="zone-board-scroll">
+<div id="zone-board" style="display:flex;gap:8px;flex-wrap:nowrap;align-items:stretch;">
 
   <!-- Resuscitation -->
-  <div class="col-12 col-xl-2">
-    <div class="board-zone zone-resus">
+  <div style="flex:1;min-width:150px;">
+    <div class="board-zone zone-resus h-100">
       <div class="zone-header d-flex justify-content-between align-items-center">
         <span><iconify-icon icon="iconamoon:heart-duotone" class="me-1"></iconify-icon>Resus</span>
         <span class="badge bg-danger rounded-pill" id="count-resus">{{ zone_board.resus|length }}</span>
@@ -113,10 +128,10 @@
   </div>
 
   <!-- Acute -->
-  <div class="col-12 col-xl-3">
-    <div class="board-zone zone-acute">
+  <div style="flex:2;min-width:200px;">
+    <div class="board-zone zone-acute h-100">
       <div class="zone-header d-flex justify-content-between align-items-center">
-        <span><iconify-icon icon="iconamoon:bed-duotone" class="me-1"></iconify-icon>Acute <small class="fw-normal opacity-75">12 cubicles</small></span>
+        <span><iconify-icon icon="iconamoon:bed-duotone" class="me-1"></iconify-icon>Acute</span>
         <span class="badge bg-warning text-dark rounded-pill" id="count-acute">{{ zone_board.acute|length }}</span>
       </div>
       <div class="p-2" id="zone-acute-cards">
@@ -128,10 +143,10 @@
   </div>
 
   <!-- Observation -->
-  <div class="col-12 col-xl-2">
-    <div class="board-zone zone-observation">
+  <div style="flex:1.5;min-width:160px;">
+    <div class="board-zone zone-observation h-100">
       <div class="zone-header d-flex justify-content-between align-items-center">
-        <span><iconify-icon icon="iconamoon:moon-duotone" class="me-1"></iconify-icon>Obs <small class="fw-normal opacity-75">4 beds</small></span>
+        <span><iconify-icon icon="iconamoon:moon-duotone" class="me-1"></iconify-icon>Obs</span>
         <span class="badge bg-primary rounded-pill" id="count-observation">{{ zone_board.observation|length }}</span>
       </div>
       <div class="p-2" id="zone-observation-cards">
@@ -143,10 +158,10 @@
   </div>
 
   <!-- Fast-track -->
-  <div class="col-12 col-xl-2">
-    <div class="board-zone zone-fast-track">
+  <div style="flex:1.5;min-width:160px;">
+    <div class="board-zone zone-fast-track h-100">
       <div class="zone-header d-flex justify-content-between align-items-center">
-        <span><iconify-icon icon="iconamoon:lightning-2-duotone" class="me-1"></iconify-icon>Fast-track <small class="fw-normal opacity-75">6 chairs</small></span>
+        <span><iconify-icon icon="iconamoon:lightning-2-duotone" class="me-1"></iconify-icon>Fast-track</span>
         <span class="badge bg-success rounded-pill" id="count-fast_track">{{ zone_board.fast_track|length }}</span>
       </div>
       <div class="p-2" id="zone-fast_track-cards">
@@ -158,8 +173,8 @@
   </div>
 
   <!-- Isolation -->
-  <div class="col-12 col-xl-1">
-    <div class="board-zone zone-isolation">
+  <div style="flex:1;min-width:140px;">
+    <div class="board-zone zone-isolation h-100">
       <div class="zone-header d-flex justify-content-between align-items-center">
         <span><iconify-icon icon="iconamoon:shield-duotone" class="me-1"></iconify-icon>Iso</span>
         <span class="badge rounded-pill" style="background:#6f42c1;" id="count-isolation">{{ zone_board.isolation|length }}</span>
@@ -173,8 +188,8 @@
   </div>
 
   <!-- Waiting -->
-  <div class="col-12 col-xl-2">
-    <div class="board-zone zone-waiting">
+  <div style="flex:1.5;min-width:160px;">
+    <div class="board-zone zone-waiting h-100">
       <div class="zone-header d-flex justify-content-between align-items-center">
         <span><iconify-icon icon="iconamoon:clock-duotone" class="me-1"></iconify-icon>Waiting</span>
         <span class="badge bg-secondary rounded-pill" id="count-waiting">{{ zone_board.waiting|length }}</span>
@@ -188,6 +203,7 @@
   </div>
 
 </div><!-- /row -->
+</div><!-- /scroll -->
 {% endif %}
 {% endblock %}
 

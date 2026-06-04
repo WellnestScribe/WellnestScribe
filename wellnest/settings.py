@@ -20,7 +20,7 @@ DEBUG = config("DEBUG", default=True, cast=bool)
 
 ALLOWED_HOSTS = config(
     "ALLOWED_HOSTS",
-    default="localhost,127.0.0.1,0.0.0.0,.ngrok-free.app",
+    default="localhost,127.0.0.1,0.0.0.0,.ngrok-free.app, https://6d59-72-27-184-245.ngrok-free.app",
     cast=Csv(),
 )
 
@@ -333,6 +333,12 @@ SCRIBE_ENABLE_TRIAGE = config("SCRIBE_ENABLE_TRIAGE", default=False, cast=bool)
 TRIAGE_DEFAULT_DEVICE = config("TRIAGE_DEFAULT_DEVICE", default="cpu")  # cpu | cuda
 TRIAGE_AUDIO_DIR = BASE_DIR / "media" / "triage"
 TRIAGE_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
+# TEMPORARY — Modal L4 GPU endpoint for ambient-mode latency testing.
+# Set AMBIENT_BACKEND=local to fall back to on-device MMS (CPU).
+# Remove both lines after the testing phase.
+MODAL_MMS_URL = config("MODAL_MMS_URL", default="")
+AMBIENT_BACKEND = config("AMBIENT_BACKEND", default="local")  # modal | local
 
 # ---- Logging ----
 LOG_DIR = BASE_DIR / "logs"

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}ED Voice Settings — WellNest{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-4">
+  <a href="{% url 'ed:board' %}" class="btn btn-sm btn-outline-secondary">
+    <iconify-icon icon="iconamoon:arrow-left-2-duotone"></iconify-icon>
+  </a>
+  <div>
+    <h5 class="mb-0 fw-semibold">ED Voice AI — Configuration</h5>
+    <small class="text-muted">Read-only status. Edit credentials in your <code>.env</code> file.</small>
+  </div>
+</div>
+
+<div class="row g-3" style="max-width:680px;">
+
+  <!-- Transcription -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex align-items-center gap-2 py-2">
+        <iconify-icon icon="iconamoon:microphone-duotone" style="font-size:1.1rem;"></iconify-icon>
+        <span class="fw-semibold">Speech Transcription</span>
+        {% if transcription.ok %}
+          <span class="badge bg-success-subtle text-success border border-success ms-auto">Active</span>
+        {% else %}
+          <span class="badge bg-danger-subtle text-danger border border-danger ms-auto">Not configured</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <dl class="row mb-0 small">
+          <dt class="col-5 text-muted">Provider</dt>
+          <dd class="col-7">{{ transcription.provider }}</dd>
+          <dt class="col-5 text-muted">Model</dt>
+          <dd class="col-7"><code>{{ transcription.model }}</code></dd>
+          <dt class="col-5 text-muted">Endpoint</dt>
+          <dd class="col-7 text-truncate"><code>{{ transcription.endpoint }}</code></dd>
+        </dl>
+        {% if not transcription.ok %}
+        <div class="alert alert-warning mt-3 mb-0 py-2 small">
+          Set <code>SCRIBE_OPENAI_API_KEY</code> or the Azure transcription vars in your <code>.env</code> to enable voice capture.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Extraction -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex align-items-center gap-2 py-2">
+        <iconify-icon icon="iconamoon:brain-duotone" style="font-size:1.1rem;"></iconify-icon>
+        <span class="fw-semibold">Field Extraction (AI)</span>
+        {% if extraction.ok %}
+          <span class="badge bg-success-subtle text-success border border-success ms-auto">Active</span>
+        {% else %}
+          <span class="badge bg-danger-subtle text-danger border border-danger ms-auto">Not configured</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <dl class="row mb-0 small">
+          <dt class="col-5 text-muted">Provider</dt>
+          <dd class="col-7">{{ extraction.provider }}</dd>
+          <dt class="col-5 text-muted">Model</dt>
+          <dd class="col-7"><code>{{ extraction.model }}</code></dd>
+          <dt class="col-5 text-muted">Endpoint</dt>
+          <dd class="col-7 text-truncate"><code>{{ extraction.endpoint }}</code></dd>
+        </dl>
+        <p class="mt-3 mb-0 small text-muted">
+          This model converts the nurse's spoken transcript into structured triage fields (BP, HR, SpO2, chief complaint, etc.).
+          To change the model, update <code>SCRIBE_AZURE_OPENAI_DEPLOYMENT</code> in <code>.env</code>.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pipeline info -->
+  <div class="col-12">
+    <div class="card bg-body-secondary border-0">
+      <div class="card-body small text-muted">
+        <strong>How it works:</strong> When the nurse clicks the mic button on the triage form, the audio is sent
+        to the server in a <strong>single request</strong>. The server transcribes it via the cloud speech model,
+        then immediately passes the transcript to the extraction model to parse structured fields — both happen
+        server-side before the response returns. No local GPU or MMS model is involved.
+        <br><br>
+        <strong>Typical latency:</strong> ~1.5–3 seconds for a 10-second dictation clip (network + API dependent).
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

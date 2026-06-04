@@ -25,10 +25,17 @@ urlpatterns = [
     path("shifts/<int:pk>/close/", views.shift_close_view, name="shift_close"),
     path("shifts/<int:pk>/handover/", views.HandoverView.as_view(), name="handover"),
 
+    # Export / interoperability
+    path("visits/<int:pk>/export/", views.visit_export_view, name="visit_export"),
+
+    # ED settings
+    path("settings/", views.ed_settings_view, name="settings"),
+
     # AJAX API
     path("api/board/", views.board_json, name="api_board"),
     path("api/visits/<int:pk>/esi/", views.esi_ai_api, name="api_esi"),
     path("api/visits/<int:pk>/triage-voice/", views.triage_voice_extract_api, name="api_triage_voice"),
+    path("api/visits/<int:pk>/triage-voice-audio/", views.triage_voice_audio_api, name="api_triage_voice_audio"),
     path("api/visits/<int:pk>/zone/", views.zone_assign_api, name="api_zone"),
     path("api/shifts/<int:pk>/handover/generate/", views.handover_generate_api, name="api_handover_generate"),
 ]

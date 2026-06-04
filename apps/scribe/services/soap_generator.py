@@ -27,6 +27,7 @@ from .prompts import (
     NARRATIVE_USER_PROMPT,
     SECTION_PROMPTS,
     SECTION_PROMPTS_SUGGESTIVE,
+    SENSITIVE_ENCOUNTER_ADDENDUM,
     SINGLE_SOAP_USER_PROMPT,
     SINGLE_SOAP_USER_PROMPT_SUGGESTIVE,
     SUGGESTIVE_ASSIST_ADDENDUM,
@@ -62,15 +63,24 @@ def _is_reasoning_deployment() -> bool:
 def _system_prompt(
     specialty: str,
     custom_instructions: str = "",
+    custom_terms: str = "",
     *,
     suggestive_assist: bool = False,
+    is_sensitive: bool = False,
 ) -> str:
     parts: list[str] = [MASTER_SYSTEM_PROMPT, JAMAICAN_CONTEXT_ADDENDUM]
     addendum = specialty_addendum(specialty)
     if addendum:
         parts.append(addendum)
+    if is_sensitive:
+        parts.append(SENSITIVE_ENCOUNTER_ADDENDUM)
     if suggestive_assist:
         parts.append(SUGGESTIVE_ASSIST_ADDENDUM)
+    if custom_terms:
+        parts.append(
+            "DOCTOR'S CUSTOM TERMINOLOGY (abbreviations used in this practice — "
+            "resolve these when interpreting dictation):\n" + custom_terms.strip()
+        )
     if custom_instructions:
         parts.append(
             "DOCTOR PREFERENCES (apply throughout):\n" + custom_instructions.strip()
@@ -181,6 +191,21 @@ def _chat(messages: list[dict], *, max_tokens: int | None = None) -> str:
     )
 
 
+_AI_DISCLAIMER_RE = re.compile(
+    r"(?im)"
+    r"(?:^\*?AI[\-\s]generated\s+draft[^\n]*\n?)"
+    r"|(?:^\[?AI[\-\s]generated[^\n]*\]?\n?)"
+    r"|(?:^Note:\s+This\s+(?:is\s+an?\s+)?AI[\-\s]generated[^\n]*\n?)"
+    r"|(?:^\*?Note:\s+AI[^\n]*\n?)"
+    r"|(?:^Disclaimer:[^\n]*\n?)"
+)
+
+
+def _strip_ai_disclaimer(text: str) -> str:
+    """Strip boilerplate disclaimer lines the model sometimes appends."""
+    return _AI_DISCLAIMER_RE.sub("", text).strip()
+
+
 _SECTION_HEADERS = ("S:", "O:", "A:", "P:")
 
 
@@ -219,7 +244,9 @@ def generate_note(
     specialty: str = "general",
     length_mode: str = "normal",
     custom_instructions: str = "",
+    custom_terms: str = "",
     suggestive_assist: bool = False,
+    is_sensitive: bool = False,
 ) -> GeneratedNote:
     transcript = (transcript or "").strip()
     if not transcript:
@@ -228,7 +255,9 @@ def generate_note(
     system_prompt = _system_prompt(
         specialty,
         custom_instructions,
+        custom_terms,
         suggestive_assist=suggestive_assist,
+        is_sensitive=is_sensitive,
     )
 
     if note_format == "narrative":
@@ -288,14 +317,15 @@ def generate_note(
         if retry_text and not _looks_like_refusal(retry_text):
             full_note = retry_text
 
+    full_note = _strip_ai_disclaimer(full_note)
     note = GeneratedNote(note_format=note_format, full_note=full_note)
     note.flags = _extract_flags(full_note)
     if note_format == "soap":
         sections = _split_soap(full_note)
-        note.subjective = sections["subjective"]
-        note.objective = sections["objective"]
-        note.assessment = sections["assessment"]
-        note.plan = sections["plan"]
+        note.subjective = _strip_ai_disclaimer(sections["subjective"])
+        note.objective = _strip_ai_disclaimer(sections["objective"])
+        note.assessment = _strip_ai_disclaimer(sections["assessment"])
+        note.plan = _strip_ai_disclaimer(sections["plan"])
     elif note_format == "narrative":
         note.narrative = full_note
     return note
@@ -307,7 +337,9 @@ def generate_modular_soap(
     specialty: str = "general",
     length_mode: str = "normal",
     custom_instructions: str = "",
+    custom_terms: str = "",
     suggestive_assist: bool = False,
+    is_sensitive: bool = False,
     sections: Iterable[str] = ("subjective", "objective", "assessment", "plan"),
 ) -> GeneratedNote:
     transcript = (transcript or "").strip()
@@ -317,7 +349,9 @@ def generate_modular_soap(
     system_prompt = _system_prompt(
         specialty,
         custom_instructions,
+        custom_terms,
         suggestive_assist=suggestive_assist,
+        is_sensitive=is_sensitive,
     )
     section_prompts = (
         SECTION_PROMPTS_SUGGESTIVE if suggestive_assist else SECTION_PROMPTS

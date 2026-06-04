@@ -1,30 +1,32 @@
 {% load static %}
 {% with esi=visit.esi_score %}
 <a href="{% url 'ed:visit_detail' visit.pk %}" class="text-decoration-none">
-  <div class="patient-card esi-{{ esi }} p-2">
-    <div class="d-flex justify-content-between align-items-start">
-      <div class="fw-semibold" style="font-size:0.82rem;">
+  <div class="patient-card esi-{{ esi }} p-2 px-3">
+    <div class="d-flex justify-content-between align-items-start gap-1">
+      <div class="patient-name">
         {% if visit.triage and visit.triage.has_critical_vitals %}
-          <span class="vital-flag-dot"></span>
+          <span class="vital-flag-dot" title="Abnormal vitals"></span>
         {% endif %}
         {{ visit.display_name }}
       </div>
       {% if esi %}
-        <span class="badge bg-{{ visit.esi_color_class }} esi-badge">ESI {{ esi }}</span>
+        <span class="badge bg-{{ visit.esi_color_class }} esi-badge flex-shrink-0">{{ esi }}</span>
+      {% else %}
+        <span class="badge bg-secondary-subtle text-secondary esi-badge flex-shrink-0">?</span>
       {% endif %}
     </div>
-    <div style="font-size:0.75rem;color:var(--bs-secondary-color);">{{ visit.chief_complaint|truncatechars:40 }}</div>
-    {% if visit.current_bed %}
-    <div style="font-size:0.7rem;" class="text-muted">{{ visit.get_current_zone_display }} {{ visit.current_bed }}</div>
+    {% if visit.chief_complaint %}
+    <div class="patient-cc">{{ visit.chief_complaint|truncatechars:45 }}</div>
     {% endif %}
-    <div class="d-flex justify-content-between align-items-center mt-1">
+    <div class="d-flex justify-content-between align-items-center mt-2">
       <span class="time-counter {% if esi <= 2 and visit.time_in_department_minutes > 30 %}time-critical{% elif visit.time_in_department_minutes > 240 %}time-warning{% endif %}">
-        {{ visit.time_in_department_minutes }} min
+        <iconify-icon icon="iconamoon:clock-duotone" style="font-size:0.75rem;"></iconify-icon>
+        {{ visit.time_in_department_minutes }} min{% if visit.current_bed %} · {{ visit.current_bed }}{% endif %}
       </span>
-      <span class="badge bg-body-secondary text-body border" style="font-size:0.65rem;">{{ visit.get_current_status_display }}</span>
+      <span class="badge bg-body-secondary text-body border" style="font-size:0.62rem;">{{ visit.get_current_status_display }}</span>
     </div>
     {% if visit.attending_physician %}
-    <div style="font-size:0.7rem;color:var(--bs-secondary-color);">
+    <div style="font-size:0.68rem;color:var(--bs-secondary-color);margin-top:2px;">
       Dr. {{ visit.attending_physician.get_full_name|default:visit.attending_physician.username }}
     </div>
     {% endif %}

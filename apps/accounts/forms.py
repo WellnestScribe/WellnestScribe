@@ -68,6 +68,7 @@ class DoctorProfileForm(forms.ModelForm):
             "font_scale",
             "theme",
             "custom_instructions",
+            "custom_terms",
         )
         # `role` is excluded — only admins / superusers can change roles, and
         # they do so via /admin/ or the manage.py promote command.
@@ -84,5 +85,12 @@ class DoctorProfileForm(forms.ModelForm):
             "theme": forms.Select(attrs={"class": "form-select"}),
             "custom_instructions": forms.Textarea(
                 attrs={"class": "form-control", "rows": 4}
+            ),
+            "custom_terms": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 4,
+                    "placeholder": "HTN = hypertension\nDM = diabetes mellitus\nJDM = Jamaican diabetes management protocol\nOne abbreviation per line.",
+                }
             ),
         }

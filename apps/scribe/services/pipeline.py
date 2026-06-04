@@ -49,7 +49,9 @@ def run_note_generation(
     specialty: str,
     length_mode: str,
     custom_instructions: str = "",
+    custom_terms: str = "",
     suggestive_assist: bool = False,
+    is_sensitive: bool = False,
 ) -> GeneratedNote:
     if not _use_real_ai():
         return fake_generate_note(
@@ -70,7 +72,9 @@ def run_note_generation(
                 specialty=specialty,
                 length_mode=length_mode,
                 custom_instructions=custom_instructions,
+                custom_terms=custom_terms,
                 suggestive_assist=suggestive_assist,
+                is_sensitive=is_sensitive,
             )
         return generate_note(
             transcript,
@@ -78,7 +82,9 @@ def run_note_generation(
             specialty=specialty,
             length_mode=length_mode,
             custom_instructions=custom_instructions,
+            custom_terms=custom_terms,
             suggestive_assist=suggestive_assist,
+            is_sensitive=is_sensitive,
         )
     except AIConfigError as exc:
         logger.warning("Falling back to stub note generation: %s", exc)

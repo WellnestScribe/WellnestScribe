@@ -54,6 +54,92 @@
 </div>
 {% endif %}
 
+{# ── ABCDE Primary Survey (Dr Yom: "the most important checklist in EM") ── #}
+<div class="card mb-3 border-0 bg-body-secondary">
+  <div class="card-header bg-body-secondary border-bottom d-flex align-items-center gap-2 py-2" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#abcde-panel">
+    <iconify-icon icon="iconamoon:check-square-duotone" style="font-size:1rem;"></iconify-icon>
+    <span class="fw-semibold small">ABCDE Primary Survey</span>
+    <span class="badge bg-secondary-subtle text-secondary border ms-1" style="font-size:0.6rem;">tap to expand</span>
+    {% if triage and triage.has_critical_vitals %}
+    <span class="badge bg-danger ms-1" style="font-size:0.65rem;">CRITICAL VITALS</span>
+    {% endif %}
+    <iconify-icon icon="iconamoon:arrow-down-2-duotone" class="ms-auto text-muted"></iconify-icon>
+  </div>
+  <div class="collapse" id="abcde-panel">
+    <div class="card-body p-2">
+      <div class="row g-2" style="font-size:0.82rem;">
+        <div class="col-12 col-md-6">
+          <div class="abcde-item p-2 rounded border" id="check-a">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <input class="form-check-input abcde-check" type="checkbox" id="cb-a">
+              <label class="fw-bold text-danger mb-0" for="cb-a">A — Airway</label>
+            </div>
+            <div class="text-muted ps-4">Patent? Stridor? Swelling? Obstruction? Can they speak?</div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="abcde-item p-2 rounded border" id="check-b">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <input class="form-check-input abcde-check" type="checkbox" id="cb-b">
+              <label class="fw-bold text-warning mb-0" for="cb-b">B — Breathing</label>
+            </div>
+            <div class="text-muted ps-4">RR · SpO₂ · Breath sounds · Chest rise · Accessory muscles?
+              {% if triage %}<span class="badge bg-body border ms-1">RR {{ triage.rr_rpm|default:"—" }} · SpO₂ {{ triage.spo2_percent|default:"—" }}%</span>{% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="abcde-item p-2 rounded border" id="check-c">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <input class="form-check-input abcde-check" type="checkbox" id="cb-c">
+              <label class="fw-bold text-primary mb-0" for="cb-c">C — Circulation</label>
+            </div>
+            <div class="text-muted ps-4">HR · BP · Capillary refill · Skin colour · Bleeding?
+              {% if triage %}<span class="badge bg-body border ms-1">HR {{ triage.pulse_bpm|default:"—" }} · BP {{ triage.bp_systolic|default:"—" }}/{{ triage.bp_diastolic|default:"—" }}</span>{% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="abcde-item p-2 rounded border" id="check-d">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <input class="form-check-input abcde-check" type="checkbox" id="cb-d">
+              <label class="fw-bold text-success mb-0" for="cb-d">D — Disability (Neuro)</label>
+            </div>
+            <div class="text-muted ps-4">GCS · Pupils · AVPU · Focal deficits? Blood glucose?
+              {% if triage %}<span class="badge bg-body border ms-1">GCS {{ triage.gcs_total|default:"—" }} · BGL {{ triage.blood_glucose_mmol|default:"—" }}</span>{% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="abcde-item p-2 rounded border" id="check-e">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <input class="form-check-input abcde-check" type="checkbox" id="cb-e">
+              <label class="fw-bold text-info mb-0" for="cb-e">E — Exposure / Environment</label>
+            </div>
+            <div class="text-muted ps-4">Temp · Rashes · Wounds · Toxins? Full skin exposure?
+              {% if triage %}<span class="badge bg-body border ms-1">Temp {{ triage.temp_celsius|default:"—" }}°C</span>{% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="abcde-item p-2 rounded border" id="check-fg">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <input class="form-check-input abcde-check" type="checkbox" id="cb-fg">
+              <label class="fw-bold text-secondary mb-0" for="cb-fg">F — FAST · G — Glucose</label>
+            </div>
+            <div class="text-muted ps-4">Bedside ultrasound (FAST) if haemodynamic instability. Glucose if AMS or DM.
+              {% if triage %}<span class="badge bg-body border ms-1">BGL {{ triage.blood_glucose_mmol|default:"—" }}</span>{% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mt-2 text-end">
+        <small class="text-muted" id="abcde-progress">0 / 6 completed</small>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="row g-3">
 
   <!-- LEFT: Physician notes -->
@@ -211,4 +297,27 @@
 
   </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// ABCDE checklist progress counter
+(function() {
+  var checks = document.querySelectorAll(".abcde-check");
+  var progress = document.getElementById("abcde-progress");
+  var items = document.querySelectorAll(".abcde-item");
+
+  function update() {
+    var done = 0;
+    checks.forEach(function(cb, i) {
+      done += cb.checked ? 1 : 0;
+      items[i].style.opacity = cb.checked ? "0.5" : "1";
+      items[i].style.borderColor = cb.checked ? "var(--bs-success)" : "";
+    });
+    if (progress) progress.textContent = done + " / " + checks.length + " completed";
+  }
+
+  checks.forEach(function(cb) { cb.addEventListener("change", update); });
+})();
+</script>
 {% endblock %}
