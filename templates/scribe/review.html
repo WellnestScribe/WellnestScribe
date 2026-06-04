@@ -228,6 +228,22 @@
         <div class="col-12 col-xl-8">
             <div class="card">
                 <div class="card-body p-4">
+                    {# ── Freed-style: Copy All bar + Note length selector ── #}
+                    <div class="copy-all-bar">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span class="small fw-semibold text-muted" style="white-space:nowrap;">Length:</span>
+                            <div class="length-selector" id="reviewLengthSelector">
+                                <button type="button" class="length-btn {% if session.length_mode == 'concise' %}is-active{% endif %}" data-length="concise">Concise</button>
+                                <button type="button" class="length-btn {% if session.length_mode == 'normal' or not session.length_mode %}is-active{% endif %}" data-length="normal">Standard</button>
+                                <button type="button" class="length-btn {% if session.length_mode == 'long_form' %}is-active{% endif %}" data-length="long_form">Long</button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-primary btn-sm" id="copyAllBtn">
+                            <iconify-icon icon="iconamoon:copy-duotone" class="me-1 align-middle"></iconify-icon>
+                            Copy all
+                        </button>
+                    </div>
+
                     <ul class="nav nav-tabs mb-3" role="tablist" id="reviewTabs">
                         <li class="nav-item" role="presentation">
                             <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-structured" type="button">Structured</button>
@@ -254,17 +270,27 @@
                         <div class="tab-pane fade show active" id="tab-structured">
                             {% if note %}
                                 {% if session.note_format == 'narrative' or note.narrative and not note.subjective %}
-                                    <div class="note-section">
-                                        <header>
-                                            <span class="section-label">Narrative</span>
-                                            <button type="button"
-                                                    class="quick-mic-btn"
-                                                    data-quick-mic="[data-note-field='narrative']"
-                                                    title="Tap once to start dictating, tap again to stop">
-                                                <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
-                                            </button>
+                                    <div class="note-section" data-section-id="narrative">
+                                        <header class="note-section-header">
+                                            <span class="note-section-collapse-trigger" data-collapse="narrative">
+                                                <iconify-icon icon="iconamoon:arrow-up-2-duotone" class="note-section-toggle-icon"></iconify-icon>
+                                                <span class="section-label">Narrative</span>
+                                            </span>
+                                            <div class="note-section-actions">
+                                                <button type="button" class="note-section-btn" data-copy-section="narrative" title="Copy section">
+                                                    <iconify-icon icon="iconamoon:copy-duotone"></iconify-icon>
+                                                </button>
+                                                <button type="button"
+                                                        class="quick-mic-btn"
+                                                        data-quick-mic="[data-note-field='narrative']"
+                                                        title="Tap once to start dictating, tap again to stop">
+                                                    <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+                                                </button>
+                                            </div>
                                         </header>
-                                        <textarea class="note-textarea narrative" data-note-field="narrative">{{ note.narrative }}</textarea>
+                                        <div class="note-section-body" id="ns-body-narrative">
+                                            <textarea class="note-textarea narrative" data-note-field="narrative">{{ note.narrative }}</textarea>
+                                        </div>
                                     </div>
                                 {% else %}
                                     {% include "scribe/_soap_fields.html" with note=note %}
@@ -755,8 +781,9 @@
     }
   };
 
-  /* ---- Format switcher + Regenerate ---- */
+  /* ---- Format + Length switcher for Regenerate ---- */
   var regenFormat = '{{ session.note_format }}';
+  var regenLength = '{{ session.length_mode|default:"normal" }}';
   document.querySelectorAll('[data-regen-format]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       document.querySelectorAll('[data-regen-format]').forEach(function (b) {
@@ -766,6 +793,17 @@
       regenFormat = this.dataset.regenFormat;
       var hint = document.getElementById('regenFormatHint');
       if (hint) hint.innerHTML = 'format: <strong>' + regenFormat.toUpperCase() + '</strong>';
+    });
+  });
+  /* Length selector sync — buttons live in the Copy-All bar; clicks also
+     update regenLength so the regenerate button uses the current selection. */
+  document.querySelectorAll('#reviewLengthSelector .length-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('#reviewLengthSelector .length-btn').forEach(function (b) {
+        b.classList.remove('is-active');
+      });
+      this.classList.add('is-active');
+      regenLength = this.dataset.length || 'normal';
     });
   });
 
@@ -858,7 +896,7 @@
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-            body: JSON.stringify({ transcript: transcript, note_format: regenFormat }),
+            body: JSON.stringify({ transcript: transcript, note_format: regenFormat, length_mode: regenLength }),
           }
         );
         var data = await resp.json();
@@ -990,10 +1028,12 @@
     if (!section) return;
     var hdr = section.querySelector('header');
     if (!hdr) return;
+    /* Append badge inside the collapse trigger (next to section label), not after actions */
+    var trigger = hdr.querySelector('.note-section-collapse-trigger') || hdr;
     var badge = hdr.querySelector('.bracket-badge');
     var count = (ta.value.match(/\[[^\]]+\]/g) || []).length;
     if (count === 0) { if (badge) badge.remove(); return; }
-    if (!badge) { badge = document.createElement('span'); badge.className = 'bracket-badge'; hdr.appendChild(badge); }
+    if (!badge) { badge = document.createElement('span'); badge.className = 'bracket-badge'; trigger.appendChild(badge); }
     badge.textContent = count + ' missing';
   }
   window._updateBadge = updateBadge;

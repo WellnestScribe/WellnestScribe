@@ -1,48 +1,106 @@
-{# Compartmentalized SOAP editor. Each section has a quick-edit mic. #}
-<div class="note-section">
-    <header>
-        <span class="section-label">Subjective</span>
-        <button type="button" class="quick-mic-btn"
-                data-quick-mic="[data-note-field='subjective']"
-                title="Hold to dictate edits">
-            <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
-        </button>
+{# Compartmentalized SOAP editor — Freed-style collapsible sections.
+   Each section: collapse toggle · section label · thumbs up/down · copy · mic. #}
+
+<div class="note-section" data-section-id="subjective">
+    <header class="note-section-header">
+        <span class="note-section-collapse-trigger" data-collapse="subjective">
+            <iconify-icon icon="iconamoon:arrow-up-2-duotone" class="note-section-toggle-icon"></iconify-icon>
+            <span class="section-label">Subjective</span>
+        </span>
+        <div class="note-section-actions">
+            <button type="button" class="note-section-btn" data-thumb="up" data-section="subjective" title="Well captured">
+                <iconify-icon icon="iconamoon:thumb-up-duotone"></iconify-icon>
+            </button>
+            <button type="button" class="note-section-btn" data-thumb="down" data-section="subjective" title="Needs improvement">
+                <iconify-icon icon="iconamoon:thumb-down-duotone"></iconify-icon>
+            </button>
+            <button type="button" class="note-section-btn" data-copy-section="subjective" title="Copy section">
+                <iconify-icon icon="iconamoon:copy-duotone"></iconify-icon>
+            </button>
+            <button type="button" class="quick-mic-btn" data-quick-mic="[data-note-field='subjective']" title="Dictate edits">
+                <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+            </button>
+        </div>
     </header>
-    <textarea class="note-textarea" data-note-field="subjective">{{ note.subjective }}</textarea>
+    <div class="note-section-body" id="ns-body-subjective">
+        <textarea class="note-textarea" data-note-field="subjective">{{ note.subjective }}</textarea>
+    </div>
 </div>
 
-<div class="note-section">
-    <header>
-        <span class="section-label">Objective</span>
-        <button type="button" class="quick-mic-btn"
-                data-quick-mic="[data-note-field='objective']"
-                title="Hold to dictate edits">
-            <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
-        </button>
+<div class="note-section" data-section-id="objective">
+    <header class="note-section-header">
+        <span class="note-section-collapse-trigger" data-collapse="objective">
+            <iconify-icon icon="iconamoon:arrow-up-2-duotone" class="note-section-toggle-icon"></iconify-icon>
+            <span class="section-label">Objective</span>
+        </span>
+        <div class="note-section-actions">
+            <button type="button" class="note-section-btn" data-thumb="up" data-section="objective" title="Well captured">
+                <iconify-icon icon="iconamoon:thumb-up-duotone"></iconify-icon>
+            </button>
+            <button type="button" class="note-section-btn" data-thumb="down" data-section="objective" title="Needs improvement">
+                <iconify-icon icon="iconamoon:thumb-down-duotone"></iconify-icon>
+            </button>
+            <button type="button" class="note-section-btn" data-copy-section="objective" title="Copy section">
+                <iconify-icon icon="iconamoon:copy-duotone"></iconify-icon>
+            </button>
+            <button type="button" class="quick-mic-btn" data-quick-mic="[data-note-field='objective']" title="Dictate edits">
+                <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+            </button>
+        </div>
     </header>
-    <textarea class="note-textarea" data-note-field="objective">{{ note.objective }}</textarea>
+    <div class="note-section-body" id="ns-body-objective">
+        <textarea class="note-textarea" data-note-field="objective">{{ note.objective }}</textarea>
+    </div>
 </div>
 
-<div class="note-section">
-    <header>
-        <span class="section-label">Assessment</span>
-        <button type="button" class="quick-mic-btn"
-                data-quick-mic="[data-note-field='assessment']"
-                title="Hold to dictate edits">
-            <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
-        </button>
+<div class="note-section" data-section-id="assessment">
+    <header class="note-section-header">
+        <span class="note-section-collapse-trigger" data-collapse="assessment">
+            <iconify-icon icon="iconamoon:arrow-up-2-duotone" class="note-section-toggle-icon"></iconify-icon>
+            <span class="section-label">Assessment</span>
+        </span>
+        <div class="note-section-actions">
+            <button type="button" class="note-section-btn" data-thumb="up" data-section="assessment" title="Well captured">
+                <iconify-icon icon="iconamoon:thumb-up-duotone"></iconify-icon>
+            </button>
+            <button type="button" class="note-section-btn" data-thumb="down" data-section="assessment" title="Needs improvement">
+                <iconify-icon icon="iconamoon:thumb-down-duotone"></iconify-icon>
+            </button>
+            <button type="button" class="note-section-btn" data-copy-section="assessment" title="Copy section">
+                <iconify-icon icon="iconamoon:copy-duotone"></iconify-icon>
+            </button>
+            <button type="button" class="quick-mic-btn" data-quick-mic="[data-note-field='assessment']" title="Dictate edits">
+                <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+            </button>
+        </div>
     </header>
-    <textarea class="note-textarea" data-note-field="assessment">{{ note.assessment }}</textarea>
+    <div class="note-section-body" id="ns-body-assessment">
+        <textarea class="note-textarea" data-note-field="assessment">{{ note.assessment }}</textarea>
+    </div>
 </div>
 
-<div class="note-section">
-    <header>
-        <span class="section-label">Plan</span>
-        <button type="button" class="quick-mic-btn"
-                data-quick-mic="[data-note-field='plan']"
-                title="Hold to dictate edits">
-            <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
-        </button>
+<div class="note-section" data-section-id="plan">
+    <header class="note-section-header">
+        <span class="note-section-collapse-trigger" data-collapse="plan">
+            <iconify-icon icon="iconamoon:arrow-up-2-duotone" class="note-section-toggle-icon"></iconify-icon>
+            <span class="section-label">Plan</span>
+        </span>
+        <div class="note-section-actions">
+            <button type="button" class="note-section-btn" data-thumb="up" data-section="plan" title="Well captured">
+                <iconify-icon icon="iconamoon:thumb-up-duotone"></iconify-icon>
+            </button>
+            <button type="button" class="note-section-btn" data-thumb="down" data-section="plan" title="Needs improvement">
+                <iconify-icon icon="iconamoon:thumb-down-duotone"></iconify-icon>
+            </button>
+            <button type="button" class="note-section-btn" data-copy-section="plan" title="Copy section">
+                <iconify-icon icon="iconamoon:copy-duotone"></iconify-icon>
+            </button>
+            <button type="button" class="quick-mic-btn" data-quick-mic="[data-note-field='plan']" title="Dictate edits">
+                <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+            </button>
+        </div>
     </header>
-    <textarea class="note-textarea" data-note-field="plan">{{ note.plan }}</textarea>
+    <div class="note-section-body" id="ns-body-plan">
+        <textarea class="note-textarea" data-note-field="plan">{{ note.plan }}</textarea>
+    </div>
 </div>

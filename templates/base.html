@@ -28,7 +28,7 @@
     <script src="{% static 'js/config.js' %}"></script>
     {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
     <div class="wrapper">
         {% include "partials/topbar.html" %}
         {% include "partials/sidebar.html" %}

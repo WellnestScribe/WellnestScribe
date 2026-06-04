@@ -1189,3 +1189,169 @@ kbd {
 @media print {
   .emr-print-sheet .btn { display: none !important; }
 }
+
+/* ══════════════════════════════════════════════════════════
+   Freed AI-style note editor enhancements
+   Collapsible SOAP sections · Per-section thumbs + copy
+   Copy All bar · Note length selector · Pause recording
+   ══════════════════════════════════════════════════════════ */
+
+/* Note section: update header layout for the new Freed-style */
+.note-section { margin-bottom: 0; }
+.note-section + .note-section { border-top: 1px solid var(--bs-border-color); margin-top: 0; }
+
+.note-section header,
+.note-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 2px;
+  margin-bottom: 0;
+}
+
+/* Collapse trigger — clickable left portion (chevron + label) */
+.note-section-collapse-trigger {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  cursor: pointer;
+  user-select: none;
+  min-width: 0;
+}
+.note-section-collapse-trigger:hover .section-label { color: var(--wellnest-blue); }
+
+/* Chevron rotates when section collapses */
+.note-section-toggle-icon {
+  font-size: 0.95rem;
+  color: var(--bs-secondary-color);
+  transition: transform 0.18s ease;
+  flex-shrink: 0;
+}
+.note-section.is-collapsed .note-section-toggle-icon { transform: rotate(-90deg); }
+
+/* Collapsible body */
+.note-section-body { padding-bottom: 14px; }
+.note-section.is-collapsed .note-section-body { display: none; }
+
+/* Per-section action buttons row */
+.note-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.note-section-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--bs-secondary-color);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  font-size: 1rem;
+  line-height: 1;
+}
+.note-section-btn:hover {
+  background: var(--wellnest-blue-soft);
+  color: var(--wellnest-blue);
+  border-color: rgba(12, 126, 194, 0.20);
+}
+.note-section-btn.is-positive {
+  background: rgba(45, 138, 78, 0.12);
+  color: #2d8a4e;
+  border-color: rgba(45, 138, 78, 0.28);
+}
+.note-section-btn.is-negative {
+  background: rgba(211, 59, 70, 0.10);
+  color: #d33b46;
+  border-color: rgba(211, 59, 70, 0.22);
+}
+/* Disable section action buttons in finalized mode */
+.review-finalized .note-section-btn {
+  pointer-events: none;
+  opacity: 0.45;
+}
+
+/* ── Copy All bar — sits above note tabs ── */
+.copy-all-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+/* ── Note length selector (Concise / Standard / Long) ── */
+.length-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bs-tertiary-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 999px;
+  padding: 3px;
+}
+.length-btn {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 5px 13px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--bs-secondary-color);
+  cursor: pointer;
+  transition: background 0.13s, color 0.13s, box-shadow 0.13s;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+}
+.length-btn:hover { color: var(--bs-body-color); }
+.length-btn.is-active {
+  background: var(--bs-body-bg);
+  color: var(--wellnest-blue-dark);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.10);
+}
+
+/* ── Pause / Resume recording button ── */
+.pause-record-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 2px solid var(--bs-border-color);
+  background: var(--bs-body-bg);
+  color: var(--bs-secondary-color);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.pause-record-btn:hover {
+  border-color: #e89c1d;
+  color: #8b5c00;
+}
+.pause-record-btn.is-paused {
+  border-color: #2d8a4e;
+  color: #2d8a4e;
+  background: rgba(45, 138, 78, 0.08);
+}
+.pause-record-btn iconify-icon { font-size: 1.05rem; }
+
+/* Mobile: compact length selector + copy all bar */
+@media (max-width: 575.98px) {
+  .length-btn { padding: 4px 9px; font-size: 0.75rem; }
+  .copy-all-bar { gap: 8px; }
+  .note-section-btn { width: 28px; height: 28px; font-size: 0.88rem; }
+}
+@media (max-width: 991.98px) {
+  .note-section-actions { gap: 2px; }
+}

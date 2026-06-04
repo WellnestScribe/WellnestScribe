@@ -421,6 +421,7 @@
 
   function initRecordScreen(root) {
     const recordBtn = $("#recordBtn", root);
+    const pauseBtn = $("#recordPauseBtn", root);
     const timerEl = $("#recordTimer", root);
     const waveBars = $("#recordWaveform", root);
     const statusEl = $("#recordStatus", root);
@@ -477,6 +478,8 @@
     let recordedBlob = null;
     let recordedDuration = 0;
     let recordCancelled = false;
+    let isPaused = false;
+    let pausedElapsed = 0;
 
     const BARS = 36;
     if (waveBars) {
@@ -529,6 +532,8 @@
         }
       }
       recordedChunks = [];
+      isPaused = false;
+      pausedElapsed = 0;
       const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus" : "";
       mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
@@ -546,6 +551,7 @@
       recordCancelled = false;
       recordBtn.classList.add("is-recording");
       recordBtn.querySelector("[data-record-label]").textContent = "Stop";
+      if (pauseBtn) pauseBtn.style.display = "";
       if (cancelBtn) cancelBtn.style.display = "";
       setStatus(statusEl, "Recording — speak clearly.");
       startTimer();
@@ -558,7 +564,49 @@
       if (audioCtx && audioCtx.state !== "closed") audioCtx.close();
       recordBtn.classList.remove("is-recording");
       recordBtn.querySelector("[data-record-label]").textContent = "Record";
+      if (pauseBtn) {
+        pauseBtn.style.display = "none";
+        pauseBtn.classList.remove("is-paused");
+        if (pauseBtn.querySelector("iconify-icon")) pauseBtn.querySelector("iconify-icon").setAttribute("icon", "iconamoon:pause-duotone");
+        var lbl = document.getElementById("pauseBtnLabel");
+        if (lbl) lbl.textContent = "Pause";
+      }
       if (cancelBtn) cancelBtn.style.display = "none";
+      isPaused = false;
+    }
+
+    if (pauseBtn) {
+      pauseBtn.addEventListener("click", function () {
+        if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+        if (isPaused) {
+          // Resume
+          try { mediaRecorder.resume(); } catch (e) {}
+          isPaused = false;
+          // Restart timer from accumulated elapsed
+          startedAt = Date.now() - pausedElapsed * 1000;
+          timerHandle = setInterval(function () {
+            if (timerEl) timerEl.textContent = fmtTime((Date.now() - startedAt) / 1000);
+          }, 250);
+          buildWavePump();
+          pauseBtn.classList.remove("is-paused");
+          if (pauseBtn.querySelector("iconify-icon")) pauseBtn.querySelector("iconify-icon").setAttribute("icon", "iconamoon:pause-duotone");
+          var lbl = document.getElementById("pauseBtnLabel");
+          if (lbl) lbl.textContent = "Pause";
+          setStatus(statusEl, "Recording resumed.");
+        } else {
+          // Pause
+          try { mediaRecorder.pause(); } catch (e) {}
+          isPaused = true;
+          pausedElapsed = Math.round((Date.now() - startedAt) / 1000);
+          clearInterval(timerHandle);
+          stopWavePump();
+          pauseBtn.classList.add("is-paused");
+          if (pauseBtn.querySelector("iconify-icon")) pauseBtn.querySelector("iconify-icon").setAttribute("icon", "iconamoon:play-duotone");
+          var lbl2 = document.getElementById("pauseBtnLabel");
+          if (lbl2) lbl2.textContent = "Resume";
+          setStatus(statusEl, "Paused — tap Resume to continue.");
+        }
+      });
     }
     async function onRecordingStopped() {
       if (recordCancelled) {
@@ -587,7 +635,7 @@
       const ext = blob.type.indexOf("ogg") >= 0 ? "ogg" : "webm";
       fd.append("audio", blob, "wellnest-recording." + ext);
       fd.append("note_format", noteFormatSel ? noteFormatSel.value : "soap");
-      fd.append("length_mode", lengthSwitch && lengthSwitch.checked ? "long_form" : "normal");
+      fd.append("length_mode", lengthSwitch ? (lengthSwitch.type === "checkbox" ? (lengthSwitch.checked ? "long_form" : "normal") : (lengthSwitch.value || "normal")) : "normal");
       fd.append("duration_seconds", String(recordedDuration));
       if (window.WELLNEST_consentGiven) fd.append("consent_acknowledged", "1");
       collectPatientFields(fd);
@@ -614,11 +662,18 @@
       setStatus(statusEl, "Generating note…");
       await runGeneration(sid, tr.body.transcript || "");
     }
+    function getRecordLengthMode() {
+      if (!lengthSwitch) return "normal";
+      return lengthSwitch.type === "checkbox"
+        ? (lengthSwitch.checked ? "long_form" : "normal")
+        : (lengthSwitch.value || "normal");
+    }
+
     async function runGeneration(sid, transcript) {
       const payload = {
         transcript: transcript,
         note_format: noteFormatSel ? noteFormatSel.value : "soap",
-        length_mode: lengthSwitch && lengthSwitch.checked ? "long_form" : "normal",
+        length_mode: getRecordLengthMode(),
         suggestive_assist: suggestiveAssistToggle ? suggestiveAssistToggle.checked : undefined,
       };
       const gen = await postJSON("/scribe/api/sessions/" + sid + "/generate/", payload);
@@ -687,7 +742,7 @@
       const fd = new FormData();
       fd.append("transcript", transcript);
       fd.append("note_format", noteFormatSel ? noteFormatSel.value : "soap");
-      fd.append("length_mode", lengthSwitch && lengthSwitch.checked ? "long_form" : "normal");
+      fd.append("length_mode", getRecordLengthMode());
       collectPatientFields(fd);
       const res = await postForm(W.endpoints.createSession, fd);
       if (!res.ok || !res.body.ok) { setStatus(statusEl, (res.body && res.body.error) || "Could not create session.", "error"); return; }
@@ -1890,7 +1945,8 @@
       fields.forEach(function (el) { el.readOnly = true; el.disabled = true; });
       if (fullNoteArea) { fullNoteArea.readOnly = true; fullNoteArea.disabled = true; }
       if (transcriptArea) { transcriptArea.readOnly = true; transcriptArea.disabled = true; }
-      [saveBtn, finalizeBtn, regenAllBtn, $("#polishBtn", root), $("#improveBtn", root)].forEach(function (b) {
+      [saveBtn, finalizeBtn, regenAllBtn, $("#polishBtn", root), $("#improveBtn", root),
+       $("#copyAllBtn", root)].forEach(function (b) {
         if (b) b.disabled = true;
       });
       // Block any future per-marker save attempts from the body diagram.
@@ -1996,6 +2052,97 @@
       try { await navigator.clipboard.writeText(text + disclaimer); showToast("Copied to clipboard"); }
       catch (err) { setStatus(statusEl, "Copy failed", "error"); }
     });
+
+    // ── "Copy all" button in the Freed-style copy-all bar ──
+    const copyAllBtn = $("#copyAllBtn", root);
+    if (copyAllBtn) {
+      copyAllBtn.addEventListener("click", async function () {
+        await autosave();
+        const text = fullNoteArea && fullNoteArea.value
+          ? fullNoteArea.value
+          : renderFromFields(collectFieldValues());
+        const disclaimer = "\n\n---\nGenerated by WellNest Scribe AI — clinician review required before use in medical records.";
+        try {
+          await navigator.clipboard.writeText(text + disclaimer);
+          copyAllBtn.innerHTML = '<iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon>Copied!';
+          setTimeout(function () {
+            copyAllBtn.innerHTML = '<iconify-icon icon="iconamoon:copy-duotone" class="me-1 align-middle"></iconify-icon>Copy all';
+          }, 2000);
+        } catch (err) { setStatus(statusEl, "Copy failed", "error"); }
+      });
+    }
+
+    // ── Per-section copy buttons ──
+    $$("[data-copy-section]", root).forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        const sectionId = btn.getAttribute("data-copy-section");
+        const ta = $("[data-note-field='" + sectionId + "']", root);
+        if (!ta || !ta.value.trim()) { showToast("Section is empty"); return; }
+        navigator.clipboard.writeText(ta.value.trim())
+          .then(function () {
+            const origIcon = btn.innerHTML;
+            btn.innerHTML = '<iconify-icon icon="iconamoon:check-circle-1-duotone"></iconify-icon>';
+            setTimeout(function () { btn.innerHTML = origIcon; }, 1800);
+            showToast("Section copied");
+          })
+          .catch(function () { showToast("Copy failed"); });
+      });
+    });
+
+    // ── Thumbs up / down per section (visual feedback only) ──
+    $$("[data-thumb]", root).forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        const dir = btn.getAttribute("data-thumb");
+        const sectionId = btn.getAttribute("data-section");
+        const section = $("[data-section-id='" + sectionId + "']", root)
+                     || btn.closest(".note-section");
+        if (!section) return;
+        const upBtn = $("[data-thumb='up'][data-section='" + sectionId + "']", root);
+        const downBtn = $("[data-thumb='down'][data-section='" + sectionId + "']", root);
+        const wasActive = btn.classList.contains("is-positive") || btn.classList.contains("is-negative");
+        if (upBtn) upBtn.classList.remove("is-positive");
+        if (downBtn) downBtn.classList.remove("is-negative");
+        if (!wasActive) {
+          if (dir === "up") { btn.classList.add("is-positive"); showToast("Marked — well captured"); }
+          else { btn.classList.add("is-negative"); showToast("Marked — needs improvement"); }
+        }
+      });
+    });
+
+    // ── Section collapse / expand ──
+    const COLLAPSE_LS_KEY = "wn_review_collapsed_" + sessionId;
+    function getCollapsed() {
+      try { return JSON.parse(localStorage.getItem(COLLAPSE_LS_KEY) || "[]"); } catch (e) { return []; }
+    }
+    function saveCollapsed(list) {
+      try { localStorage.setItem(COLLAPSE_LS_KEY, JSON.stringify(list)); } catch (e) {}
+    }
+    function applyCollapseState() {
+      const collapsed = getCollapsed();
+      $$(".note-section[data-section-id]", root).forEach(function (sec) {
+        const id = sec.getAttribute("data-section-id");
+        sec.classList.toggle("is-collapsed", collapsed.indexOf(id) >= 0);
+      });
+    }
+    $$(".note-section-collapse-trigger", root).forEach(function (trigger) {
+      trigger.addEventListener("click", function (e) {
+        const sec = trigger.closest(".note-section");
+        if (!sec) return;
+        const id = sec.getAttribute("data-section-id");
+        sec.classList.toggle("is-collapsed");
+        const collapsed = getCollapsed();
+        const idx = collapsed.indexOf(id);
+        if (sec.classList.contains("is-collapsed")) {
+          if (idx < 0) collapsed.push(id);
+        } else {
+          if (idx >= 0) collapsed.splice(idx, 1);
+        }
+        saveCollapsed(collapsed);
+      });
+    });
+    applyCollapseState();
     if (printBtn) printBtn.addEventListener("click", function () { window.print(); });
     if (regenAllBtn) regenAllBtn.addEventListener("click", async function () {
       if (!confirm("Regenerate the note from the current transcript? Your edits to the structured note will be replaced.")) return;

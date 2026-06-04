@@ -16,7 +16,8 @@ class ScribeSession(models.Model):
         ("chart", "Chart / progress note"),
     ]
     LENGTH_MODE_CHOICES = [
-        ("normal", "Normal"),
+        ("concise", "Concise"),
+        ("normal", "Standard"),
         ("long_form", "Long form"),
     ]
     STATUS_CHOICES = [
