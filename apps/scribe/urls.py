@@ -12,6 +12,7 @@ urlpatterns = [
 
     # API endpoints used by the JS recorder + editor
     path("api/sessions/", views.create_session_api, name="api_create"),
+    path("api/sessions/<int:pk>/rename/", views.rename_session_api, name="api_rename"),
     path(
         "api/sessions/<int:pk>/transcribe/",
         views.transcribe_session_api,
@@ -36,6 +37,11 @@ urlpatterns = [
         "api/sessions/<int:pk>/share/",
         views.share_note_api,
         name="api_share",
+    ),
+    path(
+        "api/sessions/<int:pk>/delete/",
+        views.delete_session_api,
+        name="api_delete",
     ),
     path("share/<str:token>/", views.share_view, name="share"),
     path("api/quick-transcribe/", views.quick_transcribe_api, name="api_quick_transcribe"),
@@ -72,5 +78,15 @@ urlpatterns = [
         "api/preferences/",
         views.update_preferences_api,
         name="api_preferences",
+    ),
+    path(
+        "api/sessions/<int:pk>/ambient-transcribe/",
+        views.ambient_transcribe_api,
+        name="api_ambient_transcribe",
+    ),
+    path(
+        "api/ambient-jobs/<str:job_id>/",
+        views.ambient_job_api,
+        name="api_ambient_job",
     ),
 ]

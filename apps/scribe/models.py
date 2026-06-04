@@ -70,6 +70,27 @@ class ScribeSession(models.Model):
 
     transcript = models.TextField(blank=True)
 
+    # Sensitive-encounter flag — set by the doctor for HIV, mental health,
+    # reproductive health, substance use, or any encounter they judge as
+    # requiring enhanced protection.  When True:
+    #   • every view is written to audit.log (not just saves)
+    #   • share-link generation is blocked
+    #   • AI prompt gains a PHI-minimisation addendum
+    is_sensitive = models.BooleanField(
+        default=False,
+        help_text=(
+            "Mark encounters containing HIV status, mental health, "
+            "reproductive health, or substance-use data. Enables enhanced "
+            "audit logging and blocks share-link generation."
+        ),
+    )
+
+    consent_acknowledged_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp when the doctor confirmed verbal patient consent before recording.",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     finalized_at = models.DateTimeField(null=True, blank=True)

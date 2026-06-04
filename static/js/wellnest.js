@@ -63,6 +63,18 @@
     if (kind === "error") target.classList.add("is-error");
     if (kind === "success") target.classList.add("is-success");
   }
+  function extractPatientName(transcript) {
+    if (!transcript) return "";
+    // Strip common prefix phrases, take first 1-4 capitalised words
+    var t = transcript.trim()
+      .replace(/^(the patient('s name)? is|patient|my name is|this is|name is)\s*/i, "")
+      .replace(/[.,!?;:].*$/, "").trim();
+    var words = t.split(/\s+/).filter(function(w) { return w.length > 1; }).slice(0, 4);
+    // Only use if the first word looks like a proper name (starts capital or all caps)
+    if (!words.length || !/^[A-Z]/.test(words[0])) return "";
+    return words.join(" ");
+  }
+
   function autoGrow(el) {
     if (!el) return;
     el.style.height = "auto";
@@ -291,6 +303,11 @@
           tmp.getTracks().forEach(function (t) { t.stop(); });
         } catch (e) {}
         await populateDevices();
+        // Auto-start level meter — no extra click needed
+        if (testBtn && !testStream) testBtn.click();
+      } else {
+        // Auto-stop when panel closes to release the mic
+        if (testStream) stopTest();
       }
     });
 
@@ -344,8 +361,15 @@
           }
           if (levelHint) {
             levelHint.textContent = pct < 4
-              ? "No signal — try a different device."
-              : "Good — audio is being captured.";
+              ? "No signal — check mic or try a different device."
+              : pct < 15
+              ? "Very low — move closer to the microphone."
+              : pct < 55
+              ? "Good signal — ready to record."
+              : pct < 80
+              ? "Strong signal — excellent."
+              : "Very loud — may clip. Move slightly back.";
+            levelHint.style.color = pct < 4 ? "#d33b46" : pct < 15 ? "#e89c1d" : "#2d8a4e";
           }
           testAnim = requestAnimationFrame(tick);
         }
@@ -565,6 +589,7 @@
       fd.append("note_format", noteFormatSel ? noteFormatSel.value : "soap");
       fd.append("length_mode", lengthSwitch && lengthSwitch.checked ? "long_form" : "normal");
       fd.append("duration_seconds", String(recordedDuration));
+      if (window.WELLNEST_consentGiven) fd.append("consent_acknowledged", "1");
       collectPatientFields(fd);
       const res = await postForm(W.endpoints.createSession, fd);
       if (!res.ok || !res.body.ok) { setStatus(statusEl, (res.body && res.body.error) || "Upload failed.", "error"); return; }
@@ -575,6 +600,16 @@
       if (transcriptArea) {
         transcriptArea.value = tr.body.transcript || "";
         autoGrow(transcriptArea);
+      }
+      // Auto-populate patient name from transcript if field is empty
+      var nameEl = document.getElementById("patientName");
+      if (nameEl && !nameEl.value.trim() && tr.body.transcript) {
+        var extracted = extractPatientName(tr.body.transcript);
+        if (extracted) {
+          nameEl.value = extracted;
+          // Persist back to the session so history list shows the name
+          postJSON("/scribe/api/sessions/" + sid + "/rename/", {patient_name: extracted});
+        }
       }
       setStatus(statusEl, "Generating note…");
       await runGeneration(sid, tr.body.transcript || "");
@@ -592,8 +627,13 @@
       window.location.href = gen.body.review_url;
     }
 
+    function maybeStartRecording() {
+      var gate = window.WELLNEST_beforeRecord;
+      if (typeof gate === "function") { gate(startRecording); } else { startRecording(); }
+    }
+
     if (recordBtn) recordBtn.addEventListener("click", function () {
-      if (recordBtn.classList.contains("is-recording")) stopRecording(); else startRecording();
+      if (recordBtn.classList.contains("is-recording")) stopRecording(); else maybeStartRecording();
     });
     if (cancelBtn) cancelBtn.addEventListener("click", function () {
       recordCancelled = true;
@@ -1926,10 +1966,34 @@
         setStatus(statusEl, "Could not finalize.", "error");
       }
     });
+    const deleteSessionBtn = $("#deleteSessionBtn", root);
+    if (deleteSessionBtn) deleteSessionBtn.addEventListener("click", async function () {
+      const ok = await confirmDialog({
+        title: "Delete this session permanently?",
+        html:
+          "This removes the <strong>audio recording, transcript, and clinical note</strong> from the system. " +
+          "It cannot be undone.<br><br>" +
+          "Use this when a patient exercises their <strong>right to erasure</strong> under the Data Protection Act, " +
+          "or if the recording was made in error.",
+        icon: "danger",
+        confirmText: "Yes, delete permanently",
+        cancelText: "Cancel",
+      });
+      if (!ok) return;
+      const r = await postJSON("/scribe/api/sessions/" + sessionId + "/delete/", {});
+      if (r.ok && r.body.ok) {
+        showToast("Session deleted.");
+        setTimeout(function () { window.location.href = r.body.redirect || "/scribe/sessions/"; }, 700);
+      } else {
+        setStatus(statusEl, (r.body && r.body.error) || "Delete failed.", "error");
+      }
+    });
+
     if (copyBtn) copyBtn.addEventListener("click", async function () {
       await autosave();
       const text = fullNoteArea && fullNoteArea.value ? fullNoteArea.value : renderFromFields(collectFieldValues());
-      try { await navigator.clipboard.writeText(text); showToast("Copied to clipboard"); }
+      const disclaimer = "\n\n---\nGenerated by WellNest Scribe AI — clinician review required before use in medical records.";
+      try { await navigator.clipboard.writeText(text + disclaimer); showToast("Copied to clipboard"); }
       catch (err) { setStatus(statusEl, "Copy failed", "error"); }
     });
     if (printBtn) printBtn.addEventListener("click", function () { window.print(); });
@@ -2511,4 +2575,27 @@
       });
     });
   }
+
+  // ---------- collapsible sidebar sections ----------
+  $$(".nav-section-toggle").forEach(function (toggle) {
+    var section = toggle.getAttribute("data-section");
+    if (!section) return;
+    var content = document.getElementById(section);
+    var chevron = document.getElementById(section + "-chevron");
+    if (!content) return;
+
+    function setCollapsed(collapsed, animate) {
+      content.style.display = collapsed ? "none" : "";
+      if (chevron) chevron.style.transform = collapsed ? "rotate(180deg)" : "";
+      localStorage.setItem("nav-" + section + "-collapsed", collapsed ? "1" : "0");
+    }
+
+    var stored = localStorage.getItem("nav-" + section + "-collapsed");
+    if (stored === "1") setCollapsed(true, false);
+
+    toggle.addEventListener("click", function () {
+      var collapsed = content.style.display === "none";
+      setCollapsed(!collapsed, true);
+    });
+  });
 })();

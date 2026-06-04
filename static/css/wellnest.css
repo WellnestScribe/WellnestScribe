@@ -558,13 +558,34 @@ a { color: var(--wellnest-blue); }
 
   /* Mobile: shrink the record stack so the mic is visible without
      scrolling past patient-bar + quick templates + note-style tabs. */
-  .record-cta { width: 132px; height: 132px; font-size: 0.95rem; }
+  /* Higher specificity needed to override global .recorder-shell .record-cta { width: 168px } */
+  .recorder-shell .record-cta { width: 132px; height: 132px; font-size: 0.95rem; }
   .record-cta .iconify, .record-cta iconify-icon { font-size: 2rem; }
-  .record-toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
-  .note-style-tabs { width: 100%; }
-  .note-style-pill, .suggestive-assist-chip-body {
-    justify-content: center;
-    width: 100%;
+  /* Compact single-row toolbar — NOTE STYLE pills + AI MODE side by side */
+  .record-toolbar {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 10px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .record-toolbar::-webkit-scrollbar { display: none; }
+  .record-toolbar-label { display: none; }
+  .record-toolbar-group { flex-direction: row; align-items: center; gap: 6px; }
+  .note-style-tabs { flex-wrap: nowrap; overflow: visible; }
+  .note-style-pill {
+    width: auto !important;
+    flex-shrink: 0;
+    font-size: 0.78rem;
+    padding: 5px 11px;
+  }
+  .suggestive-assist-chip-body {
+    width: auto !important;
+    white-space: nowrap;
+    font-size: 0.78rem;
   }
   .recorder-shell { padding: 14px 12px; }
   .recorder-timer { font-size: 1.6rem; }

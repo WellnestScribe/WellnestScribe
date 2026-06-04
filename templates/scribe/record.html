@@ -3,6 +3,60 @@
 
 {% block title %}New session · WellNest Scribe{% endblock %}
 
+{% block extra_head %}
+<style>
+.mode-tabs {
+  display: flex; gap: 4px; margin-bottom: 1rem;
+  border-bottom: 2px solid var(--bs-border-color); padding-bottom: 0;
+}
+.mode-tab {
+  padding: 6px 16px; border: none; background: none; border-radius: 4px 4px 0 0;
+  font-size: 0.85rem; font-weight: 600; color: var(--bs-secondary-color);
+  cursor: pointer; transition: color 0.15s; position: relative; bottom: -2px;
+  border-bottom: 2px solid transparent;
+}
+.mode-tab.is-active {
+  color: var(--wellnest-blue, #0d6efd);
+  border-bottom-color: var(--wellnest-blue, #0d6efd);
+}
+.mode-panel { display: none; }
+.mode-panel.is-active { display: block; }
+#ambientStatus {
+  font-size: 0.82rem; color: var(--bs-secondary-color);
+  min-height: 1.4em; text-align: center; margin-top: 6px;
+}
+/* Collapse note-style pills to active-only on pointer devices; expand on hover.
+   white-space: nowrap prevents mid-word wrapping during the max-width transition.
+   The collapse delay (0.25s) prevents the jitter loop caused by the expanding
+   pills shifting the container boundary back under the cursor. */
+@media (hover: hover) {
+  .note-style-tabs .note-style-pill:not(.is-active) {
+    max-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 0;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    pointer-events: none;
+    /* delay collapse so tiny cursor exits don't trigger rapid toggle */
+    transition: max-width 0.2s ease 0.25s, opacity 0.15s ease 0.25s,
+                padding 0.15s ease 0.25s;
+  }
+  .note-style-tabs:hover .note-style-pill:not(.is-active),
+  .note-style-tabs.is-open .note-style-pill:not(.is-active) {
+    max-width: 140px;
+    opacity: 1;
+    padding-left: unset !important;
+    padding-right: unset !important;
+    pointer-events: auto;
+    /* expand immediately — no delay in this direction */
+    transition: max-width 0.2s ease 0s, opacity 0.15s ease 0s,
+                padding 0.15s ease 0s;
+  }
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div data-screen="record">
     <div class="row">
@@ -12,7 +66,7 @@
                     <h4 class="mb-1 fw-semibold">New session</h4>
                     <p class="text-muted mb-0 small">
                         Welcome back{% if profile.full_name %}, {{ profile.title }} {{ profile.full_name }}{% endif %}.
-                        Record a dictation, upload audio, or pick a template.
+                        Record a dictation or type the encounter below.
                     </p>
                 </div>
                 <span class="status-pill" id="recordStatus">Ready</span>
@@ -20,55 +74,28 @@
         </div>
     </div>
 
-    {% comment %}
-      Patient identity at the very top — Dr Elizabeth feedback. Optional.
-      Pilot rule: initials + DOB, avoid full names.
-    {% endcomment %}
-    <div class="patient-bar mb-3">
-        <div class="patient-bar-label">
-            <iconify-icon icon="iconamoon:profile-duotone" class="me-1 align-middle"></iconify-icon>
-            Patient
-            <span class="text-muted fw-normal" style="font-size:0.78rem; margin-left:6px;">
-                optional — initials + DOB recommended
-            </span>
-        </div>
-        <input type="text" id="patientName" class="form-control form-control-sm"
-               maxlength="120" placeholder="Name / initials (e.g. M.J.)">
-        <input type="text" id="patientIdentifier" class="form-control form-control-sm"
-               maxlength="120" placeholder="DOB / hospital # (e.g. 1968-04-12)">
-    </div>
-
-    <div class="quick-templates-bar mb-4">
-        <div class="quick-templates-label">
-            <iconify-icon icon="iconamoon:file-light" class="me-1 align-middle"></iconify-icon>
-            Quick start template
-        </div>
-        <div class="quick-templates-pills">
-            <button type="button" class="quick-pill" data-template="htn">
-                <iconify-icon icon="iconamoon:heart-duotone"></iconify-icon> Hypertension f/u
-            </button>
-            <button type="button" class="quick-pill" data-template="dm">
-                <iconify-icon icon="iconamoon:activity-duotone"></iconify-icon> Diabetes f/u
-            </button>
-            <button type="button" class="quick-pill" data-template="urti">
-                <iconify-icon icon="iconamoon:lungs-duotone"></iconify-icon> URTI / cold
-            </button>
-            <button type="button" class="quick-pill" data-template="gastro">
-                <iconify-icon icon="iconamoon:warning-2-duotone"></iconify-icon> Gastro
-            </button>
-            <button type="button" class="quick-pill" data-template="antenatal">
-                <iconify-icon icon="iconamoon:baby-duotone"></iconify-icon> Antenatal
-            </button>
-            <button type="button" class="quick-pill" data-template="paeds">
-                <iconify-icon icon="iconamoon:profile-duotone"></iconify-icon> Paediatric
-            </button>
-        </div>
-    </div>
+    {# Hidden fields: patient identity is captured on the review screen after the session is created #}
+    <input type="hidden" id="patientName" value="">
+    <input type="hidden" id="patientIdentifier" value="">
 
     <div class="row g-4">
         <div class="col-12 col-xl-7">
             <div class="card h-100">
                 <div class="card-body p-4">
+                    {# Mode tabs: Dictation vs Ambient #}
+                    <div class="mode-tabs" role="tablist" aria-label="Recording mode">
+                        <button type="button" class="mode-tab is-active" data-mode="dictation" role="tab" aria-selected="true">
+                            <iconify-icon icon="iconamoon:microphone-duotone" class="me-1 align-middle"></iconify-icon>
+                            Dictation
+                        </button>
+                        <button type="button" class="mode-tab" data-mode="ambient" role="tab" aria-selected="false">
+                            <iconify-icon icon="iconamoon:chat-conversation-duotone" class="me-1 align-middle"></iconify-icon>
+                            Ambient
+                        </button>
+                    </div>
+
+                    <div class="mode-panel is-active" id="panelDictation">
+
                     <select id="noteFormatSelect" class="d-none" aria-hidden="true" tabindex="-1">
                         {% for value, label in format_choices %}
                             <option value="{{ value }}" {% if value == profile.default_note_style %}selected{% endif %}>{{ label }}</option>
@@ -113,6 +140,12 @@
                             </label>
                         </div>
                     </div>
+
+                    <p id="micCalibrationHint" class="text-muted mb-2" style="font-size:0.78rem;">
+                        <iconify-icon icon="iconamoon:microphone-duotone" class="me-1 align-middle text-primary"></iconify-icon>
+                        First time? <button type="button" class="btn btn-link p-0 fw-semibold" id="micCalibrationTrigger" style="font-size:0.78rem;vertical-align:baseline;">Check your mic</button> before recording.
+                        <button type="button" class="btn btn-link p-0 ms-2 text-muted" id="micCalibrationDismiss" style="font-size:0.72rem;vertical-align:baseline;" aria-label="Dismiss">✕</button>
+                    </p>
 
                     <div class="recorder-shell text-center">
                         <div class="mic-live-dot" id="micLiveDot"></div>
@@ -173,13 +206,43 @@
                         </div>
                     </div>
 
+                    {# Mobile-only: compact recent sessions strip — saves scrolling on small screens #}
+                    {% if recent_sessions %}
+                    <div class="d-xl-none mt-3">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <span class="text-muted fw-semibold" style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.07em;">Recent</span>
+                            <a href="{% url 'scribe:history' %}" class="text-decoration-none" style="font-size:0.75rem;">See all</a>
+                        </div>
+                        <div class="d-flex flex-column gap-1">
+                            {% for s in recent_sessions|slice:":3" %}
+                            <a href="{% url 'scribe:review' s.pk %}"
+                               class="session-row py-2 text-decoration-none"
+                               style="border-radius:10px;border-bottom:none;">
+                                <span class="session-icon" style="width:30px;height:30px;font-size:0.95rem;">
+                                    <iconify-icon icon="iconamoon:file-document-duotone"></iconify-icon>
+                                </span>
+                                <span class="flex-grow-1 overflow-hidden">
+                                    <span class="d-block fw-semibold text-truncate" style="font-size:0.83rem;">
+                                        {% if s.patient_name %}{{ s.patient_name }}{% else %}{{ s.created_at|date:"M j, Y" }}{% endif %}
+                                    </span>
+                                    <span class="d-block text-muted text-truncate" style="font-size:0.74rem;">
+                                        {{ s.created_at|date:"M j · g:i A" }}{% if s.chief_complaint %} · {{ s.chief_complaint|truncatechars:28 }}{% endif %}
+                                    </span>
+                                </span>
+                                <iconify-icon icon="iconamoon:arrow-right-2-light" class="text-muted flex-shrink-0"></iconify-icon>
+                            </a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
                     <hr class="my-4">
 
                     <h6 class="fw-semibold mb-2">Or type the encounter</h6>
                     <p class="text-muted small mb-2">
-                        Pick a template above to scaffold the note, or type free-form. Replace
-                        bracketed placeholders with this patient&rsquo;s details — the AI fills
-                        in only what you actually state.
+                        Type free-form or paste a dictation. The AI fills in only what you
+                        actually state — patient name and encounter type are confirmed on the
+                        next screen.
                     </p>
                     <textarea id="manualTranscript"
                               class="note-textarea"
@@ -191,11 +254,85 @@
                             Generate note from text
                         </button>
                     </div>
+
+                    </div>{# end #panelDictation #}
+
+                    {# ---- Ambient mode panel ---- #}
+                    <div class="mode-panel" id="panelAmbient">
+
+                        {# TEMPORARY backend toggle for latency testing #}
+                        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                            <span class="small text-muted fw-semibold">ASR backend:</span>
+                            <div class="btn-group btn-group-sm" role="group" id="ambientBackendGroup">
+                                <input type="radio" class="btn-check" name="ambientBackend" id="backendModal" value="modal" autocomplete="off" {% if ambient_backend == 'modal' %}checked{% endif %}>
+                                <label class="btn btn-outline-primary" for="backendModal">
+                                    <iconify-icon icon="iconamoon:lightning-1-duotone" class="me-1 align-middle"></iconify-icon>
+                                    Modal L4 GPU
+                                </label>
+                                <input type="radio" class="btn-check" name="ambientBackend" id="backendLocal" value="local" autocomplete="off" {% if ambient_backend != 'modal' %}checked{% endif %}>
+                                <label class="btn btn-outline-secondary" for="backendLocal">
+                                    <iconify-icon icon="iconamoon:cpu-duotone" class="me-1 align-middle"></iconify-icon>
+                                    Local CPU
+                                </label>
+                            </div>
+                            <span class="badge bg-warning-subtle text-warning border border-warning-subtle" style="font-size:0.65rem;">TEMP · testing</span>
+                        </div>
+
+                        <div class="recorder-shell text-center">
+                            <div class="mic-live-dot" id="ambientMicDot"></div>
+                            <div class="recorder-timer" id="ambientTimer">0:00</div>
+                            <div class="waveform-bars" id="ambientWaveform"></div>
+                            <div class="d-flex justify-content-center align-items-center mt-3 gap-3">
+                                <button type="button" class="record-cta" id="ambientRecordBtn" aria-label="Start ambient recording">
+                                    <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+                                    <span id="ambientBtnLabel">Record</span>
+                                </button>
+                                <button type="button" class="btn btn-outline-danger btn-sm" id="ambientCancelBtn"
+                                        style="display:none;" aria-label="Cancel">
+                                    <iconify-icon icon="iconamoon:close-circle-1-duotone" class="me-1 align-middle"></iconify-icon>
+                                    Cancel
+                                </button>
+                            </div>
+                            <p id="ambientStatus" class="mt-2"></p>
+                        </div>
+
+                        {# TEMPORARY timing card — shown after processing completes #}
+                        <div id="ambientTimingCard" class="card border-0 bg-light mt-3 d-none">
+                            <div class="card-body py-2 px-3 small">
+                                <div class="fw-semibold mb-1 text-muted" style="font-size:0.7rem;letter-spacing:0.06em;">
+                                    LATENCY STATS (TEMP)
+                                </div>
+                                <div class="d-flex flex-wrap gap-3" id="ambientTimingBody"></div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex align-items-center gap-2 mt-3">
+                            <hr class="flex-grow-1 my-0">
+                            <span class="small text-muted px-1">or</span>
+                            <hr class="flex-grow-1 my-0">
+                        </div>
+                        <div class="mt-3">
+                            <button type="button" class="btn btn-outline-secondary w-100" id="ambientUploadBtn">
+                                <iconify-icon icon="iconamoon:cloud-upload-duotone" class="me-1 align-middle"></iconify-icon>
+                                Upload audio file
+                            </button>
+                            <input type="file" id="ambientFileInput" accept="audio/*,video/*" hidden>
+                        </div>
+
+                        <div class="alert alert-info border mt-3 mb-0 small">
+                            <iconify-icon icon="iconamoon:chat-conversation-duotone" class="me-1 align-middle"></iconify-icon>
+                            <strong>Ambient mode</strong> — records the full room conversation.
+                            Modal L4 GPU: fast inference (~1–2 s per 25 s of audio) but ~50 s round-trip
+                            due to upload + preprocessing. Local CPU: no network, but 1–5 min on CPU.
+                            Do not close this tab while processing.
+                        </div>
+                    </div>{# end #panelAmbient #}
+
                 </div>
             </div>
         </div>
 
-        <div class="col-12 col-xl-5">
+        <div class="col-12 col-xl-5 d-none d-xl-block">
             <div class="card h-100">
                 <div class="card-body p-4">
                     <div class="d-flex align-items-center justify-content-between mb-3">
@@ -221,9 +358,11 @@
                                         <iconify-icon icon="iconamoon:file-document-duotone"></iconify-icon>
                                     </span>
                                     <span class="flex-grow-1">
-                                        <span class="d-block fw-semibold">{{ s.display_title }}</span>
+                                        <span class="d-block fw-semibold">
+                                            {% if s.patient_name %}{{ s.patient_name }}{% else %}{{ s.created_at|date:"M j, Y" }}{% endif %}
+                                        </span>
                                         <span class="d-block small text-muted">
-                                            {{ s.created_at|date:"M j, Y · g:i A" }} · {{ s.get_status_display }}
+                                            {{ s.created_at|date:"M j · g:i A" }}{% if s.chief_complaint %} · {{ s.chief_complaint|truncatechars:42 }}{% else %} · {{ s.get_status_display }}{% endif %}
                                         </span>
                                     </span>
                                     <iconify-icon icon="iconamoon:arrow-right-2-light" class="text-muted"></iconify-icon>
@@ -251,4 +390,420 @@
         </div>
     </div>
 </div>
+{# ---- Patient consent modal — shown before every new recording ---- #}
+<div class="modal fade" id="consentModal" tabindex="-1"
+     aria-labelledby="consentModalLabel"
+     data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:500px;">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-1">
+                <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="consentModalLabel">
+                    <iconify-icon icon="iconamoon:shield-check-duotone" class="text-primary" style="font-size:1.3rem;"></iconify-icon>
+                    Patient Consent
+                </h5>
+            </div>
+            <div class="modal-body pt-1">
+
+                {# Suggested script for the doctor to read to the patient #}
+                <p class="small fw-semibold text-muted mb-1" style="letter-spacing:0.04em;text-transform:uppercase;font-size:0.7rem;">
+                    Suggested script — read this to your patient:
+                </p>
+                <div class="rounded-3 p-3 mb-3" style="background:var(--bs-primary-bg-subtle,#e7f0ff);border:1px solid var(--bs-primary-border-subtle,#b6d4fe);font-size:0.9rem;line-height:1.65;font-style:italic;color:var(--bs-emphasis-color,#212529);">
+                    &ldquo;I&rsquo;d like to use a tool today that listens to our conversation and automatically writes up my notes for me. It uses an AI — kind of like a smart computer assistant — so I can focus on you instead of writing while we talk. The recording is kept private, only used to create your notes, and deleted automatically after 30 days. You&rsquo;re welcome to say no at any time and I&rsquo;ll just take notes the regular way. Are you okay with that?&rdquo;
+                </div>
+
+                <p class="small text-muted mb-3" style="font-size:0.78rem;">
+                    <iconify-icon icon="iconamoon:information-circle-duotone" class="me-1 align-middle"></iconify-icon>
+                    Verbal consent is acceptable under the Data Protection Act. Tick below once the patient agrees.
+                </p>
+
+                {# Big tap-friendly consent toggle #}
+                <label for="consentCheckbox"
+                       id="consentToggleLabel"
+                       style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:12px;cursor:pointer;border:2px solid var(--bs-border-color);transition:border-color 0.15s,background 0.15s;user-select:none;">
+                    <input type="checkbox" id="consentCheckbox" style="display:none;">
+                    <span id="consentToggleIcon"
+                          style="flex-shrink:0;width:40px;height:40px;border-radius:50%;background:var(--bs-border-color);display:flex;align-items:center;justify-content:center;transition:background 0.15s;font-size:1.3rem;">
+                        <iconify-icon icon="iconamoon:check-circle-1-duotone" style="color:#fff;"></iconify-icon>
+                    </span>
+                    <span>
+                        <span class="d-block fw-semibold" style="font-size:0.92rem;">Patient has given verbal consent</span>
+                        <span class="d-block text-muted" style="font-size:0.78rem;">Tap here once the patient agrees to the recording</span>
+                    </span>
+                </label>
+
+            </div>
+            <div class="modal-footer border-0 pt-0 gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="consentModalCancelBtn">
+                    Do not record
+                </button>
+                <button type="button" class="btn btn-primary" id="consentModalProceedBtn" disabled>
+                    <iconify-icon icon="iconamoon:microphone-duotone" class="me-1 align-middle"></iconify-icon>
+                    Start recording
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  /* ---- Mode tab switcher ---- */
+  document.querySelectorAll('.mode-tab').forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      document.querySelectorAll('.mode-tab').forEach(function (t) {
+        t.classList.remove('is-active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      document.querySelectorAll('.mode-panel').forEach(function (p) {
+        p.classList.remove('is-active');
+      });
+      tab.classList.add('is-active');
+      tab.setAttribute('aria-selected', 'true');
+      var panel = document.getElementById('panel' + tab.dataset.mode.charAt(0).toUpperCase() + tab.dataset.mode.slice(1));
+      if (panel) panel.classList.add('is-active');
+    });
+  });
+
+  /* ---- Ambient recording + MMS pipeline ---- */
+  var CSRF = '{{ csrf_token }}';
+  var ambientRecordBtn = document.getElementById('ambientRecordBtn');
+  var ambientCancelBtn = document.getElementById('ambientCancelBtn');
+  var ambientTimer     = document.getElementById('ambientTimer');
+  var ambientWaveform  = document.getElementById('ambientWaveform');
+  var ambientMicDot    = document.getElementById('ambientMicDot');
+  var ambientStatus    = document.getElementById('ambientStatus');
+  var ambientBtnLabel  = document.getElementById('ambientBtnLabel');
+
+  var ambientMediaRecorder = null;
+  var ambientChunks = [];
+  var ambientTimerInterval = null;
+  var ambientElapsed = 0;
+  var ambientRunning = false;
+
+  function formatTime(s) {
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  }
+
+  ambientRecordBtn.addEventListener('click', function () {
+    if (ambientRunning) {
+      stopAmbient();
+    } else if (typeof window.WELLNEST_beforeRecord === 'function') {
+      window.WELLNEST_beforeRecord(startAmbient);
+    } else {
+      startAmbient();
+    }
+  });
+
+  ambientCancelBtn.addEventListener('click', function () {
+    if (ambientMediaRecorder && ambientMediaRecorder.state !== 'inactive') {
+      ambientMediaRecorder.stop();
+    }
+    resetAmbientUI();
+    ambientStatus.textContent = 'Cancelled.';
+  });
+
+  function startAmbient() {
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      ambientChunks = [];
+      ambientMediaRecorder = new MediaRecorder(stream);
+      ambientMediaRecorder.ondataavailable = function (e) {
+        if (e.data.size > 0) ambientChunks.push(e.data);
+      };
+      ambientMediaRecorder.onstop = function () {
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        var blob = new Blob(ambientChunks, { type: 'audio/webm' });
+        runAmbientPipeline(blob);
+      };
+      ambientMediaRecorder.start(1000);
+      ambientRunning = true;
+      ambientElapsed = 0;
+      ambientBtnLabel.textContent = 'Stop';
+      ambientRecordBtn.classList.add('is-recording');
+      ambientCancelBtn.style.display = '';
+      ambientMicDot.classList.add('is-active');
+      ambientTimerInterval = setInterval(function () {
+        ambientElapsed++;
+        ambientTimer.textContent = formatTime(ambientElapsed);
+      }, 1000);
+      ambientStatus.textContent = 'Recording room audio…';
+    }).catch(function (err) {
+      ambientStatus.textContent = 'Microphone access denied: ' + err.message;
+    });
+  }
+
+  function stopAmbient() {
+    ambientRunning = false;
+    clearInterval(ambientTimerInterval);
+    ambientMicDot.classList.remove('is-active');
+    ambientBtnLabel.textContent = 'Record';
+    ambientRecordBtn.classList.remove('is-recording');
+    ambientCancelBtn.style.display = 'none';
+    if (ambientMediaRecorder && ambientMediaRecorder.state !== 'inactive') {
+      ambientMediaRecorder.stop();
+    }
+  }
+
+  function resetAmbientUI() {
+    ambientRunning = false;
+    clearInterval(ambientTimerInterval);
+    ambientMicDot.classList.remove('is-active');
+    ambientBtnLabel.textContent = 'Record';
+    ambientRecordBtn.classList.remove('is-recording');
+    ambientRecordBtn.disabled = false;
+    ambientCancelBtn.style.display = 'none';
+    ambientTimer.textContent = '0:00';
+  }
+
+  /* ---- Ambient file upload ---- */
+  var ambientUploadBtn = document.getElementById('ambientUploadBtn');
+  var ambientFileInput = document.getElementById('ambientFileInput');
+  if (ambientUploadBtn && ambientFileInput) {
+    ambientUploadBtn.addEventListener('click', function () { ambientFileInput.click(); });
+    ambientFileInput.addEventListener('change', function () {
+      var file = ambientFileInput.files[0];
+      if (!file) return;
+      ambientFileInput.value = '';
+      runAmbientPipeline(file);
+    });
+  }
+
+  function getAmbientBackend() {
+    var checked = document.querySelector('input[name="ambientBackend"]:checked');
+    return checked ? checked.value : 'modal';
+  }
+
+  function showTimingCard(result) {
+    /* TEMPORARY - display Modal latency stats */
+    var card = document.getElementById('ambientTimingCard');
+    var body = document.getElementById('ambientTimingBody');
+    if (!card || !body) return;
+    var stats = [];
+    if (result.audio_seconds != null)
+      stats.push({ label: 'Audio', val: result.audio_seconds.toFixed(1) + ' s' });
+    if (result.inference_ms != null)
+      stats.push({ label: 'Inference', val: (result.inference_ms / 1000).toFixed(2) + ' s' });
+    if (result.preprocessing_ms != null)
+      stats.push({ label: 'Preprocess', val: (result.preprocessing_ms / 1000).toFixed(1) + ' s' });
+    if (result.total_ms != null)
+      stats.push({ label: 'Total RTT', val: (result.total_ms / 1000).toFixed(1) + ' s' });
+    if (result.realtime_factor != null)
+      stats.push({ label: 'RTFx', val: result.realtime_factor.toFixed(3) });
+    if (result.model_device)
+      stats.push({ label: 'Device', val: result.model_device });
+    body.innerHTML = stats.map(function (s) {
+      return '<span><span class="text-muted">' + s.label + ':</span> <strong>' + s.val + '</strong></span>';
+    }).join('');
+    card.classList.remove('d-none');
+  }
+
+  async function safeJson(resp, label) {
+    if (!resp.ok) {
+      var body = '';
+      try { body = await resp.text(); } catch (_) {}
+      var snippet = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+      throw new Error('[' + label + '] HTTP ' + resp.status + (snippet ? ': ' + snippet : ''));
+    }
+    return resp.json();
+  }
+
+  async function runAmbientPipeline(blob) {
+    ambientRecordBtn.disabled = true;
+    var backend = getAmbientBackend();
+    var backendLabel = backend === 'modal' ? 'Modal L4 GPU' : 'Local CPU';
+    ambientStatus.textContent = 'Uploading audio...';
+
+    try {
+      // 1. Create session with audio
+      var activeStyleBtn = document.querySelector('.note-style-pill.is-active');
+      var noteStyle = activeStyleBtn ? activeStyleBtn.dataset.noteStyle : 'soap';
+      var formData = new FormData();
+      formData.append('note_format', noteStyle);
+      formData.append('audio', blob, 'ambient-' + Date.now() + '.webm');
+      formData.append('csrfmiddlewaretoken', CSRF);
+      if (window.WELLNEST_consentGiven) formData.append('consent_acknowledged', '1');
+
+      var createResp = await fetch('/scribe/api/sessions/', { method: 'POST', credentials: 'same-origin', body: formData });
+      var createData = await safeJson(createResp, 'create-session');
+      if (!createData.ok) throw new Error(createData.error || 'Could not create session.');
+      var sessionId = createData.session_id;
+
+      // 2. Submit ambient job with selected backend
+      ambientStatus.textContent = 'Sending to ' + backendLabel + '...';
+      var ambResp = await fetch('/scribe/api/sessions/' + sessionId + '/ambient-transcribe/', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({ backend: backend })
+      });
+      var ambData = await safeJson(ambResp, 'ambient-transcribe');
+      if (!ambData.ok) throw new Error(ambData.error || 'Failed to start transcription.');
+      var jobId = ambData.job_id;
+
+      // 3. Poll — Modal fast (~50s RTT), local CPU can be minutes
+      var pollMs = backend === 'modal' ? 2000 : 4000;
+      var transcript = null;
+      var jobResult = {};
+      while (true) {
+        await new Promise(function (r) { setTimeout(r, pollMs); });
+        var statusResp = await fetch('/scribe/api/ambient-jobs/' + jobId + '/', { credentials: 'same-origin' });
+        var statusData = await safeJson(statusResp, 'job-poll');
+        if (!statusData.ok) throw new Error('Could not read job status.');
+        var job = statusData.job;
+        var elapsed = Math.round((job.elapsed_ms || 0) / 1000);
+        ambientStatus.textContent = (job.stage || 'Processing...') + ' — ' + elapsed + 's';
+        if (job.status === 'done') {
+          transcript = job.result.raw_text;
+          jobResult = job.result;
+          break;
+        }
+        if (job.status === 'error') throw new Error(job.error || 'Transcription failed.');
+      }
+
+      // TEMPORARY: show timing card if Modal returned stats
+      if (jobResult.backend === 'modal') showTimingCard(jobResult);
+
+      if (!transcript || transcript.trim().length < 10) {
+        throw new Error('MMS returned an empty transcript. Try a longer recording (30+ seconds).');
+      }
+
+      // 4. Generate note
+      ambientStatus.textContent = 'Generating note...';
+      var genResp = await fetch('/scribe/api/sessions/' + sessionId + '/generate/', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({ transcript: transcript, note_format: noteStyle })
+      });
+      var genData = await safeJson(genResp, 'generate');
+      if (!genData.ok) throw new Error(genData.error || 'Note generation failed.');
+
+      // 5. Redirect to review
+      window.location.href = '/scribe/sessions/' + sessionId + '/review/';
+
+    } catch (err) {
+      ambientStatus.textContent = 'Error: ' + err.message;
+      ambientRecordBtn.disabled = false;
+    }
+  }
+}());
+</script>
+
+<script>
+(function () {
+  /* ---- Patient consent gate ---- */
+  var _consentGiven = false;
+  var _pendingProceed = null;
+
+  var consentModal = document.getElementById('consentModal');
+  var consentCheckbox = document.getElementById('consentCheckbox');
+  var consentProceedBtn = document.getElementById('consentModalProceedBtn');
+  var consentCancelBtn = document.getElementById('consentModalCancelBtn');
+
+  function showConsentModal(proceed) {
+    _pendingProceed = proceed;
+    if (consentCheckbox) { consentCheckbox.checked = false; _syncConsentToggle(false); }
+    if (consentProceedBtn) consentProceedBtn.disabled = true;
+    if (consentModal && typeof bootstrap !== 'undefined') {
+      bootstrap.Modal.getOrCreateInstance(consentModal).show();
+    } else {
+      if (confirm('Have you obtained the patient\'s verbal consent to record this consultation?')) {
+        _consentGiven = true;
+        if (proceed) proceed();
+      }
+    }
+  }
+
+  var consentToggleLabel = document.getElementById('consentToggleLabel');
+  var consentToggleIcon = document.getElementById('consentToggleIcon');
+
+  function _syncConsentToggle(checked) {
+    if (consentToggleLabel) {
+      consentToggleLabel.style.borderColor = checked ? '#0d6efd' : 'var(--bs-border-color)';
+      consentToggleLabel.style.background = checked ? 'var(--bs-primary-bg-subtle,#e7f0ff)' : '';
+    }
+    if (consentToggleIcon) {
+      consentToggleIcon.style.background = checked ? '#0d6efd' : 'var(--bs-border-color)';
+    }
+    if (consentProceedBtn) consentProceedBtn.disabled = !checked;
+  }
+
+  if (consentToggleLabel) {
+    consentToggleLabel.addEventListener('click', function () {
+      var newVal = !consentCheckbox.checked;
+      consentCheckbox.checked = newVal;
+      _syncConsentToggle(newVal);
+    });
+  }
+
+  if (consentCheckbox) {
+    consentCheckbox.addEventListener('change', function () {
+      _syncConsentToggle(consentCheckbox.checked);
+    });
+  }
+
+  if (consentProceedBtn) {
+    consentProceedBtn.addEventListener('click', function () {
+      _consentGiven = true;
+      window.WELLNEST_consentGiven = true;  // wellnest.js reads this in uploadAndProcess
+      if (consentModal && typeof bootstrap !== 'undefined') {
+        bootstrap.Modal.getInstance(consentModal).hide();
+      }
+      var fn = _pendingProceed;
+      _pendingProceed = null;
+      if (fn) fn();
+    });
+  }
+
+  if (consentCancelBtn) {
+    consentCancelBtn.addEventListener('click', function () {
+      _pendingProceed = null;
+      if (consentModal && typeof bootstrap !== 'undefined') {
+        bootstrap.Modal.getInstance(consentModal).hide();
+      }
+    });
+  }
+
+  // Expose gate — wellnest.js calls this before startRecording()
+  window.WELLNEST_beforeRecord = function (proceed) {
+    if (_consentGiven) { proceed(); return; }
+    showConsentModal(proceed);
+  };
+
+  /* ---- Mic calibration hint banner ---- */
+  var hint = document.getElementById('micCalibrationHint');
+  var trigger = document.getElementById('micCalibrationTrigger');
+  var dismiss = document.getElementById('micCalibrationDismiss');
+  var settingsToggle = document.getElementById('micSettingsToggle');
+  var settingsPanel = document.getElementById('micSettingsPanel');
+
+  // Hide hint if user has previously dismissed it this session
+  if (sessionStorage.getItem('wn_mic_hint_dismissed')) {
+    if (hint) hint.style.display = 'none';
+  }
+
+  if (trigger && settingsToggle) {
+    trigger.addEventListener('click', function () {
+      // Open mic settings panel if not already open
+      if (settingsPanel && settingsPanel.style.display !== '') settingsToggle.click();
+      if (hint) hint.style.display = 'none';
+    });
+  }
+
+  if (dismiss) {
+    dismiss.addEventListener('click', function () {
+      if (hint) hint.style.display = 'none';
+      sessionStorage.setItem('wn_mic_hint_dismissed', '1');
+    });
+  }
+
+  // Hide hint once recording starts
+  var recordBtn = document.getElementById('recordBtn');
+  if (recordBtn) {
+    recordBtn.addEventListener('click', function () {
+      if (hint) hint.style.display = 'none';
+    }, { once: true });
+  }
+}());
+</script>
 {% endblock %}

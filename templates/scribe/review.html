@@ -3,10 +3,139 @@
 
 {% block title %}Review note · WellNest Scribe{% endblock %}
 
+{% block extra_head %}
+<style>
+.patient-review-bar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--wellnest-radius, 8px);
+  padding: 8px 14px;
+  margin-bottom: 1rem;
+}
+.patient-review-bar .prb-label {
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em;
+  color: var(--bs-secondary-color); white-space: nowrap; min-width: 54px;
+}
+.patient-review-bar .prb-field {
+  flex: 1 1 160px; min-width: 120px; max-width: 260px;
+  border: none; border-bottom: 1.5px dashed var(--bs-border-color);
+  background: transparent; font-size: 0.85rem; color: inherit;
+  padding: 2px 4px; outline: none; transition: border-color 0.15s;
+}
+.patient-review-bar .prb-field:focus { border-bottom-color: var(--wellnest-blue, #0d6efd); }
+.patient-review-bar .prb-field::placeholder { color: var(--bs-secondary-color); opacity: 0.6; }
+.patient-review-bar .prb-complaint {
+  flex: 2 1 240px; min-width: 180px; max-width: 400px;
+}
+/* ── Bracket placeholder highlight overlay ── */
+@media not print {
+  .bracket-textarea-wrap { position: relative; display: block; }
+  .bracket-mirror {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none; overflow: hidden;
+    white-space: pre-wrap; word-break: break-word;
+    padding: 14px 16px;
+    font-family: var(--wellnest-font, inherit);
+    font-size: 1rem; line-height: 1.55;
+    border: 1px solid transparent; border-radius: 12px;
+    box-sizing: border-box; color: transparent; background: transparent; z-index: 0;
+  }
+  .bracket-mirror .bk-hl {
+    background: rgba(13,110,253,0.13); border-radius: 3px;
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  }
+  .bracket-mirror .bk-hl.drug-hl { background: rgba(220,120,0,0.15); }
+  .note-textarea[data-note-field] { position: relative; z-index: 1; background: transparent !important; }
+}
+/* Missing bracket badge */
+.bracket-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  background: rgba(13,110,253,0.10); color: #0d6efd;
+  border: 1px solid rgba(13,110,253,0.25); border-radius: 10px;
+  padding: 1px 7px; font-size: 0.72rem; font-weight: 600;
+  vertical-align: middle; margin-left: 6px;
+}
+/* Bracket fill popover */
+.bracket-popover {
+  position: fixed; z-index: 9999;
+  background: var(--bs-body-bg); border: 1px solid var(--bs-border-color);
+  border-radius: 10px; padding: 12px 14px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+  min-width: 240px; max-width: 320px; font-size: 0.88rem;
+}
+.bracket-popover .bp-title {
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--bs-secondary-color); margin-bottom: 8px;
+}
+.bracket-popover .bp-input {
+  width: 100%; border: 1px solid var(--bs-border-color); border-radius: 6px;
+  padding: 6px 9px; background: var(--bs-body-bg); color: var(--bs-body-color);
+  font-size: 0.9rem; margin-bottom: 8px; box-sizing: border-box;
+}
+.bracket-popover .bp-input:focus { outline: none; border-color: #0d6efd; }
+.bp-drug-list {
+  list-style: none; margin: 0 0 8px; padding: 0;
+  max-height: 128px; overflow-y: auto;
+  border: 1px solid var(--bs-border-color); border-radius: 6px;
+}
+.bp-drug-list li { padding: 5px 10px; cursor: pointer; font-size: 0.84rem; }
+.bp-drug-list li:hover { background: rgba(13,110,253,0.08); }
+.bp-drug-list li.is-sel { background: rgba(13,110,253,0.14); font-weight: 600; }
+.bp-dose-row { display: flex; gap: 6px; margin-bottom: 8px; }
+.bp-dose-row input, .bp-dose-row select {
+  border: 1px solid var(--bs-border-color); border-radius: 6px;
+  padding: 5px 8px; background: var(--bs-body-bg); color: var(--bs-body-color); font-size: 0.85rem;
+}
+.bp-dose-row input { flex: 1; min-width: 0; }
+.bp-dose-row input:focus, .bp-dose-row select:focus { outline: none; border-color: #0d6efd; }
+.bp-actions { display: flex; gap: 6px; }
+.bp-apply {
+  flex: 1; background: #0d6efd; color: #fff; border: none;
+  border-radius: 6px; padding: 6px 0; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+}
+.bp-apply:hover { background: #0b5ed7; }
+.bp-cancel {
+  background: transparent; border: 1px solid var(--bs-border-color);
+  border-radius: 6px; padding: 6px 10px; font-size: 0.85rem;
+  cursor: pointer; color: var(--bs-secondary-color);
+}
+/* Quick-erase button (appears on text selection) */
+#quickEraseBtn {
+  position: fixed; z-index: 9998;
+  display: none;
+  background: #d33b46; color: #fff; border: none;
+  border-radius: 6px; padding: 4px 10px;
+  font-size: 0.78rem; font-weight: 600;
+  cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  align-items: center; gap: 5px;
+  white-space: nowrap;
+}
+#quickEraseBtn:hover { background: #b02a35; }
+
+/* Auto-detected encounter chip */
+#detectedEncounterWrap {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px;
+}
+.detected-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--wellnest-blue-soft, #e8f0fe);
+  border: 1px solid var(--wellnest-blue, #0d6efd);
+  color: var(--wellnest-blue, #0d6efd);
+  border-radius: 20px; padding: 3px 10px; font-size: 0.78rem; font-weight: 600;
+}
+.detected-chip-dismiss { cursor: pointer; opacity: 0.7; }
+.detected-chip-dismiss:hover { opacity: 1; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div data-screen="review"
      data-session-id="{{ session.pk }}"
      data-finalized="{% if session.status == 'finalized' %}1{% else %}0{% endif %}"
+     data-created="{{ session.created_at|date:'M j, Y · g:i A' }}"
+     data-has-custom-title="{% if session.title %}1{% else %}0{% endif %}"
+     data-is-sensitive="{% if session.is_sensitive %}1{% else %}0{% endif %}"
      class="{% if session.status == 'finalized' %}review-finalized{% endif %}">
 
 {% if session.status == 'finalized' %}
@@ -58,6 +187,31 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    {# Patient info bar — fills from session data; editable inline; saves on blur via save_note_api #}
+    <div class="patient-review-bar" id="patientReviewBar">
+        <span class="prb-label">
+            <iconify-icon icon="iconamoon:profile-duotone" class="me-1 align-middle"></iconify-icon>
+            Patient
+        </span>
+        <input type="text" class="prb-field" id="prbName"
+               placeholder="Name / initials"
+               value="{{ session.patient_name }}"
+               maxlength="120"
+               {% if session.status == 'finalized' %}readonly{% endif %}>
+        <input type="text" class="prb-field" id="prbIdentifier"
+               placeholder="DOB / ID #"
+               value="{{ session.patient_identifier }}"
+               maxlength="120"
+               style="max-width:180px;"
+               {% if session.status == 'finalized' %}readonly{% endif %}>
+        <input type="text" class="prb-field prb-complaint" id="prbComplaint"
+               placeholder="Chief complaint (e.g. Hypertension f/u)"
+               value="{{ session.chief_complaint }}"
+               maxlength="200"
+               {% if session.status == 'finalized' %}readonly{% endif %}>
+        <div id="detectedEncounterWrap" style="display:none;"></div>
     </div>
 
     {% if session.status == 'error' %}
@@ -147,7 +301,8 @@
 
                         <div class="tab-pane fade" id="tab-transcript">
                             <p class="text-muted small mb-2">Transcript from the recorded audio. Editable — regenerate the note after changes.</p>
-                            <textarea class="note-textarea" rows="14" id="transcriptArea">{{ session.transcript }}</textarea>
+                            <textarea class="note-textarea" id="transcriptArea"
+                                      style="min-height:160px;resize:vertical;overflow-y:hidden;">{{ session.transcript }}</textarea>
                         </div>
 
                         <div class="tab-pane fade" id="tab-bodydiagram">
@@ -228,6 +383,10 @@
                             <iconify-icon icon="iconamoon:copy-duotone" class="me-1 align-middle"></iconify-icon>
                             Copy to clipboard
                         </button>
+                        <button type="button" class="btn btn-outline-secondary" id="copyFhirBtn">
+                            <iconify-icon icon="iconamoon:code-duotone" class="me-1 align-middle"></iconify-icon>
+                            Copy FHIR
+                        </button>
                         <button type="button" class="btn btn-outline-secondary" id="qrBtn"
                                 data-bs-toggle="modal" data-bs-target="#shareModal">
                             <iconify-icon icon="iconamoon:scan-duotone" class="me-1 align-middle"></iconify-icon>
@@ -237,28 +396,46 @@
                             <iconify-icon icon="iconamoon:files-duotone" class="me-1 align-middle"></iconify-icon>
                             Send to EMR
                         </a>
-                        <button type="button" class="btn btn-outline-secondary" id="gnuHealthPushBtn"
-                                data-bs-toggle="modal" data-bs-target="#gnuHealthModal">
-                            <iconify-icon icon="iconamoon:cloud-upload-duotone" class="me-1 align-middle"></iconify-icon>
-                            Push to GNU Health
-                        </button>
                         {% if doctor_profile.suggestive_assist %}
                         <button type="button" class="btn btn-outline-secondary" id="improveBtn"
-                                title="For interns / juniors. Returns 3-6 bullets of things a more senior clinician would have added. Off by default; toggle 'Suggestive assist' on the record screen to enable.">
+                                title="For interns / juniors. Returns 3-6 bullets of things a more senior clinician would have added.">
                             <iconify-icon icon="iconamoon:lightning-1-duotone" class="me-1 align-middle"></iconify-icon>
                             Check for missing details
-                            <span class="text-muted ms-1" style="font-size:0.7rem;">for interns</span>
                         </button>
                         {% endif %}
-                        <button type="button" class="btn btn-outline-secondary" id="polishBtn">
-                            <iconify-icon icon="iconamoon:edit-duotone" class="me-1 align-middle"></iconify-icon>
-                            Polish grammar
+                        <button type="button"
+                                class="btn {% if session.is_sensitive %}btn-warning{% else %}btn-outline-secondary{% endif %} btn-sm"
+                                id="sensitiveToggleBtn"
+                                title="Mark/unmark as sensitive (HIV, mental health, reproductive health, substance use). Blocks share links and adds enhanced audit logging.">
+                            <iconify-icon icon="iconamoon:lock-duotone" class="me-1 align-middle"></iconify-icon>
+                            {% if session.is_sensitive %}Sensitive — click to unmark{% else %}Mark as sensitive{% endif %}
                         </button>
                         <button type="button" class="btn btn-success" id="finalizeBtn">
                             <iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon>
                             Mark reviewed
                         </button>
+                        <button type="button" class="btn btn-outline-danger btn-sm" id="deleteSessionBtn"
+                                title="Permanently delete this session and audio — satisfies patient right to erasure">
+                            <iconify-icon icon="iconamoon:trash-duotone" class="me-1 align-middle"></iconify-icon>
+                            Delete session
+                        </button>
                     </div>
+
+                    {# ---- Format switcher + Regenerate ---- #}
+                    <hr class="my-3">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span class="small fw-semibold text-muted text-uppercase" style="letter-spacing:0.06em;">Regenerate as</span>
+                        <span class="small text-muted" id="regenFormatHint">current: <strong>{{ session.get_note_format_display }}</strong></span>
+                    </div>
+                    <div class="d-flex gap-1 flex-wrap mb-2" id="regenFormatPills">
+                        <button type="button" class="quick-pill {% if session.note_format == 'soap' %}is-applied{% endif %}" data-regen-format="soap" style="font-size:0.8rem;padding:5px 12px;">SOAP</button>
+                        <button type="button" class="quick-pill {% if session.note_format == 'narrative' %}is-applied{% endif %}" data-regen-format="narrative" style="font-size:0.8rem;padding:5px 12px;">Narrative</button>
+                        <button type="button" class="quick-pill {% if session.note_format == 'chart' %}is-applied{% endif %}" data-regen-format="chart" style="font-size:0.8rem;padding:5px 12px;">Chart</button>
+                    </div>
+                    <button type="button" class="btn btn-outline-primary btn-sm w-100" id="regenerateAllBtn">
+                        <iconify-icon icon="iconamoon:restart-duotone" class="me-1 align-middle"></iconify-icon>
+                        Regenerate note
+                    </button>
 
                     <button type="button"
                             class="btn btn-link btn-sm text-decoration-none mt-2 px-0"
@@ -270,6 +447,10 @@
                     </button>
                     <div class="collapse" id="moreActions">
                         <div class="d-grid gap-2 mt-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="polishBtn">
+                                <iconify-icon icon="iconamoon:edit-duotone" class="me-1 align-middle"></iconify-icon>
+                                Polish grammar
+                            </button>
                             <button type="button" class="btn btn-outline-secondary btn-sm" id="whatsappBtn">
                                 <iconify-icon icon="iconamoon:send-duotone" class="me-1 align-middle"></iconify-icon>
                                 Share via WhatsApp
@@ -277,10 +458,6 @@
                             <button type="button" class="btn btn-outline-secondary btn-sm" id="printBtn">
                                 <iconify-icon icon="iconamoon:print-duotone" class="me-1 align-middle"></iconify-icon>
                                 Print / save as PDF
-                            </button>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" id="regenerateAllBtn">
-                                <iconify-icon icon="iconamoon:restart-duotone" class="me-1 align-middle"></iconify-icon>
-                                Regenerate from transcript
                             </button>
                             <button type="button" class="btn btn-outline-secondary btn-sm" id="saveBtn">
                                 <iconify-icon icon="iconamoon:save-duotone" class="me-1 align-middle"></iconify-icon>
@@ -356,209 +533,6 @@
     </div>
 </div>
 
-<!-- GNU Health push modal -->
-<div class="modal fade" id="gnuHealthModal" tabindex="-1" aria-labelledby="gnuHealthModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title fw-semibold" id="gnuHealthModalLabel">
-                    <iconify-icon icon="iconamoon:cloud-upload-duotone" class="me-2 align-middle"></iconify-icon>
-                    Push to GNU Health
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <!-- Status indicator -->
-                <div id="ghStatusRow" class="d-flex align-items-center gap-2 mb-3 small">
-                    <span class="spinner-border spinner-border-sm text-secondary" id="ghStatusSpinner"></span>
-                    <span id="ghStatusText" class="text-muted">Checking connection…</span>
-                </div>
-
-                <!-- Patient search -->
-                <div id="ghPatientSection">
-                    <label class="form-label fw-semibold small">Find patient in GNU Health</label>
-                    <div class="input-group mb-2">
-                        <input type="text" class="form-control" id="ghPatientQuery"
-                               placeholder="Type name to search…" autocomplete="off">
-                        <button class="btn btn-outline-secondary" type="button" id="ghSearchBtn">Search</button>
-                    </div>
-                    <div id="ghPatientResults" class="list-group mb-3" style="max-height:180px; overflow-y:auto;"></div>
-
-                    <div id="ghSelectedPatient" class="alert alert-info d-none py-2 px-3 small mb-3">
-                        <iconify-icon icon="iconamoon:profile-duotone" class="me-1 align-middle"></iconify-icon>
-                        <span id="ghSelectedName"></span>
-                        <button type="button" class="btn-close btn-sm float-end" id="ghClearPatient" style="font-size:0.65rem;"></button>
-                    </div>
-
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="ghCreatePatient">
-                        <label class="form-check-label small" for="ghCreatePatient">
-                            Create new patient from session metadata (if not found above)
-                        </label>
-                    </div>
-                </div>
-
-                <!-- Result -->
-                <div id="ghPushResult" class="d-none"></div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="ghPushConfirmBtn" disabled>
-                    <iconify-icon icon="iconamoon:cloud-upload-duotone" class="me-1 align-middle"></iconify-icon>
-                    Push encounter
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-(function () {
-    var SESSION_PK = "{{ session.pk }}";
-    var CSRF_TOKEN = "{{ csrf_token }}";
-    var STATUS_URL = "/emr/api/gnuhealth/status/";
-    var SEARCH_URL = "/emr/api/gnuhealth/patients/";
-    var PUSH_URL   = "/emr/api/gnuhealth/sessions/" + SESSION_PK + "/push/";
-
-    var selectedPatientId = null;
-
-    var modal       = document.getElementById("gnuHealthModal");
-    var statusText  = document.getElementById("ghStatusText");
-    var statusSpinner = document.getElementById("ghStatusSpinner");
-    var queryInput  = document.getElementById("ghPatientQuery");
-    var searchBtn   = document.getElementById("ghSearchBtn");
-    var resultsEl   = document.getElementById("ghPatientResults");
-    var selectedEl  = document.getElementById("ghSelectedPatient");
-    var selectedName = document.getElementById("ghSelectedName");
-    var clearBtn    = document.getElementById("ghClearPatient");
-    var createChk   = document.getElementById("ghCreatePatient");
-    var pushBtn     = document.getElementById("ghPushConfirmBtn");
-    var resultBox   = document.getElementById("ghPushResult");
-
-    // Check connection when modal opens
-    modal.addEventListener("show.bs.modal", function () {
-        selectedPatientId = null;
-        resultsEl.innerHTML = "";
-        selectedEl.classList.add("d-none");
-        resultBox.classList.add("d-none");
-        resultBox.innerHTML = "";
-        pushBtn.disabled = true;
-        statusSpinner.style.display = "";
-        statusText.textContent = "Checking connection…";
-        statusText.className = "text-muted";
-
-        fetch(STATUS_URL, {credentials: "same-origin"})
-            .then(function (r) { return r.json(); })
-            .then(function (d) {
-                statusSpinner.style.display = "none";
-                if (d.status === "connected") {
-                    statusText.textContent = "Connected to GNU Health (" + (d.version || "running") + ")";
-                    statusText.className = "text-success";
-                } else {
-                    statusText.textContent = "GNU Health not reachable: " + (d.error || "unknown error");
-                    statusText.className = "text-danger";
-                    pushBtn.disabled = true;
-                }
-            })
-            .catch(function () {
-                statusSpinner.style.display = "none";
-                statusText.textContent = "Could not reach status endpoint.";
-                statusText.className = "text-danger";
-            });
-    });
-
-    // Patient search
-    function doSearch() {
-        var q = queryInput.value.trim();
-        if (q.length < 2) { return; }
-        resultsEl.innerHTML = "<div class='list-group-item text-muted small'>Searching…</div>";
-        fetch(SEARCH_URL + "?q=" + encodeURIComponent(q), {credentials: "same-origin"})
-            .then(function (r) { return r.json(); })
-            .then(function (d) {
-                resultsEl.innerHTML = "";
-                if (!d.patients || !d.patients.length) {
-                    resultsEl.innerHTML = "<div class='list-group-item text-muted small'>No patients found.</div>";
-                    return;
-                }
-                d.patients.forEach(function (p) {
-                    var btn = document.createElement("button");
-                    btn.type = "button";
-                    btn.className = "list-group-item list-group-item-action small";
-                    btn.innerHTML = "<strong>" + (p.name || "Unknown") + "</strong>" +
-                        (p.dob ? " &nbsp;·&nbsp; DOB " + p.dob : "") +
-                        (p.ref ? " &nbsp;·&nbsp; #" + p.ref : "");
-                    btn.addEventListener("click", function () {
-                        selectedPatientId = p.id;
-                        selectedName.textContent = (p.name || "Unknown") + (p.dob ? " (DOB " + p.dob + ")" : "");
-                        selectedEl.classList.remove("d-none");
-                        resultsEl.innerHTML = "";
-                        queryInput.value = "";
-                        pushBtn.disabled = false;
-                    });
-                    resultsEl.appendChild(btn);
-                });
-            })
-            .catch(function () {
-                resultsEl.innerHTML = "<div class='list-group-item text-danger small'>Search failed.</div>";
-            });
-    }
-
-    searchBtn.addEventListener("click", doSearch);
-    queryInput.addEventListener("keydown", function (e) { if (e.key === "Enter") { doSearch(); } });
-
-    clearBtn.addEventListener("click", function () {
-        selectedPatientId = null;
-        selectedEl.classList.add("d-none");
-        pushBtn.disabled = !createChk.checked;
-    });
-
-    createChk.addEventListener("change", function () {
-        if (!selectedPatientId) { pushBtn.disabled = !this.checked; }
-    });
-
-    // Push encounter
-    pushBtn.addEventListener("click", function () {
-        pushBtn.disabled = true;
-        pushBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Pushing…';
-        resultBox.classList.add("d-none");
-        resultBox.innerHTML = "";
-
-        var body = {};
-        if (selectedPatientId) { body.patient_id = selectedPatientId; }
-        if (createChk.checked && !selectedPatientId) { body.create_patient = true; }
-
-        fetch(PUSH_URL, {
-            method: "POST",
-            credentials: "same-origin",
-            headers: {"Content-Type": "application/json", "X-CSRFToken": CSRF_TOKEN},
-            body: JSON.stringify(body),
-        })
-            .then(function (r) {
-                if (!r.ok && r.status === 403) throw new Error("CSRF or auth error (403). Try refreshing the page.");
-                return r.json().catch(function() { throw new Error("Server returned non-JSON (status " + r.status + ")"); });
-            })
-            .then(function (d) {
-                pushBtn.innerHTML = '<iconify-icon icon="iconamoon:cloud-upload-duotone" class="me-1 align-middle"></iconify-icon> Push encounter';
-                resultBox.classList.remove("d-none");
-                if (d.ok) {
-                    resultBox.innerHTML = '<div class="alert alert-success py-2 mb-0 small">' +
-                        '<iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon>' +
-                        'Encounter pushed. GNU Health encounter ID: <strong>' + d.encounter_id + '</strong></div>';
-                } else {
-                    resultBox.innerHTML = '<div class="alert alert-danger py-2 mb-0 small">' +
-                        (d.error || "Unknown error") + '</div>';
-                    pushBtn.disabled = false;
-                }
-            })
-            .catch(function (err) {
-                pushBtn.innerHTML = '<iconify-icon icon="iconamoon:cloud-upload-duotone" class="me-1 align-middle"></iconify-icon> Push encounter';
-                resultBox.classList.remove("d-none");
-                resultBox.innerHTML = '<div class="alert alert-danger py-2 mb-0 small">Request failed: ' + err + '</div>';
-                pushBtn.disabled = false;
-            });
-    });
-}());
-</script>
 
 <!-- Idle warning modal -->
 <div class="modal fade" id="idleModal" tabindex="-1" aria-hidden="true">
@@ -573,4 +547,720 @@
         </div>
     </div>
 </div>
+
+<script>
+(function () {
+  var _root = document.querySelector('[data-session-id]');
+  var SESSION_ID = _root.dataset.sessionId;
+  var CSRF = '{{ csrf_token }}';
+  var SAVE_URL = '/scribe/api/sessions/' + SESSION_ID + '/save/';
+  var finalized = _root.dataset.finalized === '1';
+  var CREATED_TS = _root.dataset.created || '';
+  /* True until the doctor manually edits the h4 title */
+  var _titleIsAuto = _root.dataset.hasCustomTitle !== '1';
+
+  /* Mark title as manually set if doctor types in the h4 */
+  var titleEl = document.getElementById('sessionTitle');
+  if (titleEl) {
+    titleEl.addEventListener('input', function () { _titleIsAuto = false; });
+  }
+
+  function buildAutoTitle() {
+    var name = (document.getElementById('prbName') || {}).value || '';
+    var complaint = (document.getElementById('prbComplaint') || {}).value || '';
+    name = name.trim(); complaint = complaint.trim();
+    var parts = [CREATED_TS];
+    if (name) parts.push(name);
+    if (complaint) parts.push(complaint);
+    return parts.join(' · ');
+  }
+
+  function savePatientFields() {
+    if (finalized) return;
+    var payload = {
+      patient_name: document.getElementById('prbName').value.trim(),
+      patient_identifier: document.getElementById('prbIdentifier').value.trim(),
+      chief_complaint: document.getElementById('prbComplaint').value.trim(),
+    };
+    /* Auto-update title with timestamp + name + complaint */
+    if (_titleIsAuto && titleEl) {
+      var newTitle = buildAutoTitle();
+      payload.title = newTitle;
+      titleEl.textContent = newTitle;
+    }
+    fetch(SAVE_URL, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify(payload),
+    }).catch(function () {});
+  }
+
+  ['prbName', 'prbIdentifier', 'prbComplaint'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('blur', savePatientFields);
+  });
+
+  /* Auto-detect encounter type from generated note text */
+  var TEMPLATES = [
+    { label: 'Hypertension f/u',  words: ['hypertension','blood pressure','amlodipine','lisinopril','antihypertensive'] },
+    { label: 'Diabetes f/u',       words: ['diabetes','blood sugar','glucose','metformin','insulin','hba1c'] },
+    { label: 'URTI / cold',         words: ['cough','upper respiratory','rhinitis','sore throat','congestion','urti'] },
+    { label: 'Gastro',              words: ['vomiting','diarrhea','diarrhoea','abdominal','gastroenteritis','nausea'] },
+    { label: 'Antenatal',           words: ['antenatal','prenatal','pregnancy','pregnant','trimester','gestation','obstetric'] },
+    { label: 'Paediatric',          words: ['paediatric','pediatric','child','infant','toddler','month old','year old child'] },
+  ];
+  function detectEncounter(text) {
+    var lower = text.toLowerCase();
+    var best = null, bestScore = 0;
+    TEMPLATES.forEach(function (t) {
+      var score = t.words.filter(function (w) { return lower.indexOf(w) >= 0; }).length;
+      if (score > bestScore) { bestScore = score; best = t; }
+    });
+    return bestScore >= 2 ? best : null;
+  }
+
+  function showDetectedChip(detected) {
+    var wrap = document.getElementById('detectedEncounterWrap');
+    var complaint = document.getElementById('prbComplaint');
+    wrap.innerHTML =
+      '<span class="small text-muted">Detected:</span>' +
+      '<span class="detected-chip" id="detectedChip">' +
+        '<iconify-icon icon="iconamoon:lightning-1-duotone"></iconify-icon>' +
+        detected.label +
+        '<span class="detected-chip-dismiss" id="dismissChip" title="Dismiss">✕</span>' +
+      '</span>';
+    wrap.style.display = 'flex';
+    document.getElementById('detectedChip').addEventListener('click', function (e) {
+      if (e.target.closest('#dismissChip')) {
+        wrap.style.display = 'none';
+      } else {
+        complaint.value = detected.label;
+        savePatientFields();
+        wrap.style.display = 'none';
+      }
+    });
+  }
+
+  function tryAutoDetect(noteText) {
+    var complaint = document.getElementById('prbComplaint');
+    if (!complaint || complaint.value.trim() || finalized) return;
+    var detected = detectEncounter(noteText);
+    if (detected) showDetectedChip(detected);
+  }
+
+  /* ---- Patient name extraction from note text ---- */
+  var SUSPICIOUS_NAMES = new Set([
+    'okay','ok','test','patient','unknown','n/a','na','hi','hello','yes','no','none'
+  ]);
+  function extractPatientName(text) {
+    // "Pt Mary Jane c/o..." / "Pt. Mary Jane..."
+    var m = text.match(/\bpt\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b/);
+    if (m) return m[1];
+    // "[Name] presented with..." (start of line)
+    m = text.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s+(?:presented|is a|c\/o|complain)/m);
+    if (m) return m[1];
+    // "patient [Name]"
+    m = text.match(/\bpatient\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b/);
+    if (m) return m[1];
+    return null;
+  }
+
+  /* ---- Transcript textarea auto-resize ---- */
+  function autoResizeTextarea(el) {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = (el.scrollHeight + 2) + 'px';
+  }
+
+  /* Run on page load — note content already in DOM after redirect from record */
+  document.addEventListener('DOMContentLoaded', function () {
+    /* Auto-resize transcript area when its tab is first shown */
+    var transcriptArea = document.getElementById('transcriptArea');
+    if (transcriptArea) {
+      autoResizeTextarea(transcriptArea);
+      transcriptArea.addEventListener('input', function () { autoResizeTextarea(this); });
+      /* Bootstrap tab show event */
+      var transcriptTab = document.querySelector('[data-bs-target="#tab-transcript"]');
+      if (transcriptTab) {
+        transcriptTab.addEventListener('shown.bs.tab', function () {
+          autoResizeTextarea(transcriptArea);
+        });
+      }
+    }
+
+    /* Patient name suggestion */
+    var nameField = document.getElementById('prbName');
+    var currentName = nameField ? nameField.value.trim() : '';
+    var isSuspicious = currentName &&
+      (currentName.split(/\s+/).length === 1) &&
+      SUSPICIOUS_NAMES.has(currentName.toLowerCase());
+
+    var fields = document.querySelectorAll('[data-note-field]');
+    var noteText = '';
+    fields.forEach(function (f) { noteText += ' ' + (f.value || f.textContent || ''); });
+    var transcriptText = transcriptArea ? transcriptArea.value : '';
+    var allText = noteText + ' ' + transcriptText;
+
+    if (isSuspicious && allText.trim()) {
+      var extracted = extractPatientName(allText.trim());
+      if (extracted && extracted.toLowerCase() !== currentName.toLowerCase()) {
+        var wrap = document.getElementById('detectedEncounterWrap');
+        var nameSugg = document.createElement('span');
+        nameSugg.className = 'detected-chip';
+        nameSugg.style.background = 'var(--bs-warning-bg-subtle,#fff3cd)';
+        nameSugg.style.borderColor = '#ffc107';
+        nameSugg.style.color = '#664d03';
+        nameSugg.innerHTML =
+          '<iconify-icon icon="iconamoon:profile-duotone"></iconify-icon>' +
+          'Patient: ' + extracted +
+          ' <span class="detected-chip-dismiss" id="dismissNameSugg" title="Dismiss">✕</span>';
+        nameSugg.title = 'Click to use this name';
+        var label = document.createElement('span');
+        label.className = 'small text-muted';
+        label.textContent = 'Detected:';
+        wrap.insertBefore(label, wrap.firstChild);
+        wrap.appendChild(nameSugg);
+        wrap.style.display = 'flex';
+        nameSugg.addEventListener('click', function (e) {
+          if (e.target.id === 'dismissNameSugg') {
+            nameSugg.parentNode.removeChild(label);
+            nameSugg.parentNode.removeChild(nameSugg);
+            if (!wrap.children.length) wrap.style.display = 'none';
+          } else {
+            nameField.value = extracted;
+            savePatientFields();
+            nameSugg.parentNode.removeChild(label);
+            nameSugg.parentNode.removeChild(nameSugg);
+            if (!wrap.children.length) wrap.style.display = 'none';
+          }
+        });
+      }
+    }
+
+    /* Encounter auto-detect */
+    if (allText.trim()) tryAutoDetect(allText);
+  });
+
+  /* Also called after in-page regenerate */
+  window.WELLNEST_onNoteGenerated = function (data) {
+    tryAutoDetect((data.full_note || '') + ' ' + (data.subjective || ''));
+    /* Re-init bracket mirrors after regen populates new content */
+    if (window._bracketInitDone) {
+      document.querySelectorAll('textarea[data-note-field]').forEach(function (ta) {
+        var w = ta.closest('.bracket-textarea-wrap');
+        var m = w && w.querySelector('.bracket-mirror');
+        if (m) { m.innerHTML = window._buildMirrorHtml(ta.value); }
+        if (window._updateBadge) window._updateBadge(ta);
+      });
+    }
+  };
+
+  /* ---- Format switcher + Regenerate ---- */
+  var regenFormat = '{{ session.note_format }}';
+  document.querySelectorAll('[data-regen-format]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('[data-regen-format]').forEach(function (b) {
+        b.classList.remove('is-applied');
+      });
+      this.classList.add('is-applied');
+      regenFormat = this.dataset.regenFormat;
+      var hint = document.getElementById('regenFormatHint');
+      if (hint) hint.innerHTML = 'format: <strong>' + regenFormat.toUpperCase() + '</strong>';
+    });
+  });
+
+  /* ---- Copy FHIR R4 Bundle ---- */
+  var fhirBtn = document.getElementById('copyFhirBtn');
+  if (fhirBtn) {
+    fhirBtn.addEventListener('click', function () {
+      var noteText = '';
+      var fullNoteEl = document.querySelector('[data-full-note]');
+      if (fullNoteEl) noteText = fullNoteEl.value || fullNoteEl.textContent || '';
+      if (!noteText.trim()) {
+        var fields = document.querySelectorAll('[data-note-field]');
+        fields.forEach(function (f) { noteText += (f.value || f.textContent || '') + '\n'; });
+      }
+
+      var patientName = document.getElementById('prbName') ? document.getElementById('prbName').value.trim() : '';
+      var encounterId = 'enc-' + SESSION_ID;
+      var now = new Date().toISOString();
+
+      var bundle = {
+        resourceType: 'Bundle',
+        type: 'document',
+        timestamp: now,
+        entry: [
+          {
+            resource: {
+              resourceType: 'Encounter',
+              id: encounterId,
+              status: 'finished',
+              class: { system: 'http://terminology.hl7.org/CodeSystem/v3-ActCode', code: 'AMB', display: 'Ambulatory' },
+              subject: patientName ? { display: patientName } : undefined,
+              period: { start: now }
+            }
+          },
+          {
+            resource: {
+              resourceType: 'Composition',
+              status: 'final',
+              type: {
+                coding: [{ system: 'http://loinc.org', code: '11488-4', display: 'Consult note' }]
+              },
+              date: now,
+              title: 'WellNest Scribe Clinical Note',
+              section: [{ text: { status: 'generated', div: '<div xmlns="http://www.w3.org/1999/xhtml">' + noteText.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>' } }]
+            }
+          }
+        ]
+      };
+
+      navigator.clipboard.writeText(JSON.stringify(bundle, null, 2))
+        .then(function () {
+          fhirBtn.textContent = 'Copied!';
+          setTimeout(function () {
+            fhirBtn.innerHTML = '<iconify-icon icon="iconamoon:code-duotone" class="me-1 align-middle"></iconify-icon>Copy FHIR';
+          }, 2000);
+        })
+        .catch(function () { alert('Could not access clipboard.'); });
+    });
+  }
+
+  /* ── Debounced auto-save for patient bar (fires on every input keystroke) ── */
+  var _debouncedPatientSave = (function () {
+    var t;
+    return function () {
+      clearTimeout(t);
+      t = setTimeout(savePatientFields, 700);
+    };
+  })();
+  ['prbName', 'prbIdentifier', 'prbComplaint'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el && !el.readOnly) el.addEventListener('input', _debouncedPatientSave);
+  });
+
+  var regenBtn = document.getElementById('regenerateAllBtn');
+  if (regenBtn) {
+    regenBtn.addEventListener('click', async function () {
+      var transcriptArea = document.getElementById('transcriptArea');
+      var transcript = transcriptArea ? transcriptArea.value.trim() : '';
+      if (!transcript) {
+        alert('No transcript to regenerate from. Check the Transcript tab.');
+        return;
+      }
+      if (!confirm('Regenerate as ' + regenFormat.toUpperCase() + '? Your current note edits will be replaced.')) return;
+      regenBtn.disabled = true;
+      regenBtn.textContent = 'Regenerating…';
+      try {
+        var resp = await fetch(
+          '/scribe/api/sessions/' + SESSION_ID + '/generate/',
+          {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            body: JSON.stringify({ transcript: transcript, note_format: regenFormat }),
+          }
+        );
+        var data = await resp.json();
+        if (data.ok) {
+          window.location.reload();
+        } else {
+          alert(data.error || 'Regeneration failed.');
+          regenBtn.disabled = false;
+          regenBtn.innerHTML = '<iconify-icon icon="iconamoon:restart-duotone" class="me-1 align-middle"></iconify-icon>Regenerate note';
+        }
+      } catch (e) {
+        alert('Regeneration failed: ' + e.message);
+        regenBtn.disabled = false;
+      }
+    });
+  }
+
+  /* ── Sensitive-encounter toggle ── */
+  var sensitiveBtn = document.getElementById('sensitiveToggleBtn');
+  var _isSensitive = _root.dataset.isSensitive === '1';
+  if (sensitiveBtn && !finalized) {
+    sensitiveBtn.addEventListener('click', function () {
+      var newVal = !_isSensitive;
+      var msg = newVal
+        ? 'Mark this session as SENSITIVE?\n\nThis will:\n• Block share-link generation\n• Log every view to the audit trail\n• Apply PHI-minimisation rules to AI generation\n\nYou can unmark it at any time.'
+        : 'Remove the sensitive flag from this session?\n\nShare links will become available again.';
+      if (!confirm(msg)) return;
+      fetch(SAVE_URL, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({ is_sensitive: newVal }),
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok) { alert(data.error || 'Could not update sensitive flag.'); return; }
+        _isSensitive = newVal;
+        sensitiveBtn.className = newVal
+          ? 'btn btn-warning btn-sm'
+          : 'btn btn-outline-secondary btn-sm';
+        sensitiveBtn.innerHTML = newVal
+          ? '<iconify-icon icon="iconamoon:lock-duotone" class="me-1 align-middle"></iconify-icon>Sensitive — click to unmark'
+          : '<iconify-icon icon="iconamoon:lock-duotone" class="me-1 align-middle"></iconify-icon>Mark as sensitive';
+        if (newVal) {
+          var badge = document.createElement('span');
+          badge.id = 'sensitivePill';
+          badge.className = 'status-pill ms-2';
+          badge.style.cssText = 'background:#fff3cd;color:#664d03;border-color:#ffc107;font-size:0.72rem;';
+          badge.textContent = 'SENSITIVE';
+          var statusEl = document.getElementById('reviewStatus');
+          if (statusEl && !document.getElementById('sensitivePill')) {
+            statusEl.parentNode.insertBefore(badge, statusEl.nextSibling);
+          }
+        } else {
+          var p = document.getElementById('sensitivePill');
+          if (p) p.remove();
+        }
+      })
+      .catch(function () { alert('Network error — could not save.'); });
+    });
+  }
+})();
+</script>
+
+<script>
+/* ── Bracket placeholder system: highlight + click-to-fill popover ── */
+(function () {
+  'use strict';
+
+  var isFinalized = (document.querySelector('[data-finalized]') || {dataset:{}}).dataset.finalized === '1';
+
+  /* Drug list — common Jamaican primary/secondary care formulary */
+  var DRUGS = [
+    'Amlodipine','Atenolol','Bisoprolol','Lisinopril','Ramipril','Enalapril',
+    'Losartan','Valsartan','Hydrochlorothiazide','Furosemide','Spironolactone',
+    'Atorvastatin','Rosuvastatin','Simvastatin',
+    'Metformin','Glibenclamide','Glipizide','Insulin Mixtard','Insulin Actrapid',
+    'Aspirin','Clopidogrel','Warfarin',
+    'Amoxicillin','Co-amoxiclav (Augmentin)','Azithromycin','Erythromycin',
+    'Metronidazole','Ciprofloxacin','Trimethoprim','Co-trimoxazole',
+    'Prednisone','Dexamethasone',
+    'Salbutamol (Ventolin)','Beclomethasone inhaler','Ipratropium',
+    'Omeprazole','Domperidone','Metoclopramide',
+    'Paracetamol','Ibuprofen','Diclofenac','Naproxen',
+    'Tramadol','Codeine','Morphine',
+    'Amitriptyline','Sertraline',
+    'Vitamin D3','Ferrous sulphate','Calcium carbonate','Folic acid',
+  ];
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  /* ── Mirror build ── */
+  function buildMirrorHtml(text) {
+    var html = '', last = 0, m;
+    var rx = /\[([^\]]*)\]/g;
+    while ((m = rx.exec(text)) !== null) {
+      html += esc(text.slice(last, m.index));
+      var isDrug = /drug|medic|dose|\bmg\b|\bml\b/i.test(m[1]);
+      html += '<span class="bk-hl' + (isDrug ? ' drug-hl' : '') + '">' + esc(m[0]) + '</span>';
+      last = m.index + m[0].length;
+    }
+    return html + esc(text.slice(last));
+  }
+  window._buildMirrorHtml = buildMirrorHtml;
+
+  function syncMirror(ta, mirror) { mirror.innerHTML = buildMirrorHtml(ta.value); }
+
+  function initMirror(ta) {
+    if (ta.closest('.bracket-textarea-wrap')) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'bracket-textarea-wrap';
+    ta.parentNode.insertBefore(wrap, ta);
+    wrap.appendChild(ta);
+    var mirror = document.createElement('div');
+    mirror.className = 'bracket-mirror';
+    mirror.setAttribute('aria-hidden', 'true');
+    wrap.insertBefore(mirror, ta);
+    syncMirror(ta, mirror);
+    ta.addEventListener('input', function () { syncMirror(ta, mirror); });
+    if (typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(function () { syncMirror(ta, mirror); }).observe(ta);
+    }
+  }
+
+  /* ── Badge showing count of missing items per section ── */
+  function updateBadge(ta) {
+    var section = ta.closest('.note-section');
+    if (!section) return;
+    var hdr = section.querySelector('header');
+    if (!hdr) return;
+    var badge = hdr.querySelector('.bracket-badge');
+    var count = (ta.value.match(/\[[^\]]+\]/g) || []).length;
+    if (count === 0) { if (badge) badge.remove(); return; }
+    if (!badge) { badge = document.createElement('span'); badge.className = 'bracket-badge'; hdr.appendChild(badge); }
+    badge.textContent = count + ' missing';
+  }
+  window._updateBadge = updateBadge;
+
+  /* ── Popover state ── */
+  var pop = null, popCtx = null;
+
+  function getPopover() {
+    if (!pop) {
+      pop = document.createElement('div');
+      pop.className = 'bracket-popover';
+      pop.style.display = 'none';
+      document.body.appendChild(pop);
+    }
+    return pop;
+  }
+
+  function hidePop() { if (pop) pop.style.display = 'none'; popCtx = null; }
+
+  function applyValue(isDrug) {
+    if (!popCtx) return;
+    var value;
+    if (isDrug) {
+      var sel = pop.querySelector('.bp-drug-list li.is-sel');
+      var name = sel ? sel.textContent.trim() : pop.querySelector('.bp-drug-search').value.trim();
+      if (!name) return;
+      var dose = pop.querySelector('.bp-dose-in').value.trim();
+      var unit = pop.querySelector('.bp-unit-sel').value;
+      var freq = pop.querySelector('.bp-freq-in').value.trim();
+      value = name + (dose ? ' ' + dose + unit : '') + (freq ? ' ' + freq : '');
+    } else {
+      value = (pop.querySelector('.bp-input').value || '').trim();
+      if (!value) return;
+    }
+    var ta = popCtx.ta, s = popCtx.s, e = popCtx.e;
+    ta.value = ta.value.slice(0, s) + value + ta.value.slice(e);
+    var wrap = ta.closest('.bracket-textarea-wrap');
+    var mirror = wrap && wrap.querySelector('.bracket-mirror');
+    if (mirror) syncMirror(ta, mirror);
+    updateBadge(ta);
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(1200, Math.max(ta.scrollHeight + 2, 48)) + 'px';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    hidePop();
+  }
+
+  function showPop(ev, ta, s, e, content) {
+    var p = getPopover();
+    popCtx = { ta: ta, s: s, e: e };
+    var isDrug = /drug|medic|dose|\bmg\b|\bml\b/i.test(content);
+
+    if (isDrug) {
+      var items = DRUGS.map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('');
+      p.innerHTML =
+        '<div class="bp-title">Medication</div>' +
+        '<input class="bp-input bp-drug-search" type="text" placeholder="Search drug…" />' +
+        '<ul class="bp-drug-list">' + items + '</ul>' +
+        '<div class="bp-dose-row">' +
+          '<input class="bp-dose-in" type="text" placeholder="Dose" />' +
+          '<select class="bp-unit-sel"><option>mg</option><option>mcg</option>' +
+            '<option>ml</option><option>units</option><option>g</option></select>' +
+          '<input class="bp-freq-in" type="text" placeholder="OD/BD…" style="max-width:68px;" />' +
+        '</div>' +
+        '<div class="bp-actions">' +
+          '<button class="bp-apply" type="button">Apply</button>' +
+          '<button class="bp-cancel" type="button">Cancel</button>' +
+        '</div>';
+      p.querySelectorAll('.bp-drug-list li').forEach(function (li) {
+        li.addEventListener('click', function () {
+          p.querySelectorAll('.bp-drug-list li').forEach(function (x) { x.classList.remove('is-sel'); });
+          li.classList.add('is-sel');
+          var di = p.querySelector('.bp-dose-in');
+          if (di) setTimeout(function () { di.focus(); }, 10);
+        });
+      });
+      p.querySelector('.bp-drug-search').addEventListener('input', function () {
+        var q = this.value.toLowerCase();
+        p.querySelectorAll('.bp-drug-list li').forEach(function (li) {
+          li.style.display = li.textContent.toLowerCase().includes(q) ? '' : 'none';
+        });
+      });
+      p.querySelector('.bp-dose-in').addEventListener('keydown', function (k) {
+        if (k.key === 'Enter') { k.preventDefault(); applyValue(true); }
+      });
+    } else {
+      p.innerHTML =
+        '<div class="bp-title">Fill in value</div>' +
+        '<input class="bp-input" type="text" placeholder="' + esc(content) + '" />' +
+        '<div class="bp-actions">' +
+          '<button class="bp-apply" type="button">Apply</button>' +
+          '<button class="bp-cancel" type="button">Cancel</button>' +
+        '</div>';
+      p.querySelector('.bp-input').addEventListener('keydown', function (k) {
+        if (k.key === 'Enter') { k.preventDefault(); applyValue(false); }
+      });
+    }
+
+    p.querySelector('.bp-apply').addEventListener('click', function () { applyValue(isDrug); });
+    p.querySelector('.bp-cancel').addEventListener('click', hidePop);
+
+    p.style.display = 'block';
+    var x = ev.clientX, y = ev.clientY + 18;
+    if (x + 320 > window.innerWidth - 8) x = window.innerWidth - 328;
+    if (y + 320 > window.innerHeight - 8) y = ev.clientY - 320;
+    p.style.left = Math.max(8, x) + 'px';
+    p.style.top = Math.max(8, y) + 'px';
+    setTimeout(function () {
+      var first = p.querySelector('.bp-drug-search, .bp-input');
+      if (first) first.focus();
+    }, 30);
+  }
+
+  function findBracketAt(text, pos) {
+    var m, rx = /\[([^\]]*)\]/g;
+    while ((m = rx.exec(text)) !== null) {
+      if (m.index <= pos && pos <= m.index + m[0].length) {
+        return { s: m.index, e: m.index + m[0].length, content: m[1] };
+      }
+    }
+    return null;
+  }
+
+  /* ── Chief complaint extraction from note text / transcript ── */
+  function extractCC(text) {
+    var pats = [
+      /\bc\/o\s+(.+?)(?:[.,;]|\n|$)/i,
+      /\bpresent(?:s|ing|ed)?\s+with\s+(.+?)(?:[.,;]|\n|$)/i,
+      /\bcomplain(?:s|ing|ed)?\s+of\s+(.+?)(?:[.,;]|\n|$)/i,
+      /\bcame?\s+in\s+for\s+(.+?)(?:[.,;]|\n|$)/i,
+      /\bchief\s+complaint[:\s]+(.+?)(?:[.,;]|\n|$)/i,
+    ];
+    for (var i = 0; i < pats.length; i++) {
+      var m = text.match(pats[i]);
+      if (m && m[1]) {
+        var v = m[1].trim().replace(/^(the|a|an)\s+/i, '');
+        if (v.length >= 3 && v.length < 80) return v;
+      }
+    }
+    return null;
+  }
+
+  /* ── Quick-erase button on text selection ── */
+  var eraseBtn = null;
+  var eraseTarget = null;
+
+  function getEraseBtn() {
+    if (!eraseBtn) {
+      eraseBtn = document.createElement('button');
+      eraseBtn.id = 'quickEraseBtn';
+      eraseBtn.type = 'button';
+      eraseBtn.innerHTML = '&#9003; Erase';
+      document.body.appendChild(eraseBtn);
+      eraseBtn.addEventListener('click', function () {
+        if (!eraseTarget) return;
+        var ta = eraseTarget;
+        var s = ta.selectionStart, e = ta.selectionEnd;
+        if (s === e) { hideEraseBtn(); return; }
+        ta.value = ta.value.slice(0, s) + ta.value.slice(e);
+        ta.setSelectionRange(s, s);
+        ta.style.height = 'auto';
+        ta.style.height = Math.min(1200, Math.max(ta.scrollHeight + 2, 48)) + 'px';
+        var wrap = ta.closest('.bracket-textarea-wrap');
+        var mirror = wrap && wrap.querySelector('.bracket-mirror');
+        if (mirror) syncMirror(ta, mirror);
+        updateBadge(ta);
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        hideEraseBtn();
+      });
+    }
+    return eraseBtn;
+  }
+
+  function hideEraseBtn() {
+    if (eraseBtn) eraseBtn.style.display = 'none';
+    eraseTarget = null;
+  }
+
+  function showEraseBtn(ev, ta) {
+    var btn = getEraseBtn();
+    eraseTarget = ta;
+    btn.style.display = 'inline-flex';
+    var x = ev.clientX, y = ev.clientY - 38;
+    if (x + 90 > window.innerWidth - 8) x = window.innerWidth - 98;
+    if (y < 8) y = ev.clientY + 12;
+    btn.style.left = Math.max(8, x) + 'px';
+    btn.style.top = y + 'px';
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+
+    /* 1. Mirror + badge + click/select handlers for each SOAP/narrative textarea */
+    document.querySelectorAll('textarea[data-note-field]').forEach(function (ta) {
+      initMirror(ta);
+      updateBadge(ta);
+      ta.addEventListener('input', function () { updateBadge(ta); });
+      ta.addEventListener('click', function (ev) {
+        if (ta.readOnly) return;
+        var b = findBracketAt(ta.value, ta.selectionStart);
+        if (b) { ev.stopPropagation(); showPop(ev, ta, b.s, b.e, b.content); }
+        else if (pop && !pop.contains(ev.target)) hidePop();
+      });
+      /* Show erase button when text is selected */
+      ta.addEventListener('mouseup', function (ev) {
+        if (ta.readOnly) return;
+        var s = ta.selectionStart, e = ta.selectionEnd;
+        if (e > s) { showEraseBtn(ev, ta); }
+        else hideEraseBtn();
+      });
+      ta.addEventListener('keyup', function () {
+        var s = ta.selectionStart, e = ta.selectionEnd;
+        if (e > s) { /* keep button visible on keyboard selection */ }
+        else hideEraseBtn();
+      });
+    });
+    window._bracketInitDone = true;
+
+    /* 2. Chief complaint suggestion chip (runs after existing encounter detection) */
+    var ccField = document.getElementById('prbComplaint');
+    if (ccField && !ccField.value.trim() && !isFinalized) {
+      var allText = '';
+      document.querySelectorAll('textarea[data-note-field]').forEach(function (el) { allText += ' ' + el.value; });
+      var txArea = document.getElementById('transcriptArea');
+      if (txArea) allText += ' ' + txArea.value;
+      var cc = extractCC(allText);
+      if (cc) {
+        var detWrap = document.getElementById('detectedEncounterWrap');
+        var ccLbl = document.createElement('span');
+        ccLbl.className = 'small text-muted';
+        ccLbl.textContent = 'CC:';
+        var ccChip = document.createElement('span');
+        ccChip.className = 'detected-chip';
+        ccChip.title = 'Click to use as chief complaint';
+        ccChip.innerHTML =
+          '<iconify-icon icon="iconamoon:lightning-1-duotone"></iconify-icon>' +
+          esc(cc) +
+          ' <span class="detected-chip-dismiss" title="Dismiss">✕</span>';
+        if (detWrap) {
+          detWrap.appendChild(ccLbl);
+          detWrap.appendChild(ccChip);
+          detWrap.style.display = 'flex';
+          ccChip.addEventListener('click', function (e) {
+            if (e.target.classList.contains('detected-chip-dismiss')) {
+              ccLbl.remove(); ccChip.remove();
+              if (!detWrap.children.length) detWrap.style.display = 'none';
+            } else {
+              ccField.value = cc;
+              ccField.dispatchEvent(new Event('input', { bubbles: true }));
+              ccLbl.remove(); ccChip.remove();
+              if (!detWrap.children.length) detWrap.style.display = 'none';
+            }
+          });
+        }
+      }
+    }
+
+    /* 3. Close popover + erase button on outside click / Escape */
+    document.addEventListener('click', function (e) {
+      if (pop && pop.style.display !== 'none' &&
+          !pop.contains(e.target) && !e.target.closest('textarea[data-note-field]')) hidePop();
+      if (eraseBtn && eraseBtn.style.display !== 'none' &&
+          !eraseBtn.contains(e.target) && !e.target.closest('textarea[data-note-field]')) hideEraseBtn();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { hidePop(); hideEraseBtn(); }
+    });
+  });
+
+})();
+</script>
 {% endblock %}

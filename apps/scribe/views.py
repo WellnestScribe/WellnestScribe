@@ -36,7 +36,9 @@ from .services.triage import (
     TriageDependencyError,
     probe_environment,
     transcribe_mms,
+    transcribe_modal_mms,  # TEMPORARY — Modal GPU latency testing
     transcribe_omni,
+    transcribe_parakeet,
     t5_rewrite,
 )
 from .services.triage_jobs import get as get_triage_job, reap_old, submit as submit_triage_job
@@ -128,6 +130,8 @@ class RecordView(LoginRequiredMixin, View):
                 "specialty_choices": DoctorProfile.SPECIALTY_CHOICES,
                 "format_choices": ScribeSession.NOTE_FORMAT_CHOICES,
                 "length_choices": ScribeSession.LENGTH_MODE_CHOICES,
+                # TEMPORARY — Modal GPU latency testing toggle
+                "ambient_backend": dj_settings.AMBIENT_BACKEND,
             },
         )
 
@@ -153,6 +157,15 @@ class ReviewView(LoginRequiredMixin, View):
             pk=pk,
             doctor=request.user,
         )
+        # Enhanced audit trail for sensitive sessions — every view is logged,
+        # not just saves. Satisfies DPA 2020 access-tracking requirement.
+        if session.is_sensitive:
+            audit_log.info(
+                "session=%s doctor=%s event=sensitive_viewed ip=%s",
+                session.pk,
+                session.doctor_id,
+                request.META.get("REMOTE_ADDR", "unknown"),
+            )
         return render(
             request,
             self.template_name,
@@ -160,6 +173,7 @@ class ReviewView(LoginRequiredMixin, View):
                 "session": session,
                 "note": getattr(session, "note", None),
                 "profile": _get_profile(request.user),
+                "doctor_profile": _get_profile(request.user),
                 # NATVNS Wound Management chart adaptation. Static list of
                 # "factors that could delay healing" — flat checkbox row in
                 # the Body diagram tab.
@@ -504,7 +518,7 @@ def triage_run_api(request):
             for chunk in audio.chunks():
                 fh.write(chunk)
 
-    if backend in ("mms", "omni") and not saved_path:
+    if backend in ("mms", "omni", "parakeet") and not saved_path:
         return JsonResponse({"ok": False, "error": f"{backend} requires audio."}, status=400)
 
     def _run(job):
@@ -517,6 +531,10 @@ def triage_run_api(request):
                 job.stage = f"loading Omni-ASR ({model_id}) …"
                 job.stage = "transcribing with Omni-ASR…"
                 raw = transcribe_omni(saved_path, device=device, model_id=model_id)
+            elif backend == "parakeet":
+                job.stage = "loading Parakeet TDT 0.6B v2 (first run ≈ 2–5 min on CPU)…"
+                job.stage = "transcribing with Parakeet…"
+                raw = transcribe_parakeet(saved_path, device=device)
             elif backend == "t5_paraphrase":
                 job.stage = "loading FLAN-T5…"
                 raw = t5_rewrite(text_input, instruction=instruction, device=device)
@@ -869,6 +887,13 @@ def create_session_api(request):
     )
     if audio:
         _log(session, "uploaded", f"size={audio.size} name={audio.name}")
+    if request.POST.get("consent_acknowledged") in ("1", "true"):
+        session.consent_acknowledged_at = timezone.now()
+        session.save(update_fields=["consent_acknowledged_at"])
+        audit_log.info(
+            "session=%s doctor=%s event=consent_acknowledged ip=%s",
+            session.pk, request.user.pk, request.META.get("REMOTE_ADDR", "unknown"),
+        )
     return JsonResponse(
         {
             "ok": True,
@@ -877,6 +902,23 @@ def create_session_api(request):
             "transcript": session.transcript,
         }
     )
+
+
+@login_required
+@require_POST
+@csrf_protect
+def rename_session_api(request, pk):
+    """PATCH patient_name on a session. Used by inline edit in history list."""
+    import json as _json
+    session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)
+    try:
+        body = _json.loads(request.body)
+        name = str(body.get("patient_name", "")).strip()[:120]
+    except Exception:
+        return JsonResponse({"ok": False, "error": "Invalid JSON"}, status=400)
+    session.patient_name = name
+    session.save(update_fields=["patient_name", "updated_at"])
+    return JsonResponse({"ok": True, "display_title": session.display_title})
 
 
 @login_required
@@ -948,7 +990,9 @@ def generate_note_api(request, pk):
             specialty=profile.specialty,
             length_mode=length_mode,
             custom_instructions=profile.custom_instructions,
+            custom_terms=profile.custom_terms,
             suggestive_assist=suggestive_assist,
+            is_sensitive=session.is_sensitive,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("Note generation failed for session %s", pk)
@@ -1078,11 +1122,28 @@ def save_note_api(request, pk):
         session.patient_identifier = (payload["patient_identifier"] or "")[:120]
     if "active_conditions" in payload:
         session.active_conditions = (payload["active_conditions"] or "")[:200]
+    if payload.get("consent_acknowledged") and not session.consent_acknowledged_at:
+        session.consent_acknowledged_at = timezone.now()
+        audit_log.info(
+            "session=%s doctor=%s event=consent_acknowledged ip=%s",
+            session.pk, session.doctor_id, request.META.get("REMOTE_ADDR", "unknown"),
+        )
+    if "is_sensitive" in payload:
+        new_val = bool(payload["is_sensitive"])
+        if new_val != session.is_sensitive:
+            session.is_sensitive = new_val
+            audit_log.info(
+                "session=%s doctor=%s event=sensitive_flag_changed value=%s ip=%s",
+                session.pk,
+                session.doctor_id,
+                new_val,
+                request.META.get("REMOTE_ADDR", "unknown"),
+            )
 
     note.save()
     session.save()
     _log(session, "edited", "doctor saved edits")
-    return JsonResponse({"ok": True})
+    return JsonResponse({"ok": True, "is_sensitive": session.is_sensitive})
 
 
 @login_required
@@ -1102,6 +1163,37 @@ def finalize_session_api(request, pk):
     session.save(update_fields=["status", "finalized_at", "updated_at"])
     _log(session, "finalized", "")
     return JsonResponse({"ok": True})
+
+
+@login_required
+@require_POST
+@csrf_protect
+def delete_session_api(request, pk):
+    """Permanent session erasure — satisfies patient right to erasure under the DPA.
+
+    Deletes the audio file from disk, the SOAPNote, all SessionEvents, and the
+    ScribeSession row. Owner-only. Audit-logged. Cannot be undone.
+    """
+    session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)
+    session_pk = session.pk
+    session_repr = str(session)
+
+    if session.audio_file:
+        try:
+            session.audio_file.delete(save=False)
+        except Exception:
+            pass
+
+    session.delete()  # cascades to SOAPNote, SessionEvents, NoteShares
+
+    audit_log.info(
+        "session=%s doctor=%s event=session_deleted name=%r ip=%s",
+        session_pk,
+        request.user.pk,
+        session_repr,
+        request.META.get("REMOTE_ADDR", "unknown"),
+    )
+    return JsonResponse({"ok": True, "redirect": "/scribe/sessions/"})
 
 
 @login_required
@@ -1200,6 +1292,24 @@ def quick_transcribe_api(request):
 def share_note_api(request, pk):
     """Issue a 1-hour share link for the note + return WhatsApp + QR data URLs."""
     session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)
+    if session.is_sensitive:
+        audit_log.info(
+            "session=%s doctor=%s event=share_blocked_sensitive ip=%s",
+            session.pk,
+            session.doctor_id,
+            request.META.get("REMOTE_ADDR", "unknown"),
+        )
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": (
+                    "This session is marked as sensitive. Share links are disabled "
+                    "to protect the patient's data. Copy the note manually if "
+                    "transfer is clinically necessary."
+                ),
+            },
+            status=403,
+        )
     note = getattr(session, "note", None)
     if note is None:
         return JsonResponse(
@@ -1243,6 +1353,79 @@ def share_view(request, token):
         "scribe/share.html",
         {"session": share.session, "note": note},
     )
+
+
+# In-memory ownership map for ambient jobs: job_id -> user.pk
+# Single-process only; adequate for the pilot. Swap for DB or cache at scale.
+_AMBIENT_JOB_OWNERS: dict[str, int] = {}
+
+
+@login_required
+@require_POST
+@csrf_protect
+def ambient_transcribe_api(request, pk):
+    """Start an async MMS transcription job for the session's audio.
+
+    Returns {ok: true, job_id: ...}. Client polls /api/ambient-jobs/<job_id>/
+    until status == 'done', then calls /api/sessions/<pk>/generate/ with the
+    resulting transcript.
+    """
+    try:
+        session = ScribeSession.objects.get(pk=pk, doctor=request.user)
+    except ScribeSession.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "Session not found."}, status=404)
+
+    if not session.audio_file:
+        return JsonResponse(
+            {"ok": False, "error": "No audio attached to this session."},
+            status=400,
+        )
+
+    audio_path = session.audio_file.path
+    payload = _json_body(request)
+
+    # TEMPORARY: allow UI toggle to override env default for latency testing.
+    # Remove the payload override once testing is done; keep only the env default.
+    backend = payload.get("backend") or dj_settings.AMBIENT_BACKEND  # "modal" | "local"
+
+    def _run(job):
+        if backend == "modal":
+            job.stage = "sending to Modal L4 GPU…"
+            resp = transcribe_modal_mms(str(audio_path), target_lang="jam")
+            job.result = {
+                "raw_text": resp.get("transcript", ""),
+                "session_id": pk,
+                "backend": "modal",
+                # TEMPORARY timing stats for latency testing
+                "audio_seconds": resp.get("audio_seconds"),
+                "preprocessing_ms": resp.get("preprocessing_ms"),
+                "inference_ms": resp.get("inference_ms"),
+                "total_ms": resp.get("total_ms"),
+                "realtime_factor": resp.get("realtime_factor"),
+                "model_device": resp.get("device", "cuda"),
+            }
+        else:
+            job.stage = "loading MMS model (first run ≈ 60–120 s on CPU)…"
+            job.stage = "transcribing with MMS…"
+            raw = transcribe_mms(str(audio_path), device="cpu", target_lang="jam")
+            job.result = {"raw_text": raw, "session_id": pk, "backend": "local"}
+        job.stage = "done"
+
+    job = submit_triage_job(f"mms-ambient-{backend}", "gpu" if backend == "modal" else "cpu", _run)
+    _AMBIENT_JOB_OWNERS[job.job_id] = request.user.pk
+    return JsonResponse({"ok": True, "job_id": job.job_id})
+
+
+def ambient_job_api(request, job_id):
+    """Poll status of an ambient transcription job (no triage-admin gate)."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"ok": False, "error": "Not authenticated."}, status=401)
+    if _AMBIENT_JOB_OWNERS.get(job_id) != request.user.pk:
+        return JsonResponse({"ok": False, "error": "Not found."}, status=404)
+    job = get_triage_job(job_id)
+    if job is None:
+        return JsonResponse({"ok": False, "error": "Unknown job."}, status=404)
+    return JsonResponse({"ok": True, "job": job.to_dict()})
 
 
 @login_required

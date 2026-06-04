@@ -2,6 +2,23 @@
 
 {% block title %}Sessions · WellNest Scribe{% endblock %}
 
+{% block extra_head %}
+<style>
+  .session-name-edit {
+    background: transparent; border: none; border-bottom: 1.5px dashed var(--bs-border-color);
+    font-weight: 600; font-size: inherit; color: inherit; padding: 0 2px;
+    outline: none; width: auto; min-width: 60px;
+  }
+  .session-name-edit:focus { border-bottom-color: #0d6efd; }
+  .session-name-edit-btn {
+    opacity: 0; transition: opacity 0.15s; font-size: 0.7rem;
+    padding: 0 4px; border: none; background: transparent;
+    color: var(--bs-secondary-color); cursor: pointer; vertical-align: middle;
+  }
+  .session-row:hover .session-name-edit-btn { opacity: 1; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row">
     <div class="col-12">
@@ -37,24 +54,33 @@
             </div>
             <div class="d-flex flex-column" id="allList">
                 {% for s in sessions %}
-                    <a href="{% url 'scribe:review' s.pk %}"
-                       class="session-row"
+                    <div class="session-row"
                        data-session-search="{{ s.display_title|lower }} {{ s.chief_complaint|lower }} {{ s.get_note_format_display|lower }} {{ s.get_status_display|lower }}"
                        style="border-radius:0;border-bottom:1px solid var(--bs-border-color);">
-                        <span class="session-icon">
+                        <a href="{% url 'scribe:review' s.pk %}" class="session-icon text-decoration-none">
                             <iconify-icon icon="iconamoon:file-document-duotone"></iconify-icon>
-                        </span>
+                        </a>
                         <span class="flex-grow-1">
-                            <span class="d-block fw-semibold">{{ s.display_title }}</span>
+                            <span class="d-block">
+                              <input type="text" class="session-name-edit"
+                                     value="{% if s.patient_name %}{{ s.patient_name }}{% else %}{{ s.display_title }}{% endif %}"
+                                     data-pk="{{ s.pk }}"
+                                     data-rename-url="{% url 'scribe:api_rename' s.pk %}"
+                                     title="Click to rename">
+                              <button class="session-name-edit-btn" type="button"
+                                      onclick="this.previousElementSibling.focus()" title="Rename">
+                                <iconify-icon icon="iconamoon:edit-duotone"></iconify-icon>
+                              </button>
+                            </span>
                             <span class="d-block small text-muted">
-                                {{ s.created_at|date:"M j, Y · g:i A" }} ·
-                                {{ s.get_note_format_display }} ·
-                                {{ s.get_status_display }}
-                                {% if s.duration_seconds %} · {{ s.duration_seconds }}s audio{% endif %}
+                                {{ s.created_at|date:"M j, Y" }}{% if s.chief_complaint %} · {{ s.chief_complaint|truncatechars:55 }}{% endif %} · {{ s.get_status_display }}{% if s.duration_seconds %} · {{ s.duration_seconds }}s{% endif %}
+                                {% if s.is_sensitive %}<span class="badge ms-1" style="background:#fff3cd;color:#664d03;border:1px solid #ffc107;font-size:0.65rem;vertical-align:middle;" title="Sensitive encounter — share links disabled, enhanced audit logging active">S</span>{% endif %}
                             </span>
                         </span>
-                        <iconify-icon icon="iconamoon:arrow-right-2-light" class="text-muted"></iconify-icon>
-                    </a>
+                        <a href="{% url 'scribe:review' s.pk %}" class="text-muted text-decoration-none">
+                            <iconify-icon icon="iconamoon:arrow-right-2-light"></iconify-icon>
+                        </a>
+                    </div>
                 {% endfor %}
             </div>
         {% else %}
@@ -66,4 +92,45 @@
         {% endif %}
     </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.querySelectorAll(".session-name-edit").forEach(function(inp) {
+  var original = inp.value;
+  inp.addEventListener("click", function(e) { e.preventDefault(); e.stopPropagation(); });
+  inp.addEventListener("keydown", function(e) {
+    if (e.key === "Enter") { inp.blur(); }
+    if (e.key === "Escape") { inp.value = original; inp.blur(); }
+  });
+  inp.addEventListener("blur", function() {
+    var newName = inp.value.trim();
+    if (newName === original) return;
+    if (!newName) { inp.value = original; return; }
+    fetch(inp.dataset.renameUrl, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": window.WELLNEST ? window.WELLNEST.csrfToken : ""
+      },
+      body: JSON.stringify({patient_name: newName}),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) {
+        original = d.display_title;
+        inp.value = d.display_title;
+        var row = inp.closest("[data-session-search]");
+        if (row) row.setAttribute("data-session-search",
+          (d.display_title + " " + row.getAttribute("data-session-search")).toLowerCase());
+        if (window.WELLNEST_toast) window.WELLNEST_toast("Name saved");
+      } else {
+        inp.value = original;
+      }
+    })
+    .catch(function() { inp.value = original; });
+  });
+});
+</script>
 {% endblock %}
