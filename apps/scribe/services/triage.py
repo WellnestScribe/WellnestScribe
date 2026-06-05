@@ -27,6 +27,8 @@ from typing import Any
 
 from django.conf import settings
 
+from .mms_asr import MMSDependencyError, transcribe_mms_file
+
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +221,17 @@ def transcribe_mms(audio_path: str | Path, *, device: str = "cpu", target_lang: 
         ids = torch.argmax(logits, dim=-1)
         out.append(processor.batch_decode(ids)[0])
     return " ".join(out).strip()
+
+
+# Prefer the shared helper so the Lightning GPU service and the local triage
+# sandbox run the same MMS implementation. Keeping this wrapper preserves the
+# existing public import path used elsewhere in the app.
+def transcribe_mms(audio_path: str | Path, *, device: str = "cpu", target_lang: str = "jam") -> str:
+    try:
+        result = transcribe_mms_file(audio_path, device=device, target_lang=target_lang)
+        return result.text
+    except MMSDependencyError as exc:  # noqa: BLE001
+        raise TriageDependencyError(str(exc)) from exc
 
 
 # ---- T5 paraphrase / translate (text-side helper) ---------------------------
