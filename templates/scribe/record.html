@@ -346,6 +346,12 @@
                                 </button>
                             </div>
                             <p id="ambientStatus" class="mt-2"></p>
+                            <button type="button" id="ambientRetryBtn"
+                                    class="btn btn-outline-warning btn-sm mt-1"
+                                    style="display:none;">
+                                <iconify-icon icon="iconamoon:refresh-duotone" class="me-1 align-middle"></iconify-icon>
+                                Retry — audio still saved
+                            </button>
                         </div>
 
                         {# TEMPORARY timing card — shown after processing completes #}
@@ -1257,6 +1263,8 @@ document.addEventListener('DOMContentLoaded', function () {
   var ambientElapsed = 0;
   var ambientRunning = false;
   var ambientCancelled = false;
+  var _lastAmbientBlob = null; /* kept so Retry can resubmit without re-recording */
+  var ambientRetryBtn = document.getElementById('ambientRetryBtn');
 
   /* ---- Ambient waveform ---- */
   var ambientWaveAnimHandle = 0;
@@ -1338,6 +1346,8 @@ document.addEventListener('DOMContentLoaded', function () {
     navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
       ambientChunks = [];
       ambientCancelled = false;
+      _lastAmbientBlob = null;
+      if (ambientRetryBtn) ambientRetryBtn.style.display = 'none';
       ambientMediaRecorder = new MediaRecorder(stream);
       ambientMediaRecorder.ondataavailable = function (e) {
         if (e.data.size > 0) ambientChunks.push(e.data);
@@ -1434,16 +1444,26 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   async function safeJson(resp, label) {
+    var body = '';
+    try { body = await resp.text(); } catch (_) {}
     if (!resp.ok) {
-      var body = '';
-      try { body = await resp.text(); } catch (_) {}
       var snippet = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
       throw new Error('[' + label + '] HTTP ' + resp.status + (snippet ? ': ' + snippet : ''));
     }
-    return resp.json();
+    /* Guard against HTML login-redirect responses that arrive with status 200 */
+    if (body.trimStart().startsWith('<')) {
+      throw new Error('[' + label + '] Server returned an HTML page — session may have expired. Please reload and try again.');
+    }
+    try {
+      return JSON.parse(body);
+    } catch (e) {
+      throw new Error('[' + label + '] Invalid server response. ' + e.message);
+    }
   }
 
   async function runAmbientPipeline(blob) {
+    _lastAmbientBlob = blob; /* preserve for retry */
+    if (ambientRetryBtn) ambientRetryBtn.style.display = 'none';
     ambientRecordBtn.disabled = true;
     var backend = getAmbientBackend();
     var backendLabel = backend === 'modal' ? 'Cloud' : 'Local';
@@ -1543,7 +1563,15 @@ document.addEventListener('DOMContentLoaded', function () {
     } catch (err) {
       ambientStatus.textContent = 'Error: ' + err.message;
       ambientRecordBtn.disabled = false;
+      /* Show retry button — audio blob is still in memory */
+      if (ambientRetryBtn && _lastAmbientBlob) ambientRetryBtn.style.display = '';
     }
+  }
+
+  if (ambientRetryBtn) {
+    ambientRetryBtn.addEventListener('click', function () {
+      if (_lastAmbientBlob) runAmbientPipeline(_lastAmbientBlob);
+    });
   }
 }());
 </script>
