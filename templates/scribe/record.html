@@ -969,12 +969,14 @@
 
     var html = '';
     filtered.forEach(function (p) {
-      html += '<li class="patient-item" data-name="' + _esc(p.name) + '" data-last-pk="' + (p.last_pk || '') + '">' +
+      var disambig = (p.ambiguous && p.identifier) ? ' <span style="font-size:0.7rem;opacity:0.65;">(' + _esc(p.identifier) + ')</span>' : '';
+      var visits = p.session_count > 1 ? p.session_count + ' visits' : '1 visit';
+      html += '<li class="patient-item" data-name="' + _esc(p.name) + '" data-last-pk="' + (p.last_pk || '') + '" data-identifier="' + _esc(p.identifier || '') + '" data-gender="' + _esc(p.gender || '') + '">' +
         '<div class="patient-icon"><iconify-icon icon="iconamoon:profile-duotone"></iconify-icon></div>' +
         '<div class="patient-info">' +
-          '<strong class="d-block" style="font-size:0.9rem;">' + _esc(p.name) + '</strong>' +
-          '<span class="text-muted" style="font-size:0.76rem;">' + _esc(p.last_visit) +
-          (p.last_cc ? ' · ' + _esc(p.last_cc.substring(0, 38)) : '') + '</span>' +
+          '<strong class="d-block" style="font-size:0.9rem;">' + _esc(p.name) + disambig + '</strong>' +
+          '<span class="text-muted" style="font-size:0.76rem;">' + _esc(p.last_visit) + ' · ' + visits +
+          (p.last_cc ? ' · ' + _esc(p.last_cc.substring(0, 30)) : '') + '</span>' +
         '</div>' +
         '<a href="/scribe/sessions/' + p.last_pk + '/review/" class="patient-last-link" target="_blank" ' +
            'title="Open last session" onclick="event.stopPropagation();">' +
@@ -1016,12 +1018,22 @@
         if (nameEl) nameEl.value = name;
         if (patientSearch) patientSearch.value = name;
         if (continueBtn) continueBtn.disabled = false;
-        /* Show gender row for new patients; hide for returning ones */
+        /* For returning patients, pre-fill identifier hidden field */
+        var identEl = document.getElementById('patientIdentifier');
+        if (identEl && item.dataset.identifier) identEl.value = item.dataset.identifier;
+        /* Show gender row: for new patients ask, for returning patients with known gender skip */
         if (genderRow) {
-          if (item.classList.contains('new-patient-item')) {
+          var isNew = item.classList.contains('new-patient-item');
+          var hasGender = !isNew && item.dataset.gender;
+          if (isNew || !hasGender) {
             genderRow.classList.remove('d-none');
           } else {
             genderRow.classList.add('d-none');
+          }
+          /* Pre-select known gender */
+          if (!isNew && item.dataset.gender) {
+            var gCheck = document.querySelector('input[name="modalGender"][value="' + item.dataset.gender + '"]');
+            if (gCheck) gCheck.checked = true;
           }
         }
       });

@@ -139,40 +139,62 @@ class RecordView(LoginRequiredMixin, View):
 
 @login_required
 def patients_api(request):
-    """Unique patients from this doctor's sessions, most recent first."""
-    seen = set()
-    results = []
+    """Unique patients from this doctor's sessions, grouped by (name, identifier)."""
     sessions = (
         ScribeSession.objects.filter(doctor=request.user)
         .exclude(patient_name="")
         .order_by("-created_at")
-        .values("pk", "patient_name", "chief_complaint", "created_at")
+        .values("pk", "patient_name", "patient_identifier", "patient_gender", "chief_complaint", "created_at")
     )
+    # Group by (name.lower(), identifier.lower()) so same-name different-ID = distinct patients.
+    seen: dict = {}
     for s in sessions:
         name = (s["patient_name"] or "").strip()
-        key = name.lower()
-        if not name or key in seen:
+        if not name:
             continue
-        seen.add(key)
-        results.append({
-            "name": name,
-            "last_pk": s["pk"],
-            "last_cc": s["chief_complaint"] or "",
-            "last_visit": s["created_at"].strftime("%b %d, %Y"),
-        })
-    return JsonResponse({"patients": results[:50]})
+        ident = (s["patient_identifier"] or "").strip()
+        key = (name.lower(), ident.lower())
+        if key not in seen:
+            seen[key] = {
+                "name": name,
+                "identifier": ident,
+                "gender": s["patient_gender"] or "",
+                "last_pk": s["pk"],
+                "last_cc": s["chief_complaint"] or "",
+                "last_visit": s["created_at"].strftime("%b %d, %Y"),
+                "session_count": 1,
+            }
+        else:
+            seen[key]["session_count"] += 1
+
+    results = list(seen.values())[:50]
+
+    # Mark names that appear more than once so UI can show disambiguator.
+    name_freq: dict = {}
+    for r in results:
+        name_freq[r["name"].lower()] = name_freq.get(r["name"].lower(), 0) + 1
+    for r in results:
+        r["ambiguous"] = name_freq[r["name"].lower()] > 1
+
+    return JsonResponse({"patients": results})
 
 
 class HistoryView(LoginRequiredMixin, View):
     template_name = "scribe/history.html"
 
     def get(self, request):
-        sessions = (
-            ScribeSession.objects.filter(doctor=request.user)
-            .select_related("note")
-            .order_by("-created_at")
-        )
-        return render(request, self.template_name, {"sessions": sessions})
+        qs = ScribeSession.objects.filter(doctor=request.user).select_related("note").order_by("-created_at")
+        patient_name = request.GET.get("patient_name", "").strip()
+        patient_id   = request.GET.get("patient_id", "").strip()
+        if patient_name:
+            qs = qs.filter(patient_name__iexact=patient_name)
+        if patient_id:
+            qs = qs.filter(patient_identifier__iexact=patient_id)
+        return render(request, self.template_name, {
+            "sessions": qs,
+            "filter_patient_name": patient_name,
+            "filter_patient_id": patient_id,
+        })
 
 
 class ReviewView(LoginRequiredMixin, View):

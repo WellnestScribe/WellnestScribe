@@ -355,6 +355,15 @@
                maxlength="200"
                {% if session.status == 'finalized' %}readonly{% endif %}>
         <div id="detectedEncounterWrap" style="display:none;"></div>
+        {% if session.patient_name %}
+        <a id="patientHistoryLink"
+           href="{% url 'scribe:history' %}?patient_name={{ session.patient_name|urlencode }}{% if session.patient_identifier %}&patient_id={{ session.patient_identifier|urlencode }}{% endif %}"
+           class="ms-2 small text-decoration-none"
+           style="white-space:nowrap;font-size:0.74rem;opacity:0.7;">
+            <iconify-icon icon="iconamoon:history-duotone" class="me-1 align-middle"></iconify-icon>
+            Patient history
+        </a>
+        {% endif %}
     </div>
 
     {% if session.status == 'error' %}
@@ -774,7 +783,7 @@
     </div>
 </div>
 
-{# ── Resume session modal ── #}
+{# ── Resume session modal (two steps: patient confirm → record) ── #}
 <div class="modal fade" id="resumeModal" tabindex="-1" aria-labelledby="resumeModalLabel"
      data-bs-backdrop="static" data-bs-keyboard="false">
     <div class="modal-dialog modal-dialog-centered" style="max-width:420px;">
@@ -782,14 +791,38 @@
             <div class="modal-header border-0 pb-1">
                 <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="resumeModalLabel">
                     <iconify-icon icon="iconamoon:microphone-duotone" class="text-primary" style="font-size:1.3rem;"></iconify-icon>
-                    Resume session
+                    <span id="resumeModalTitle">Who is this session for?</span>
                 </h5>
                 <button type="button" id="resumeModalCloseBtn" aria-label="Close"
                         style="background:none;border:none;padding:4px 6px;cursor:pointer;line-height:1;opacity:0.6;color:var(--bs-body-color,#212529);">
                     <iconify-icon icon="iconamoon:close-circle-1-duotone" style="font-size:1.2rem;"></iconify-icon>
                 </button>
             </div>
-            <div class="modal-body text-center pt-1">
+
+            {# Step 1: patient confirm #}
+            <div id="resumeStepPatient" class="modal-body pt-1 pb-2">
+                <p class="small text-muted mb-3">Confirm the patient for this additional recording, or tap Skip to continue without linking.</p>
+                <div class="mb-2">
+                    <label class="form-label small fw-semibold mb-1">Patient name</label>
+                    <input type="text" id="resumePatientName" class="form-control form-control-sm"
+                           value="{{ session.patient_name }}" placeholder="Name / initials" maxlength="120">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold mb-1">DOB / ID # <span class="text-muted fw-normal">(optional — helps distinguish same-name patients)</span></label>
+                    <input type="text" id="resumePatientId" class="form-control form-control-sm"
+                           value="{{ session.patient_identifier }}" placeholder="e.g. 1990-04-21 or #MRN-001" maxlength="120">
+                </div>
+                <div class="d-flex gap-2 justify-content-end">
+                    <button type="button" class="btn btn-link btn-sm text-muted text-decoration-none" id="resumeSkipPatientBtn">Skip</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="resumeConfirmPatientBtn">
+                        <iconify-icon icon="iconamoon:arrow-right-2-duotone" class="me-1 align-middle"></iconify-icon>
+                        Confirm &amp; Record
+                    </button>
+                </div>
+            </div>
+
+            {# Step 2: recording widget #}
+            <div id="resumeStepRecord" class="modal-body text-center pt-1 d-none">
                 <p class="small text-muted mb-3">Record additional details. The note will regenerate when done.</p>
                 <div class="recorder-timer mb-2" id="resumeTimer" style="font-size:1.6rem;font-weight:700;font-variant-numeric:tabular-nums;">0:00</div>
                 <div class="waveform-bars mb-3" id="resumeWaveform"></div>
@@ -2051,28 +2084,39 @@ function _suiteConfirm(title, text) {
   var SESSION_ID = sessionEl.dataset.sessionId;
   var CSRF = '{{ csrf_token }}';
 
-  var resumeBtn       = document.getElementById('resumeSessionBtn');
-  var resumeModal     = document.getElementById('resumeModal');
-  var resumeCloseBtn  = document.getElementById('resumeModalCloseBtn');
-  var resumeRecordBtn = document.getElementById('resumeRecordBtn');
-  var resumeLabel     = document.getElementById('resumeRecordLabel');
-  var resumeTimer     = document.getElementById('resumeTimer');
-  var resumeWave      = document.getElementById('resumeWaveform');
-  var resumeStatus    = document.getElementById('resumeStatus');
+  var resumeBtn           = document.getElementById('resumeSessionBtn');
+  var resumeModal         = document.getElementById('resumeModal');
+  var resumeCloseBtn      = document.getElementById('resumeModalCloseBtn');
+  var resumeTitle         = document.getElementById('resumeModalTitle');
+  var stepPatient         = document.getElementById('resumeStepPatient');
+  var stepRecord          = document.getElementById('resumeStepRecord');
+  var resumePatientName   = document.getElementById('resumePatientName');
+  var resumePatientId     = document.getElementById('resumePatientId');
+  var confirmPatientBtn   = document.getElementById('resumeConfirmPatientBtn');
+  var skipPatientBtn      = document.getElementById('resumeSkipPatientBtn');
+  var resumeRecordBtn     = document.getElementById('resumeRecordBtn');
+  var resumeLabel         = document.getElementById('resumeRecordLabel');
+  var resumeTimer         = document.getElementById('resumeTimer');
+  var resumeWave          = document.getElementById('resumeWaveform');
+  var resumeStatus        = document.getElementById('resumeStatus');
 
   if (!resumeBtn || !resumeModal) return;
 
-  /* Build waveform bars */
   var RESUME_BARS = 28;
-  if (resumeWave) {
-    for (var i = 0; i < RESUME_BARS; i++) resumeWave.appendChild(document.createElement('span'));
-  }
+  if (resumeWave) for (var i = 0; i < RESUME_BARS; i++) resumeWave.appendChild(document.createElement('span'));
 
   var _bsModal = null;
   var _mr = null, _stream = null, _chunks = [], _timerInt = null, _elapsed = 0;
   var _waveAnim = 0, _running = false;
+  var _resumePatient = { name: '', identifier: '' };
 
   function fmt(s) { return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
+
+  function showStep(step) {
+    stepPatient.classList.toggle('d-none', step !== 'patient');
+    stepRecord.classList.toggle('d-none', step !== 'record');
+    resumeTitle.textContent = step === 'patient' ? 'Who is this session for?' : 'Resume session';
+  }
 
   function startWave(stream) {
     if (!resumeWave) return;
@@ -2085,9 +2129,7 @@ function _suiteConfirm(title, text) {
       (function tick() {
         _waveAnim = requestAnimationFrame(tick);
         an.getByteFrequencyData(data);
-        spans.forEach(function (sp, i) {
-          sp.style.height = Math.max(4, (data[i*2]||0)/255*40) + 'px';
-        });
+        spans.forEach(function (sp, i) { sp.style.height = Math.max(4, (data[i*2]||0)/255*40) + 'px'; });
       })();
     } catch(e) {}
   }
@@ -2101,32 +2143,35 @@ function _suiteConfirm(title, text) {
       _stream = stream; _chunks = []; _elapsed = 0;
       _mr = new MediaRecorder(stream);
       _mr.ondataavailable = function (e) { if (e.data.size > 0) _chunks.push(e.data); };
-      _mr.onstop = function () {
-        _stream.getTracks().forEach(function (t) { t.stop(); });
-        processResume();
-      };
+      _mr.onstop = function () { _stream.getTracks().forEach(function(t){ t.stop(); }); processResume(); };
       _mr.start(1000);
       _running = true;
       resumeLabel.textContent = 'Stop';
       resumeRecordBtn.classList.add('is-recording');
       resumeStatus.textContent = 'Recording — speak clearly.';
       startWave(stream);
-      _timerInt = setInterval(function () {
-        _elapsed++;
-        resumeTimer.textContent = fmt(_elapsed);
-      }, 1000);
-    }).catch(function (err) {
-      resumeStatus.textContent = 'Microphone access denied: ' + err.message;
-    });
+      _timerInt = setInterval(function () { _elapsed++; resumeTimer.textContent = fmt(_elapsed); }, 1000);
+    }).catch(function (err) { resumeStatus.textContent = 'Microphone denied: ' + err.message; });
   }
 
   function stopRecording() {
-    clearInterval(_timerInt);
-    _running = false;
+    clearInterval(_timerInt); _running = false;
     resumeLabel.textContent = 'Record';
     resumeRecordBtn.classList.remove('is-recording');
     stopWave();
     if (_mr && _mr.state !== 'inactive') _mr.stop();
+  }
+
+  async function savePatientInfo() {
+    /* Persist updated patient name / identifier to the session before recording */
+    if (!_resumePatient.name) return;
+    try {
+      await fetch('/scribe/api/sessions/' + SESSION_ID + '/save/', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patient_name: _resumePatient.name, patient_identifier: _resumePatient.identifier })
+      });
+    } catch(e) {}
   }
 
   async function processResume() {
@@ -2143,7 +2188,6 @@ function _suiteConfirm(title, text) {
       });
       var d1 = await r1.json();
       if (!d1.ok) throw new Error(d1.error || 'Transcription failed');
-
       resumeStatus.textContent = 'Regenerating note…';
       var r2 = await fetch('/scribe/api/sessions/' + SESSION_ID + '/generate/', {
         method: 'POST', credentials: 'same-origin',
@@ -2152,7 +2196,6 @@ function _suiteConfirm(title, text) {
       });
       var d2 = await r2.json();
       if (!d2.ok) throw new Error(d2.error || 'Generation failed');
-
       resumeStatus.textContent = 'Done — reloading…';
       if (_bsModal) _bsModal.hide();
       window.location.reload();
@@ -2162,16 +2205,27 @@ function _suiteConfirm(title, text) {
     }
   }
 
-  resumeBtn.addEventListener('click', function () {
-    _bsModal = bootstrap.Modal.getOrCreateInstance(resumeModal);
-    /* reset state */
+  function goToRecord(name, identifier) {
+    _resumePatient = { name: name || '', identifier: identifier || '' };
+    savePatientInfo();
+    showStep('record');
     resumeTimer.textContent = '0:00';
     resumeStatus.textContent = '';
     resumeLabel.textContent = 'Record';
     resumeRecordBtn.classList.remove('is-recording');
     resumeRecordBtn.disabled = false;
+  }
+
+  resumeBtn.addEventListener('click', function () {
+    _bsModal = bootstrap.Modal.getOrCreateInstance(resumeModal);
+    showStep('patient');
     _bsModal.show();
   });
+
+  if (confirmPatientBtn) confirmPatientBtn.addEventListener('click', function () {
+    goToRecord(resumePatientName ? resumePatientName.value.trim() : '', resumePatientId ? resumePatientId.value.trim() : '');
+  });
+  if (skipPatientBtn) skipPatientBtn.addEventListener('click', function () { goToRecord('', ''); });
 
   resumeRecordBtn.addEventListener('click', function () {
     if (_running) stopRecording(); else startRecording();
