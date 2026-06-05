@@ -46,6 +46,11 @@ urlpatterns = [
     path("share/<str:token>/", views.share_view, name="share"),
     path("api/patients/", views.patients_api, name="api_patients"),
     path("api/quick-transcribe/", views.quick_transcribe_api, name="api_quick_transcribe"),
+    path(
+        "api/sessions/<int:pk>/resume/",
+        views.resume_session_api,
+        name="api_resume",
+    ),
     path("triage/", views.TriageView.as_view(), name="triage"),
     path("drug-check/", views.DrugCheckView.as_view(), name="drug_check"),
     path("api/drug-check/", views.drug_check_api, name="api_drug_check"),

@@ -1391,6 +1391,46 @@ def quick_transcribe_api(request):
 @login_required
 @require_POST
 @csrf_protect
+def resume_session_api(request, pk):
+    """Transcribe a new audio blob, append it to the session transcript, return the combined text."""
+    import os
+    import tempfile
+
+    session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)
+    audio = request.FILES.get("audio")
+    if not audio:
+        return JsonResponse({"ok": False, "error": "No audio sent."}, status=400)
+
+    suffix = ".webm" if audio.name.endswith(".webm") else os.path.splitext(audio.name)[1] or ".webm"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        for chunk in audio.chunks():
+            tmp.write(chunk)
+        tmp_path = tmp.name
+
+    try:
+        new_text = run_transcription(tmp_path)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Resume transcription failed for session %s", pk)
+        return JsonResponse({"ok": False, "error": str(exc)}, status=500)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+    new_text = (new_text or "").strip()
+    existing = (session.transcript or "").strip()
+    combined = (existing + "\n\n" + new_text).strip() if existing else new_text
+    session.transcript = combined
+    session.status = "review"
+    session.save(update_fields=["transcript", "status", "updated_at"])
+    _log(session, "resumed", f"appended_chars={len(new_text)}")
+    return JsonResponse({"ok": True, "transcript": combined})
+
+
+@login_required
+@require_POST
+@csrf_protect
 def share_note_api(request, pk):
     """Issue a 1-hour share link for the note + return WhatsApp + QR data URLs."""
     session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)

@@ -1060,7 +1060,7 @@
         if (patientModal && typeof bootstrap !== 'undefined') {
           bootstrap.Modal.getInstance(patientModal).hide();
         }
-        var url = '/scribe/' + lastPk + '/review/?new_for=' + encodeURIComponent(name);
+        var url = '/scribe/sessions/' + lastPk + '/review/?new_for=' + encodeURIComponent(name);
         if (genderVal) url += '&new_gender=' + encodeURIComponent(genderVal);
         window.location.href = url;
         return;

@@ -563,6 +563,12 @@
         <div class="col-12 col-xl-4 review-sticky-col">
             <div class="card">
                 <div class="card-body p-3">
+                    {# Resume session button #}
+                    <button type="button" class="btn btn-outline-primary w-100 mb-2" id="resumeSessionBtn">
+                        <iconify-icon icon="iconamoon:microphone-duotone" class="me-1 align-middle"></iconify-icon>
+                        Resume session
+                    </button>
+
                     {# Record new session banner — shown when arriving from patient modal (existing patient) #}
                     <div id="recordNewBanner" class="d-none mb-3">
                         <a id="recordNewBtn" href="{% url 'scribe:record' %}"
@@ -763,6 +769,37 @@
                 <h6 class="fw-semibold mt-2">Still there?</h6>
                 <p class="text-muted small">For patient privacy you&rsquo;ll be signed out shortly. Tap to stay.</p>
                 <button type="button" class="btn btn-primary w-100" data-bs-dismiss="modal">I&rsquo;m here</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── Resume session modal ── #}
+<div class="modal fade" id="resumeModal" tabindex="-1" aria-labelledby="resumeModalLabel"
+     data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:420px;">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-1">
+                <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="resumeModalLabel">
+                    <iconify-icon icon="iconamoon:microphone-duotone" class="text-primary" style="font-size:1.3rem;"></iconify-icon>
+                    Resume session
+                </h5>
+                <button type="button" id="resumeModalCloseBtn" aria-label="Close"
+                        style="background:none;border:none;padding:4px 6px;cursor:pointer;line-height:1;opacity:0.6;color:var(--bs-body-color,#212529);">
+                    <iconify-icon icon="iconamoon:close-circle-1-duotone" style="font-size:1.2rem;"></iconify-icon>
+                </button>
+            </div>
+            <div class="modal-body text-center pt-1">
+                <p class="small text-muted mb-3">Record additional details. The note will regenerate when done.</p>
+                <div class="recorder-timer mb-2" id="resumeTimer" style="font-size:1.6rem;font-weight:700;font-variant-numeric:tabular-nums;">0:00</div>
+                <div class="waveform-bars mb-3" id="resumeWaveform"></div>
+                <div class="d-flex justify-content-center gap-3">
+                    <button type="button" class="record-cta" id="resumeRecordBtn" aria-label="Start recording">
+                        <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+                        <span id="resumeRecordLabel">Record</span>
+                    </button>
+                </div>
+                <p class="small mt-3 mb-0" id="resumeStatus" style="min-height:1.4em;color:var(--bs-secondary-color);"></p>
             </div>
         </div>
     </div>
@@ -2004,6 +2041,149 @@ function _suiteConfirm(title, text) {
         }
       }
     });
+  });
+})();
+
+/* ── Resume session ── */
+(function () {
+  var sessionEl = document.querySelector('[data-session-id]');
+  if (!sessionEl) return;
+  var SESSION_ID = sessionEl.dataset.sessionId;
+  var CSRF = '{{ csrf_token }}';
+
+  var resumeBtn       = document.getElementById('resumeSessionBtn');
+  var resumeModal     = document.getElementById('resumeModal');
+  var resumeCloseBtn  = document.getElementById('resumeModalCloseBtn');
+  var resumeRecordBtn = document.getElementById('resumeRecordBtn');
+  var resumeLabel     = document.getElementById('resumeRecordLabel');
+  var resumeTimer     = document.getElementById('resumeTimer');
+  var resumeWave      = document.getElementById('resumeWaveform');
+  var resumeStatus    = document.getElementById('resumeStatus');
+
+  if (!resumeBtn || !resumeModal) return;
+
+  /* Build waveform bars */
+  var RESUME_BARS = 28;
+  if (resumeWave) {
+    for (var i = 0; i < RESUME_BARS; i++) resumeWave.appendChild(document.createElement('span'));
+  }
+
+  var _bsModal = null;
+  var _mr = null, _stream = null, _chunks = [], _timerInt = null, _elapsed = 0;
+  var _waveAnim = 0, _running = false;
+
+  function fmt(s) { return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
+
+  function startWave(stream) {
+    if (!resumeWave) return;
+    try {
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      var src = ctx.createMediaStreamSource(stream);
+      var an  = ctx.createAnalyser(); an.fftSize = 256; src.connect(an);
+      var data = new Uint8Array(an.frequencyBinCount);
+      var spans = resumeWave.querySelectorAll('span');
+      (function tick() {
+        _waveAnim = requestAnimationFrame(tick);
+        an.getByteFrequencyData(data);
+        spans.forEach(function (sp, i) {
+          sp.style.height = Math.max(4, (data[i*2]||0)/255*40) + 'px';
+        });
+      })();
+    } catch(e) {}
+  }
+  function stopWave() {
+    cancelAnimationFrame(_waveAnim);
+    if (resumeWave) resumeWave.querySelectorAll('span').forEach(function(sp){ sp.style.height='4px'; });
+  }
+
+  function startRecording() {
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      _stream = stream; _chunks = []; _elapsed = 0;
+      _mr = new MediaRecorder(stream);
+      _mr.ondataavailable = function (e) { if (e.data.size > 0) _chunks.push(e.data); };
+      _mr.onstop = function () {
+        _stream.getTracks().forEach(function (t) { t.stop(); });
+        processResume();
+      };
+      _mr.start(1000);
+      _running = true;
+      resumeLabel.textContent = 'Stop';
+      resumeRecordBtn.classList.add('is-recording');
+      resumeStatus.textContent = 'Recording — speak clearly.';
+      startWave(stream);
+      _timerInt = setInterval(function () {
+        _elapsed++;
+        resumeTimer.textContent = fmt(_elapsed);
+      }, 1000);
+    }).catch(function (err) {
+      resumeStatus.textContent = 'Microphone access denied: ' + err.message;
+    });
+  }
+
+  function stopRecording() {
+    clearInterval(_timerInt);
+    _running = false;
+    resumeLabel.textContent = 'Record';
+    resumeRecordBtn.classList.remove('is-recording');
+    stopWave();
+    if (_mr && _mr.state !== 'inactive') _mr.stop();
+  }
+
+  async function processResume() {
+    if (!_chunks.length) { resumeStatus.textContent = 'No audio captured.'; return; }
+    resumeRecordBtn.disabled = true;
+    resumeStatus.textContent = 'Transcribing…';
+    var blob = new Blob(_chunks, { type: 'audio/webm' });
+    var fd = new FormData();
+    fd.append('audio', blob, 'resume.webm');
+    try {
+      var r1 = await fetch('/scribe/api/sessions/' + SESSION_ID + '/resume/', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'X-CSRFToken': CSRF }, body: fd
+      });
+      var d1 = await r1.json();
+      if (!d1.ok) throw new Error(d1.error || 'Transcription failed');
+
+      resumeStatus.textContent = 'Regenerating note…';
+      var r2 = await fetch('/scribe/api/sessions/' + SESSION_ID + '/generate/', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript: d1.transcript })
+      });
+      var d2 = await r2.json();
+      if (!d2.ok) throw new Error(d2.error || 'Generation failed');
+
+      resumeStatus.textContent = 'Done — reloading…';
+      if (_bsModal) _bsModal.hide();
+      window.location.reload();
+    } catch (err) {
+      resumeStatus.textContent = 'Error: ' + err.message;
+      resumeRecordBtn.disabled = false;
+    }
+  }
+
+  resumeBtn.addEventListener('click', function () {
+    _bsModal = bootstrap.Modal.getOrCreateInstance(resumeModal);
+    /* reset state */
+    resumeTimer.textContent = '0:00';
+    resumeStatus.textContent = '';
+    resumeLabel.textContent = 'Record';
+    resumeRecordBtn.classList.remove('is-recording');
+    resumeRecordBtn.disabled = false;
+    _bsModal.show();
+  });
+
+  resumeRecordBtn.addEventListener('click', function () {
+    if (_running) stopRecording(); else startRecording();
+  });
+
+  resumeCloseBtn.addEventListener('click', function () {
+    if (_running) stopRecording();
+    if (_bsModal) _bsModal.hide();
+  });
+
+  resumeModal.addEventListener('hidden.bs.modal', function () {
+    if (_running) stopRecording();
   });
 })();
 
