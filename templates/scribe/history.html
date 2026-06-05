@@ -55,11 +55,12 @@
             <div class="d-flex flex-column" id="allList">
                 {% for s in sessions %}
                     <div class="session-row"
+                       data-href="{% url 'scribe:review' s.pk %}"
                        data-session-search="{{ s.display_title|lower }} {{ s.chief_complaint|lower }} {{ s.get_note_format_display|lower }} {{ s.get_status_display|lower }}"
-                       style="border-radius:0;border-bottom:1px solid var(--bs-border-color);">
-                        <a href="{% url 'scribe:review' s.pk %}" class="session-icon text-decoration-none">
+                       style="border-radius:0;border-bottom:1px solid var(--bs-border-color);cursor:pointer;">
+                        <span class="session-icon">
                             <iconify-icon icon="iconamoon:file-document-duotone"></iconify-icon>
-                        </a>
+                        </span>
                         <span class="flex-grow-1">
                             <span class="d-block">
                               <input type="text" class="session-name-edit"
@@ -74,12 +75,10 @@
                             </span>
                             <span class="d-block small text-muted">
                                 {{ s.created_at|date:"M j, Y" }}{% if s.chief_complaint %} · {{ s.chief_complaint|truncatechars:55 }}{% endif %} · {{ s.get_status_display }}{% if s.duration_seconds %} · {{ s.duration_seconds }}s{% endif %}
-                                {% if s.is_sensitive %}<span class="badge ms-1" style="background:#fff3cd;color:#664d03;border:1px solid #ffc107;font-size:0.65rem;vertical-align:middle;" title="Sensitive encounter — share links disabled, enhanced audit logging active">S</span>{% endif %}
+                                {% if s.is_sensitive %}<span class="badge ms-1" style="background:#fff3cd;color:#664d03;border:1px solid #ffc107;font-size:0.65rem;vertical-align:middle;" title="Sensitive encounter">S</span>{% endif %}
                             </span>
                         </span>
-                        <a href="{% url 'scribe:review' s.pk %}" class="text-muted text-decoration-none">
-                            <iconify-icon icon="iconamoon:arrow-right-2-light"></iconify-icon>
-                        </a>
+                        <iconify-icon icon="iconamoon:arrow-right-2-light" class="text-muted flex-shrink-0"></iconify-icon>
                     </div>
                 {% endfor %}
             </div>
@@ -96,6 +95,14 @@
 
 {% block extra_scripts %}
 <script>
+/* Make entire session row clickable except interactive elements */
+document.querySelectorAll('.session-row[data-href]').forEach(function(row) {
+  row.addEventListener('click', function(e) {
+    if (e.target.closest('input, button, a, select')) return;
+    window.location.href = row.dataset.href;
+  });
+});
+
 document.querySelectorAll(".session-name-edit").forEach(function(inp) {
   var original = inp.value;
   inp.addEventListener("click", function(e) { e.preventDefault(); e.stopPropagation(); });

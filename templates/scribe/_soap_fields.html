@@ -1,18 +1,36 @@
-{# Compartmentalized SOAP editor — Freed-style collapsible sections.
-   Each section: collapse toggle · section label · thumbs up/down · copy · mic. #}
+{% if note.visit_summary %}
+<div class="note-section" data-section-id="visit_summary">
+    <div class="ns-sticky-sentinel"></div>
+    <header class="note-section-header" id="nsh-visit-summary">
+        <span class="note-section-collapse-trigger" data-collapse="visit_summary">
+            <iconify-icon icon="iconamoon:arrow-up-2-duotone" class="note-section-toggle-icon"></iconify-icon>
+            <span class="section-label">Visit Summary</span>
+        </span>
+        <div class="note-section-actions">
+            <button type="button" class="note-section-btn" data-copy-section="visit_summary" title="Copy summary">
+                <iconify-icon icon="iconamoon:copy-duotone"></iconify-icon>
+            </button>
+        </div>
+    </header>
+    <div class="note-section-body" id="ns-body-visit_summary">
+        <textarea class="note-textarea" data-note-field="visit_summary">{{ note.visit_summary }}</textarea>
+    </div>
+</div>
+{% endif %}
 
 <div class="note-section" data-section-id="subjective">
-    <header class="note-section-header">
+    <div class="ns-sticky-sentinel"></div>
+    <header class="note-section-header" id="nsh-subjective">
         <span class="note-section-collapse-trigger" data-collapse="subjective">
             <iconify-icon icon="iconamoon:arrow-up-2-duotone" class="note-section-toggle-icon"></iconify-icon>
             <span class="section-label">Subjective</span>
         </span>
         <div class="note-section-actions">
             <button type="button" class="note-section-btn" data-thumb="up" data-section="subjective" title="Well captured">
-                <iconify-icon icon="iconamoon:thumb-up-duotone"></iconify-icon>
+                <iconify-icon icon="iconamoon:like-duotone"></iconify-icon>
             </button>
             <button type="button" class="note-section-btn" data-thumb="down" data-section="subjective" title="Needs improvement">
-                <iconify-icon icon="iconamoon:thumb-down-duotone"></iconify-icon>
+                <iconify-icon icon="iconamoon:dislike-duotone"></iconify-icon>
             </button>
             <button type="button" class="note-section-btn" data-copy-section="subjective" title="Copy section">
                 <iconify-icon icon="iconamoon:copy-duotone"></iconify-icon>
@@ -28,17 +46,18 @@
 </div>
 
 <div class="note-section" data-section-id="objective">
-    <header class="note-section-header">
+    <div class="ns-sticky-sentinel"></div>
+    <header class="note-section-header" id="nsh-objective">
         <span class="note-section-collapse-trigger" data-collapse="objective">
             <iconify-icon icon="iconamoon:arrow-up-2-duotone" class="note-section-toggle-icon"></iconify-icon>
             <span class="section-label">Objective</span>
         </span>
         <div class="note-section-actions">
             <button type="button" class="note-section-btn" data-thumb="up" data-section="objective" title="Well captured">
-                <iconify-icon icon="iconamoon:thumb-up-duotone"></iconify-icon>
+                <iconify-icon icon="iconamoon:like-duotone"></iconify-icon>
             </button>
             <button type="button" class="note-section-btn" data-thumb="down" data-section="objective" title="Needs improvement">
-                <iconify-icon icon="iconamoon:thumb-down-duotone"></iconify-icon>
+                <iconify-icon icon="iconamoon:dislike-duotone"></iconify-icon>
             </button>
             <button type="button" class="note-section-btn" data-copy-section="objective" title="Copy section">
                 <iconify-icon icon="iconamoon:copy-duotone"></iconify-icon>
@@ -54,17 +73,18 @@
 </div>
 
 <div class="note-section" data-section-id="assessment">
-    <header class="note-section-header">
+    <div class="ns-sticky-sentinel"></div>
+    <header class="note-section-header" id="nsh-assessment">
         <span class="note-section-collapse-trigger" data-collapse="assessment">
             <iconify-icon icon="iconamoon:arrow-up-2-duotone" class="note-section-toggle-icon"></iconify-icon>
             <span class="section-label">Assessment</span>
         </span>
         <div class="note-section-actions">
             <button type="button" class="note-section-btn" data-thumb="up" data-section="assessment" title="Well captured">
-                <iconify-icon icon="iconamoon:thumb-up-duotone"></iconify-icon>
+                <iconify-icon icon="iconamoon:like-duotone"></iconify-icon>
             </button>
             <button type="button" class="note-section-btn" data-thumb="down" data-section="assessment" title="Needs improvement">
-                <iconify-icon icon="iconamoon:thumb-down-duotone"></iconify-icon>
+                <iconify-icon icon="iconamoon:dislike-duotone"></iconify-icon>
             </button>
             <button type="button" class="note-section-btn" data-copy-section="assessment" title="Copy section">
                 <iconify-icon icon="iconamoon:copy-duotone"></iconify-icon>
@@ -80,17 +100,18 @@
 </div>
 
 <div class="note-section" data-section-id="plan">
-    <header class="note-section-header">
+    <div class="ns-sticky-sentinel"></div>
+    <header class="note-section-header" id="nsh-plan">
         <span class="note-section-collapse-trigger" data-collapse="plan">
             <iconify-icon icon="iconamoon:arrow-up-2-duotone" class="note-section-toggle-icon"></iconify-icon>
             <span class="section-label">Plan</span>
         </span>
         <div class="note-section-actions">
             <button type="button" class="note-section-btn" data-thumb="up" data-section="plan" title="Well captured">
-                <iconify-icon icon="iconamoon:thumb-up-duotone"></iconify-icon>
+                <iconify-icon icon="iconamoon:like-duotone"></iconify-icon>
             </button>
             <button type="button" class="note-section-btn" data-thumb="down" data-section="plan" title="Needs improvement">
-                <iconify-icon icon="iconamoon:thumb-down-duotone"></iconify-icon>
+                <iconify-icon icon="iconamoon:dislike-duotone"></iconify-icon>
             </button>
             <button type="button" class="note-section-btn" data-copy-section="plan" title="Copy section">
                 <iconify-icon icon="iconamoon:copy-duotone"></iconify-icon>

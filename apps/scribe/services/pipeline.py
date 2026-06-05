@@ -123,6 +123,17 @@ def run_polish_grammar(note_text: str) -> str:
         return note_text
 
 
+def run_magic_edit(note_text: str, instruction: str) -> str:
+    if not _use_real_ai():
+        return note_text
+    try:
+        from .soap_generator import magic_edit_note
+        return magic_edit_note(note_text, instruction=instruction)
+    except AIConfigError as exc:
+        logger.warning("Magic edit stub: %s", exc)
+        return note_text
+
+
 def run_interpret_patois(patois_text: str) -> str:
     if not _use_real_ai():
         return patois_text

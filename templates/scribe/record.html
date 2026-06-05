@@ -54,6 +54,8 @@
                 padding 0.15s ease 0s;
   }
 }
+#micTestMeter > div { transition: height 0.08s ease, background 0.08s ease; }
+#micTestModal .modal-content { border: 1px solid var(--bs-border-color); }
 </style>
 {% endblock %}
 
@@ -82,26 +84,16 @@
         <div class="col-12 col-xl-7">
             <div class="card h-100">
                 <div class="card-body p-4">
-                    {# Mode tabs: Dictation vs Ambient #}
-                    <div class="mode-tabs" role="tablist" aria-label="Recording mode">
-                        <button type="button" class="mode-tab is-active" data-mode="dictation" role="tab" aria-selected="true">
-                            <iconify-icon icon="iconamoon:microphone-duotone" class="me-1 align-middle"></iconify-icon>
-                            Dictation
-                        </button>
-                        <button type="button" class="mode-tab" data-mode="ambient" role="tab" aria-selected="false">
-                            <iconify-icon icon="iconamoon:chat-conversation-duotone" class="me-1 align-middle"></iconify-icon>
-                            Ambient
-                        </button>
-                    </div>
-
-                    <div class="mode-panel is-active" id="panelDictation">
-
+                    {# Shared hidden state fields — read by wellnest.js and ambient pipeline #}
                     <select id="noteFormatSelect" class="d-none" aria-hidden="true" tabindex="-1">
                         {% for value, label in format_choices %}
                             <option value="{{ value }}" {% if value == profile.default_note_style %}selected{% endif %}>{{ label }}</option>
                         {% endfor %}
                     </select>
+                    <input type="hidden" id="lengthModeSwitch" value="{% if profile.long_form_default %}long_form{% else %}normal{% endif %}">
+                    <input type="hidden" id="templateInstructions" value="">
 
+                    {# ── Shared toolbar: always visible above both tabs ── #}
                     <div class="record-toolbar mb-3">
                         <div class="record-toolbar-group">
                             <span class="record-toolbar-label">Note style</span>
@@ -127,12 +119,53 @@
                             </div>
                         </div>
 
-                        <div class="record-toolbar-group record-toolbar-group-compact">
-                            <span class="record-toolbar-label">AI mode</span>
+                        <div class="record-toolbar-group record-toolbar-group--length">
+                            <span class="record-toolbar-label">Note length</span>
+                            <select id="recordLengthSelect" class="length-select" aria-label="Note length">
+                                <option value="concise">Concise</option>
+                                <option value="normal" {% if not profile.long_form_default %}selected{% endif %}>Standard</option>
+                                <option value="long_form" {% if profile.long_form_default %}selected{% endif %}>Long</option>
+                            </select>
+                        </div>
+
+                        <div class="record-toolbar-group record-toolbar-group--template">
+                            <span class="record-toolbar-label">Template</span>
+                            <div class="dropdown">
+                                <button class="btn-template-sel dropdown-toggle" id="templateDropdownBtn"
+                                        type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <iconify-icon icon="iconamoon:file-check-duotone" class="me-1 align-middle" style="font-size:0.95rem;"></iconify-icon>
+                                    <span id="templateSelectLabel">General</span>
+                                </button>
+                                <ul class="dropdown-menu" id="templateDropdownMenu" style="min-width:220px;">
+                                    <li><h6 class="dropdown-header" style="font-size:0.68rem;letter-spacing:0.06em;">Built-in</h6></li>
+                                    <li><a class="dropdown-item template-pick" data-tpl="general" href="#">General</a></li>
+                                    <li><a class="dropdown-item template-pick" data-tpl="new_patient" href="#">New Patient</a></li>
+                                    <li><a class="dropdown-item template-pick" data-tpl="returning_patient" href="#">Returning Patient</a></li>
+                                    <li><a class="dropdown-item template-pick" data-tpl="acute_medical" href="#">Acute Medical Visit</a></li>
+                                    <li><a class="dropdown-item template-pick" data-tpl="follow_up" href="#">Follow-Up Visit</a></li>
+                                    <li><a class="dropdown-item template-pick" data-tpl="new_medical" href="#">New Medical Issue</a></li>
+                                    <li><a class="dropdown-item template-pick" data-tpl="yearly_checkup" href="#">Annual Check-up</a></li>
+                                    <li><a class="dropdown-item template-pick" data-tpl="emergency" href="#">Emergency Visit</a></li>
+                                    <li><a class="dropdown-item template-pick" data-tpl="antenatal" href="#">Antenatal Visit</a></li>
+                                    <li><a class="dropdown-item template-pick" data-tpl="paediatric" href="#">Paediatric Visit</a></li>
+                                    <li id="customTemplatesSection" class="d-none">
+                                        <hr class="dropdown-divider">
+                                        <h6 class="dropdown-header" style="font-size:0.68rem;letter-spacing:0.06em;">My templates</h6>
+                                    </li>
+                                    <li id="customTemplatesSlot"></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item fw-semibold text-primary py-2" href="#" id="manageTemplatesBtn">
+                                        <iconify-icon icon="iconamoon:settings-duotone" class="me-1 align-middle" style="font-size:1.05em;"></iconify-icon>
+                                        Manage templates
+                                    </a></li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="record-toolbar-group record-toolbar-group--assist">
+                            <span class="record-toolbar-label d-none d-xl-block">&nbsp;</span>
                             <label class="suggestive-assist-chip" for="suggestiveAssistToggle" title="When on, WellNest can add cautious rule-out or workup wording when the transcript strongly implies it.">
-                                <input type="checkbox"
-                                       id="suggestiveAssistToggle"
-                                       {% if profile.suggestive_assist %}checked{% endif %}>
+                                <input type="checkbox" id="suggestiveAssistToggle" {% if profile.suggestive_assist %}checked{% endif %}>
                                 <span class="suggestive-assist-chip-body">
                                     <iconify-icon icon="iconamoon:idea-duotone" class="me-1"></iconify-icon>
                                     Suggestive assist
@@ -140,6 +173,24 @@
                             </label>
                         </div>
                     </div>
+
+                    {# Mode tabs: Ambient first (left), Dictation second #}
+                    <div class="mode-tabs" role="tablist" aria-label="Recording mode">
+                        <button type="button" class="mode-tab is-active" data-mode="ambient" role="tab" aria-selected="true"
+                                data-bs-toggle="tooltip" data-bs-placement="bottom"
+                                title="Listens to the whole room — AI writes the note for you.">
+                            <iconify-icon icon="iconamoon:chat-conversation-duotone" class="me-1 align-middle"></iconify-icon>
+                            Ambient
+                        </button>
+                        <button type="button" class="mode-tab" data-mode="dictation" role="tab" aria-selected="false"
+                                data-bs-toggle="tooltip" data-bs-placement="bottom"
+                                title="Speak your own summary after the visit. You control what goes in.">
+                            <iconify-icon icon="iconamoon:microphone-duotone" class="me-1 align-middle"></iconify-icon>
+                            Dictation
+                        </button>
+                    </div>
+
+                    <div class="mode-panel" id="panelDictation">
 
                     <p id="micCalibrationHint" class="text-muted mb-2" style="font-size:0.78rem;">
                         <iconify-icon icon="iconamoon:microphone-duotone" class="me-1 align-middle text-primary"></iconify-icon>
@@ -196,35 +247,15 @@
                         </div>
                     </div>
 
-                    <div class="row g-3 mt-3">
-                        <div class="col-12 col-sm-6">
-                            <label class="form-label small text-muted">Note length</label>
-                            <div class="length-selector mt-1" id="recordLengthSelector">
-                                <button type="button" class="length-btn" data-record-length="concise">Concise</button>
-                                <button type="button" class="length-btn {% if not profile.long_form_default %}is-active{% endif %}" data-record-length="normal">Standard</button>
-                                <button type="button" class="length-btn {% if profile.long_form_default %}is-active{% endif %}" data-record-length="long_form">Long</button>
-                            </div>
-                            {# Hidden sentinel keeps backward compat for wellnest.js #}
-                            <input type="hidden" id="lengthModeSwitch" value="{% if profile.long_form_default %}long_form{% else %}normal{% endif %}">
-                        </div>
-                        <div class="col-12 col-sm-6 d-flex align-items-end">
-                            <button type="button" class="btn btn-outline-secondary w-100" id="audioUploadBtn">
-                                <iconify-icon icon="iconamoon:cloud-upload-duotone" class="me-1 align-middle"></iconify-icon>
-                                Upload audio
-                            </button>
-                            <input type="file" id="audioFileInput" accept="audio/*" hidden>
-                        </div>
-                    </div>
-
-                    {# Mobile-only: compact recent sessions strip — saves scrolling on small screens #}
+                    {# Mobile-only: recent sessions — shown right after record button so it's visible without scrolling #}
                     {% if recent_sessions %}
-                    <div class="d-xl-none mt-3">
+                    <div class="d-xl-none mt-4">
                         <div class="d-flex align-items-center justify-content-between mb-2">
-                            <span class="text-muted fw-semibold" style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.07em;">Recent</span>
+                            <span class="fw-semibold" style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--bs-secondary-color);">Recent sessions</span>
                             <a href="{% url 'scribe:history' %}" class="text-decoration-none" style="font-size:0.75rem;">See all</a>
                         </div>
                         <div class="d-flex flex-column gap-1">
-                            {% for s in recent_sessions|slice:":3" %}
+                            {% for s in recent_sessions|slice:":5" %}
                             <a href="{% url 'scribe:review' s.pk %}"
                                class="session-row py-2 text-decoration-none"
                                style="border-radius:10px;border-bottom:none;">
@@ -236,7 +267,7 @@
                                         {% if s.patient_name %}{{ s.patient_name }}{% else %}{{ s.created_at|date:"M j, Y" }}{% endif %}
                                     </span>
                                     <span class="d-block text-muted text-truncate" style="font-size:0.74rem;">
-                                        {{ s.created_at|date:"M j · g:i A" }}{% if s.chief_complaint %} · {{ s.chief_complaint|truncatechars:28 }}{% endif %}
+                                        {{ s.created_at|date:"M j · g:i A" }}{% if s.chief_complaint %} · {{ s.chief_complaint|truncatechars:30 }}{% endif %}
                                     </span>
                                 </span>
                                 <iconify-icon icon="iconamoon:arrow-right-2-light" class="text-muted flex-shrink-0"></iconify-icon>
@@ -245,6 +276,14 @@
                         </div>
                     </div>
                     {% endif %}
+
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-outline-secondary w-100" id="audioUploadBtn">
+                            <iconify-icon icon="iconamoon:cloud-upload-duotone" class="me-1 align-middle"></iconify-icon>
+                            Upload audio
+                        </button>
+                        <input type="file" id="audioFileInput" accept="audio/*" hidden>
+                    </div>
 
                     <hr class="my-4">
 
@@ -268,25 +307,28 @@
                     </div>{# end #panelDictation #}
 
                     {# ---- Ambient mode panel ---- #}
-                    <div class="mode-panel" id="panelAmbient">
+                    <div class="mode-panel is-active" id="panelAmbient">
 
-                        {# TEMPORARY backend toggle for latency testing #}
-                        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
-                            <span class="small text-muted fw-semibold">ASR backend:</span>
+                        {# Backend selector — admin/debug only; hidden from regular doctors #}
+                        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap {% if not request.user.is_staff %}d-none{% endif %}">
+                            <span class="small text-muted fw-semibold">Transcript source:</span>
                             <div class="btn-group btn-group-sm" role="group" id="ambientBackendGroup">
                                 <input type="radio" class="btn-check" name="ambientBackend" id="backendModal" value="modal" autocomplete="off" {% if ambient_backend == 'modal' %}checked{% endif %}>
                                 <label class="btn btn-outline-primary" for="backendModal">
                                     <iconify-icon icon="iconamoon:lightning-1-duotone" class="me-1 align-middle"></iconify-icon>
-                                    Modal L4 GPU
+                                    Cloud
                                 </label>
                                 <input type="radio" class="btn-check" name="ambientBackend" id="backendLocal" value="local" autocomplete="off" {% if ambient_backend != 'modal' %}checked{% endif %}>
                                 <label class="btn btn-outline-secondary" for="backendLocal">
                                     <iconify-icon icon="iconamoon:cpu-duotone" class="me-1 align-middle"></iconify-icon>
-                                    Local CPU
+                                    Local
                                 </label>
                             </div>
-                            <span class="badge bg-warning-subtle text-warning border border-warning-subtle" style="font-size:0.65rem;">TEMP · testing</span>
                         </div>
+                        {# Always default to cloud for regular users #}
+                        {% if not request.user.is_staff %}
+                        <input type="radio" name="ambientBackend" id="backendModalHidden" value="modal" checked hidden>
+                        {% endif %}
 
                         <div class="recorder-shell text-center">
                             <div class="mic-live-dot" id="ambientMicDot"></div>
@@ -331,11 +373,40 @@
 
                         <div class="alert alert-info border mt-3 mb-0 small">
                             <iconify-icon icon="iconamoon:chat-conversation-duotone" class="me-1 align-middle"></iconify-icon>
-                            <strong>Ambient mode</strong> — records the full room conversation.
-                            Modal L4 GPU: fast inference (~1–2 s per 25 s of audio) but ~50 s round-trip
-                            due to upload + preprocessing. Local CPU: no network, but 1–5 min on CPU.
-                            Do not close this tab while processing.
+                            <strong>Ambient mode</strong> records the full room conversation and generates a structured note automatically.
+                            <strong>Cloud</strong> is faster; <strong>Local</strong> runs offline on your device.
+                            Keep this tab open while processing.
                         </div>
+
+                        {# Mobile-only: recent sessions below the ambient recorder #}
+                        {% if recent_sessions %}
+                        <div class="d-xl-none mt-4">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="fw-bold" style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--bs-secondary-color);">Recent sessions</span>
+                                <a href="{% url 'scribe:history' %}" class="text-decoration-none" style="font-size:0.75rem;">See all</a>
+                            </div>
+                            <div class="d-flex flex-column gap-1">
+                                {% for s in recent_sessions|slice:":5" %}
+                                <a href="{% url 'scribe:review' s.pk %}"
+                                   class="session-row py-2 text-decoration-none"
+                                   style="border-radius:10px;border-bottom:none;">
+                                    <span class="session-icon" style="width:30px;height:30px;font-size:0.95rem;">
+                                        <iconify-icon icon="iconamoon:file-document-duotone"></iconify-icon>
+                                    </span>
+                                    <span class="flex-grow-1 overflow-hidden">
+                                        <span class="d-block fw-semibold text-truncate" style="font-size:0.83rem;">
+                                            {% if s.patient_name %}{{ s.patient_name }}{% else %}{{ s.created_at|date:"M j, Y" }}{% endif %}
+                                        </span>
+                                        <span class="d-block text-muted text-truncate" style="font-size:0.74rem;">
+                                            {{ s.created_at|date:"M j · g:i A" }}{% if s.chief_complaint %} · {{ s.chief_complaint|truncatechars:30 }}{% endif %}
+                                        </span>
+                                    </span>
+                                    <iconify-icon icon="iconamoon:arrow-right-2-light" class="text-muted flex-shrink-0"></iconify-icon>
+                                </a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
                     </div>{# end #panelAmbient #}
 
                 </div>
@@ -359,47 +430,174 @@
                                    placeholder="Search recent sessions…"
                                    aria-label="Search recent sessions">
                         </div>
-                        <div class="d-flex flex-column gap-1" id="recentList">
+                        <div class="d-flex flex-column" id="recentList">
                             {% for s in recent_sessions %}
                                 <a href="{% url 'scribe:review' s.pk %}"
-                                   class="session-row"
+                                   class="recent-session-row text-decoration-none"
                                    data-session-search="{{ s.display_title|lower }} {{ s.chief_complaint|lower }} {{ s.get_note_format_display|lower }}">
-                                    <span class="session-icon">
+                                    <span class="rsr-icon">
                                         <iconify-icon icon="iconamoon:file-document-duotone"></iconify-icon>
                                     </span>
-                                    <span class="flex-grow-1">
-                                        <span class="d-block fw-semibold">
+                                    <span class="rsr-body">
+                                        <span class="rsr-name">
                                             {% if s.patient_name %}{{ s.patient_name }}{% else %}{{ s.created_at|date:"M j, Y" }}{% endif %}
+                                            {% if s.is_sensitive %}<span class="badge ms-1" style="background:#fff3cd;color:#664d03;border:1px solid #ffc107;font-size:0.6rem;">S</span>{% endif %}
                                         </span>
-                                        <span class="d-block small text-muted">
-                                            {{ s.created_at|date:"M j · g:i A" }}{% if s.chief_complaint %} · {{ s.chief_complaint|truncatechars:42 }}{% else %} · {{ s.get_status_display }}{% endif %}
+                                        <span class="rsr-meta">
+                                            {{ s.created_at|date:"M j · g:i A" }}{% if s.chief_complaint %} · {{ s.chief_complaint|truncatechars:38 }}{% endif %}
                                         </span>
                                     </span>
-                                    <iconify-icon icon="iconamoon:arrow-right-2-light" class="text-muted"></iconify-icon>
+                                    <span class="rsr-status rsr-status--{{ s.status }}">{{ s.get_status_display }}</span>
                                 </a>
                             {% endfor %}
                         </div>
                     {% else %}
-                        <p class="text-muted small mb-0">No sessions yet. Your first note will appear here.</p>
+                        <div class="text-center py-4 text-muted">
+                            <iconify-icon icon="iconamoon:folder-light" class="fs-2 mb-2"></iconify-icon>
+                            <p class="small mb-0">No sessions yet. Your first note will appear here.</p>
+                        </div>
                     {% endif %}
 
-                    <hr class="my-4">
-
-                    <h6 class="fw-semibold mb-2">Specialty: {{ profile.get_specialty_display }}</h6>
-                    <p class="text-muted small mb-2">
-                        WellNest tailors the note style to your specialty. Update it in
-                        <a href="{% url 'accounts:profile' %}">profile &amp; preferences</a>.
-                    </p>
-
-                    <div class="alert alert-light border mb-0 small mt-3">
-                        AI-generated drafts must be reviewed before clinical use. Audio is
-                        encrypted at rest and auto-deleted after 30 days during the pilot.
+                    <div class="mt-4 pt-3 border-top d-flex align-items-center justify-content-between flex-wrap gap-1">
+                        <span class="small text-muted">
+                            <iconify-icon icon="iconamoon:stethoscope-duotone" class="me-1 align-middle text-primary"></iconify-icon>
+                            <strong>{{ profile.get_specialty_display }}</strong>
+                            &nbsp;·&nbsp;<a href="{% url 'accounts:profile' %}" class="text-decoration-none">Change</a>
+                        </span>
+                        <span class="small text-muted">AI drafts — review before clinical use.</span>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+{# ---- Template management modal ---- #}
+<div class="modal fade" id="templateModal" tabindex="-1" aria-labelledby="templateModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:560px;">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-1">
+                <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="templateModalLabel">
+                    <iconify-icon icon="iconamoon:file-check-duotone" class="text-primary" style="font-size:1.2rem;"></iconify-icon>
+                    My Templates
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body pt-0">
+                <p class="text-muted small mb-3">
+                    Custom templates let you pre-set AI instructions for specific visit types.
+                    They are saved locally in your browser.
+                </p>
+
+                {# Existing custom templates list #}
+                <div id="tmplExistingList" class="mb-4"></div>
+
+                {# Create / Edit form #}
+                <div class="p-3 rounded-3" style="background:var(--bs-tertiary-bg);border:1px solid var(--bs-border-color);">
+                    <h6 class="fw-semibold mb-3 small text-uppercase text-muted" id="tmplFormHeading" style="letter-spacing:0.06em;">
+                        New Template
+                    </h6>
+                    <input type="hidden" id="tmplEditId" value="">
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold" for="tmplName">Template name</label>
+                        <input type="text" class="form-control form-control-sm" id="tmplName"
+                               placeholder="e.g. Hypertension Follow-up" maxlength="80">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold" for="tmplFormat">Default note format</label>
+                        <select class="form-select form-select-sm" id="tmplFormat">
+                            <option value="">Use current selection</option>
+                            {% for value, label in format_choices %}
+                                <option value="{{ value }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold" for="tmplInstructions">AI instructions</label>
+                        <textarea class="form-control form-control-sm" id="tmplInstructions" rows="4"
+                                  placeholder="Describe what the AI should emphasise, include, or avoid. e.g. 'This is a hypertension follow-up — always document current BP readings, medication compliance, and any side effects. Use bullet points for medications.'"></textarea>
+                        <div class="form-text">These instructions are added to every note generated with this template.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold" for="tmplSample">Sample / reference note <span class="text-muted fw-normal">(optional)</span></label>
+                        <textarea class="form-control form-control-sm" id="tmplSample" rows="3"
+                                  placeholder="Paste a well-written example note. The AI will use this as a style reference."></textarea>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-primary btn-sm flex-grow-1" id="tmplSaveBtn">
+                            <iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon>
+                            Save template
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="tmplCancelEditBtn" style="display:none;">
+                            Cancel edit
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ---- Patient selection modal — shown when Record / Generate is clicked ---- #}
+<div class="modal fade" id="patientModal" tabindex="-1"
+     aria-labelledby="patientModalLabel"
+     data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:480px;">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-1">
+                <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="patientModalLabel">
+                    <iconify-icon icon="iconamoon:profile-circle-duotone" class="text-primary" style="font-size:1.3rem;"></iconify-icon>
+                    Who is this session for?
+                </h5>
+                <button type="button" class="btn-close" id="patientModalSkipBtn" aria-label="Skip"></button>
+            </div>
+            <div class="modal-body pt-1 pb-2">
+                <div class="input-group mb-2">
+                    <span class="input-group-text border-end-0 bg-transparent">
+                        <iconify-icon icon="iconamoon:search-duotone" class="text-muted"></iconify-icon>
+                    </span>
+                    <input type="text"
+                           id="patientSearch"
+                           class="form-control border-start-0 ps-0"
+                           placeholder="Search patients or type a new name…"
+                           autocomplete="off"
+                           spellcheck="false">
+                </div>
+                <ul class="patient-modal-list" id="patientList" style="max-height:280px;overflow-y:auto;">
+                    <li class="text-muted small text-center py-3">
+                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                        Loading recent patients…
+                    </li>
+                </ul>
+                {# Gender row — visible when a patient is selected or a new name typed #}
+                <div id="patientGenderRow" class="d-none mt-2 d-flex align-items-center gap-2">
+                    <span class="small text-muted fw-semibold" style="white-space:nowrap;">Patient sex:</span>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <input type="radio" class="btn-check" name="modalGender" id="mgM" value="M" autocomplete="off">
+                        <label class="btn btn-outline-primary" for="mgM">Male</label>
+                        <input type="radio" class="btn-check" name="modalGender" id="mgF" value="F" autocomplete="off">
+                        <label class="btn btn-outline-primary" for="mgF">Female</label>
+                        <input type="radio" class="btn-check" name="modalGender" id="mgO" value="O" autocomplete="off">
+                        <label class="btn btn-outline-secondary" for="mgO">Other</label>
+                    </div>
+                </div>
+                <p class="small text-muted mt-2 mb-0" style="font-size:0.76rem;">
+                    <iconify-icon icon="iconamoon:information-circle-duotone" class="me-1 align-middle"></iconify-icon>
+                    Patient name is saved to the session. Press <kbd>×</kbd> to skip.
+                </p>
+            </div>
+            <div class="modal-footer border-0 pt-0 gap-2">
+                <button type="button" class="btn btn-link btn-sm text-decoration-none text-muted px-0" id="patientModalSkipFooterBtn">
+                    Skip
+                </button>
+                <button type="button" class="btn btn-primary" id="patientContinueBtn" disabled>
+                    <iconify-icon icon="iconamoon:arrow-right-2-duotone" class="me-1 align-middle"></iconify-icon>
+                    Continue
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {# ---- Patient consent modal — shown before every new recording ---- #}
 <div class="modal fade" id="consentModal" tabindex="-1"
      aria-labelledby="consentModalLabel"
@@ -455,22 +653,492 @@
         </div>
     </div>
 </div>
+
+{# ---- Mic test modal (first-time onboarding) ---- #}
+<div class="modal fade" id="micTestModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-labelledby="micTestModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:380px;">
+        <div class="modal-content rounded-4 shadow-lg">
+            <div class="modal-header border-0 pb-1">
+                <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="micTestModalLabel">
+                    <iconify-icon icon="iconamoon:microphone-duotone" class="text-primary" style="font-size:1.3rem;"></iconify-icon>
+                    Let&rsquo;s test your microphone
+                </h5>
+            </div>
+            <div class="modal-body pt-1 pb-2">
+                <p class="text-muted small mb-3">Say a few words out loud — we&rsquo;ll confirm the level is good.</p>
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold mb-1">Select microphone</label>
+                    <select class="form-select form-select-sm" id="micTestDeviceSelect">
+                        <option value="">Default microphone</option>
+                    </select>
+                </div>
+                <div class="mb-1">
+                    <label class="form-label small fw-semibold mb-1">Input level</label>
+                    <div id="micTestMeter" style="display:flex;gap:3px;align-items:flex-end;height:28px;">
+                        <div style="flex:1;background:var(--bs-border-color);border-radius:3px;transition:height 0.08s,background 0.08s;height:4px;min-height:4px;"></div>
+                        <div style="flex:1;background:var(--bs-border-color);border-radius:3px;transition:height 0.08s,background 0.08s;height:4px;min-height:4px;"></div>
+                        <div style="flex:1;background:var(--bs-border-color);border-radius:3px;transition:height 0.08s,background 0.08s;height:4px;min-height:4px;"></div>
+                        <div style="flex:1;background:var(--bs-border-color);border-radius:3px;transition:height 0.08s,background 0.08s;height:4px;min-height:4px;"></div>
+                        <div style="flex:1;background:var(--bs-border-color);border-radius:3px;transition:height 0.08s,background 0.08s;height:4px;min-height:4px;"></div>
+                        <div style="flex:1;background:var(--bs-border-color);border-radius:3px;transition:height 0.08s,background 0.08s;height:4px;min-height:4px;"></div>
+                        <div style="flex:1;background:var(--bs-border-color);border-radius:3px;transition:height 0.08s,background 0.08s;height:4px;min-height:4px;"></div>
+                        <div style="flex:1;background:var(--bs-border-color);border-radius:3px;transition:height 0.08s,background 0.08s;height:4px;min-height:4px;"></div>
+                        <div style="flex:1;background:var(--bs-border-color);border-radius:3px;transition:height 0.08s,background 0.08s;height:4px;min-height:4px;"></div>
+                        <div style="flex:1;background:var(--bs-border-color);border-radius:3px;transition:height 0.08s,background 0.08s;height:4px;min-height:4px;"></div>
+                        <div style="flex:1;background:var(--bs-border-color);border-radius:3px;transition:height 0.08s,background 0.08s;height:4px;min-height:4px;"></div>
+                        <div style="flex:1;background:var(--bs-border-color);border-radius:3px;transition:height 0.08s,background 0.08s;height:4px;min-height:4px;"></div>
+                    </div>
+                </div>
+                <p id="micTestStatus" class="text-muted small mt-2 mb-0"></p>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-sm btn-link text-muted" id="micTestSkipBtn">Skip</button>
+                <button type="button" class="btn btn-primary" id="micTestConfirmBtn">
+                    <iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon>
+                    Confirm &amp; continue
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
+/* ── Visit Templates ── */
 (function () {
-  /* ---- Note length pill selector ---- */
-  (function () {
-    var lengthBtns = document.querySelectorAll('#recordLengthSelector [data-record-length]');
-    var lengthInput = document.getElementById('lengthModeSwitch');
-    lengthBtns.forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        lengthBtns.forEach(function (b) { b.classList.remove('is-active'); });
-        btn.classList.add('is-active');
-        if (lengthInput) lengthInput.value = btn.dataset.recordLength || 'normal';
+  var STORAGE_KEY = 'wellnest_custom_templates';
+  var BUILTIN = {
+    general:           { label: 'General',            format: '', instructions: '', sample: '' },
+    new_patient:       { label: 'New Patient',         format: '',
+      instructions: 'New patient, first visit. Include a comprehensive history: chief complaint, HPI, full past medical/surgical/family/social history, medication list, allergies, and review of systems.' },
+    returning_patient: { label: 'Returning Patient',   format: '',
+      instructions: 'Returning patient follow-up. Document interval changes since last visit, current status of known conditions, medication compliance, and response to treatment.' },
+    acute_medical:     { label: 'Acute Medical Visit', format: '',
+      instructions: 'Acute illness presentation. Focus on chief complaint, onset, severity, associated symptoms, relevant exam findings, and management plan.' },
+    follow_up:         { label: 'Follow-Up Visit',     format: '',
+      instructions: 'Follow-up for an ongoing condition. Document progress, lab/test results if mentioned, medication adjustments, and next steps.' },
+    new_medical:       { label: 'New Medical Issue',   format: '',
+      instructions: 'New medical problem, not seen before. Document full evaluation of presenting complaint, differential diagnoses, and investigation or treatment plan.' },
+    yearly_checkup:    { label: 'Annual Check-up',     format: '',
+      instructions: 'Annual health review / wellness visit. Include preventive care, screening status, health maintenance, chronic disease management, and patient counselling.' },
+    emergency:         { label: 'Emergency Visit',     format: '',
+      instructions: 'Emergency department visit. Prioritise chief complaint, triage assessment, vital signs, key exam findings, immediate interventions, and disposition plan.' },
+    antenatal:         { label: 'Antenatal Visit',     format: '',
+      instructions: 'Antenatal visit. Include gestational age, fetal movement, current symptoms, blood pressure, fundal height, and next appointment instructions.' },
+    paediatric:        { label: 'Paediatric Visit',    format: '',
+      instructions: 'Paediatric patient. Include age and weight, developmental milestones if relevant, immunisation status, parental concerns, and age-specific findings.' },
+  };
+
+  var currentTplKey = 'general';
+  var templateInstructionsEl = document.getElementById('templateInstructions');
+  var templateLabelEl        = document.getElementById('templateSelectLabel');
+  var templateDropdownMenu   = document.getElementById('templateDropdownMenu');
+  var customSection          = document.getElementById('customTemplatesSection');
+  var customSlot             = document.getElementById('customTemplatesSlot');
+  var manageBtn              = document.getElementById('manageTemplatesBtn');
+
+  function loadCustom() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) { return []; }
+  }
+  function saveCustom(arr) { localStorage.setItem(STORAGE_KEY, JSON.stringify(arr)); }
+
+  function applyTemplate(key, isCustom) {
+    var tpl = isCustom
+      ? (loadCustom().find(function(t){ return t.id === key; }) || {})
+      : (BUILTIN[key] || BUILTIN.general);
+    currentTplKey = key;
+    if (templateInstructionsEl) templateInstructionsEl.value = tpl.instructions || '';
+    if (templateLabelEl) templateLabelEl.textContent = tpl.label || 'General';
+    /* If template specifies a format, switch note style */
+    if (tpl.format) {
+      var styleBtn = document.querySelector('[data-note-style="' + tpl.format + '"]');
+      if (styleBtn) styleBtn.click();
+    }
+  }
+
+  function renderCustomDropdownItems() {
+    var custom = loadCustom();
+    if (!customSection || !customSlot) return;
+    if (custom.length === 0) {
+      customSection.classList.add('d-none');
+      customSlot.innerHTML = '';
+      return;
+    }
+    customSection.classList.remove('d-none');
+    customSlot.innerHTML = custom.map(function(t) {
+      return '<a class="dropdown-item template-pick" data-tpl-custom="' + t.id + '" href="#">' + _esc(t.label) + '</a>';
+    }).join('');
+    customSlot.querySelectorAll('.template-pick').forEach(function(el) {
+      el.addEventListener('click', function(e) {
+        e.preventDefault();
+        applyTemplate(el.dataset.tplCustom, true);
       });
     });
+  }
+
+  /* Built-in picker */
+  if (templateDropdownMenu) {
+    templateDropdownMenu.querySelectorAll('.template-pick[data-tpl]').forEach(function(el) {
+      el.addEventListener('click', function(e) {
+        e.preventDefault();
+        applyTemplate(el.dataset.tpl, false);
+      });
+    });
+  }
+
+  /* Manage templates modal */
+  if (manageBtn) {
+    manageBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      renderTemplateModal();
+      var modal = new bootstrap.Modal(document.getElementById('templateModal'));
+      modal.show();
+    });
+  }
+
+  /* ── Template modal CRUD ── */
+  var tmplEditId      = document.getElementById('tmplEditId');
+  var tmplName        = document.getElementById('tmplName');
+  var tmplFormat      = document.getElementById('tmplFormat');
+  var tmplInstInput   = document.getElementById('tmplInstructions');
+  var tmplSample      = document.getElementById('tmplSample');
+  var tmplSaveBtn     = document.getElementById('tmplSaveBtn');
+  var tmplCancelBtn   = document.getElementById('tmplCancelEditBtn');
+  var tmplFormHeading = document.getElementById('tmplFormHeading');
+  var tmplExistingList= document.getElementById('tmplExistingList');
+
+  function _esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function genId() { return 'ct_' + Date.now() + '_' + Math.random().toString(36).slice(2,6); }
+
+  function resetForm() {
+    if (tmplEditId)    tmplEditId.value = '';
+    if (tmplName)      tmplName.value = '';
+    if (tmplFormat)    tmplFormat.value = '';
+    if (tmplInstInput) tmplInstInput.value = '';
+    if (tmplSample)    tmplSample.value = '';
+    if (tmplFormHeading) tmplFormHeading.textContent = 'New Template';
+    if (tmplSaveBtn)   tmplSaveBtn.innerHTML = '<iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon>Save template';
+    if (tmplCancelBtn) tmplCancelBtn.style.display = 'none';
+  }
+
+  function renderTemplateModal() {
+    if (!tmplExistingList) return;
+    var custom = loadCustom();
+    if (custom.length === 0) {
+      tmplExistingList.innerHTML = '<p class="text-muted small mb-0">No custom templates yet. Create one below.</p>';
+      return;
+    }
+    tmplExistingList.innerHTML = '<div class="d-flex flex-column gap-2">' +
+      custom.map(function(t) {
+        return '<div class="d-flex align-items-start gap-2 p-2 rounded-2" style="background:var(--bs-body-bg);border:1px solid var(--bs-border-color);">' +
+          '<div class="flex-grow-1">' +
+            '<div class="fw-semibold" style="font-size:0.875rem;">' + _esc(t.label) + '</div>' +
+            (t.instructions ? '<div class="text-muted" style="font-size:0.75rem;white-space:pre-wrap;max-height:2.4em;overflow:hidden;">' + _esc(t.instructions.slice(0,100)) + (t.instructions.length > 100 ? '…' : '') + '</div>' : '') +
+          '</div>' +
+          '<button type="button" class="btn btn-outline-secondary btn-sm tmpl-edit-btn px-2" data-id="' + t.id + '" title="Edit"><iconify-icon icon="iconamoon:edit-duotone"></iconify-icon></button>' +
+          '<button type="button" class="btn btn-outline-danger btn-sm tmpl-del-btn px-2" data-id="' + t.id + '" title="Delete"><iconify-icon icon="iconamoon:trash-duotone"></iconify-icon></button>' +
+        '</div>';
+      }).join('') + '</div>';
+
+    tmplExistingList.querySelectorAll('.tmpl-edit-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var t = loadCustom().find(function(x){ return x.id === btn.dataset.id; });
+        if (!t) return;
+        if (tmplEditId)    tmplEditId.value    = t.id;
+        if (tmplName)      tmplName.value      = t.label;
+        if (tmplFormat)    tmplFormat.value    = t.format || '';
+        if (tmplInstInput) tmplInstInput.value = t.instructions || '';
+        if (tmplSample)    tmplSample.value    = t.sample || '';
+        if (tmplFormHeading) tmplFormHeading.textContent = 'Edit Template';
+        if (tmplSaveBtn)   tmplSaveBtn.innerHTML = '<iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon>Update template';
+        if (tmplCancelBtn) tmplCancelBtn.style.display = '';
+        tmplName && tmplName.focus();
+      });
+    });
+    tmplExistingList.querySelectorAll('.tmpl-del-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        if (!confirm('Delete this template?')) return;
+        var arr = loadCustom().filter(function(x){ return x.id !== btn.dataset.id; });
+        saveCustom(arr);
+        renderTemplateModal();
+        renderCustomDropdownItems();
+        if (currentTplKey === btn.dataset.id) applyTemplate('general', false);
+      });
+    });
+  }
+
+  if (tmplSaveBtn) {
+    tmplSaveBtn.addEventListener('click', function() {
+      var name = (tmplName ? tmplName.value.trim() : '');
+      var instructions = (tmplInstInput ? tmplInstInput.value.trim() : '');
+      if (!name) { tmplName && tmplName.focus(); return; }
+      var arr = loadCustom();
+      var editId = tmplEditId ? tmplEditId.value : '';
+      if (editId) {
+        arr = arr.map(function(t) {
+          return t.id === editId ? { id: t.id, label: name, format: (tmplFormat ? tmplFormat.value : ''), instructions: instructions, sample: (tmplSample ? tmplSample.value.trim() : '') } : t;
+        });
+      } else {
+        arr.push({ id: genId(), label: name, format: (tmplFormat ? tmplFormat.value : ''), instructions: instructions, sample: (tmplSample ? tmplSample.value.trim() : '') });
+      }
+      saveCustom(arr);
+      resetForm();
+      renderTemplateModal();
+      renderCustomDropdownItems();
+    });
+  }
+  if (tmplCancelBtn) {
+    tmplCancelBtn.addEventListener('click', function() { resetForm(); });
+  }
+
+  /* Init on load */
+  document.addEventListener('DOMContentLoaded', function() {
+    renderCustomDropdownItems();
+    applyTemplate('general', false);
+  });
+
+  /* Expose so ambient pipeline can read it */
+  window.WELLNEST_getTemplateInstructions = function() {
+    return templateInstructionsEl ? templateInstructionsEl.value : '';
+  };
+})();
+</script>
+
+<script>
+(function () {
+  /* ---- Patient selection modal ---- */
+  var _patientProceed = null;
+  var _patientsCache = null;
+  var _generateBtnHandled = false;
+
+  var patientModal   = document.getElementById('patientModal');
+  var patientSearch  = document.getElementById('patientSearch');
+  var patientList    = document.getElementById('patientList');
+  var continueBtn    = document.getElementById('patientContinueBtn');
+  var skipBtn        = document.getElementById('patientModalSkipBtn');
+  var skipFooterBtn  = document.getElementById('patientModalSkipFooterBtn');
+
+  function _esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+    });
+  }
+
+  function fetchPatients() {
+    if (_patientsCache) return Promise.resolve(_patientsCache);
+    return fetch('/scribe/api/patients/', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) { _patientsCache = data.patients || []; return _patientsCache; })
+      .catch(function () { return []; });
+  }
+
+  function renderPatients(patients, query) {
+    var q = (query || '').trim().toLowerCase();
+    var filtered = q
+      ? patients.filter(function (p) { return p.name.toLowerCase().indexOf(q) >= 0; })
+      : patients;
+
+    var html = '';
+    filtered.forEach(function (p) {
+      html += '<li class="patient-item" data-name="' + _esc(p.name) + '">' +
+        '<div class="patient-icon"><iconify-icon icon="iconamoon:profile-duotone"></iconify-icon></div>' +
+        '<div class="patient-info">' +
+          '<strong class="d-block" style="font-size:0.9rem;">' + _esc(p.name) + '</strong>' +
+          '<span class="text-muted" style="font-size:0.76rem;">' + _esc(p.last_visit) +
+          (p.last_cc ? ' · ' + _esc(p.last_cc.substring(0, 38)) : '') + '</span>' +
+        '</div>' +
+        '<a href="/scribe/sessions/' + p.last_pk + '/review/" class="patient-last-link" target="_blank" ' +
+           'title="Open last session" onclick="event.stopPropagation();">' +
+          '<iconify-icon icon="iconamoon:arrow-right-2-light"></iconify-icon>' +
+        '</a></li>';
+    });
+
+    if (query && query.trim()) {
+      var nameQ = query.trim();
+      var alreadyExact = filtered.some(function (p) {
+        return p.name.toLowerCase() === nameQ.toLowerCase();
+      });
+      if (!alreadyExact) {
+        html += '<li class="patient-item new-patient-item" data-name="' + _esc(nameQ) + '">' +
+          '<div class="patient-icon"><iconify-icon icon="iconamoon:sign-plus-circle-duotone"></iconify-icon></div>' +
+          '<div class="patient-info">' +
+            '<strong style="font-size:0.9rem;">' + _esc(nameQ) + '</strong>' +
+            '<span class="text-muted d-block" style="font-size:0.76rem;">New patient</span>' +
+          '</div></li>';
+      }
+    }
+
+    if (!html) {
+      html = '<li class="text-muted small text-center py-3">No patients yet. Type a name above.</li>';
+    }
+
+    patientList.innerHTML = html;
+
+    var genderRow = document.getElementById('patientGenderRow');
+    patientList.querySelectorAll('.patient-item').forEach(function (item) {
+      item.addEventListener('click', function () {
+        patientList.querySelectorAll('.patient-item').forEach(function (i) {
+          i.classList.remove('is-selected');
+        });
+        item.classList.add('is-selected');
+        var name = item.dataset.name;
+        var nameEl = document.getElementById('patientName');
+        if (nameEl) nameEl.value = name;
+        if (patientSearch) patientSearch.value = name;
+        if (continueBtn) continueBtn.disabled = false;
+        /* Show gender row for new patients; hide for returning ones */
+        if (genderRow) {
+          if (item.classList.contains('new-patient-item')) {
+            genderRow.classList.remove('d-none');
+          } else {
+            genderRow.classList.add('d-none');
+          }
+        }
+      });
+    });
+  }
+
+  function showPatientModal(onProceed) {
+    _patientProceed = onProceed;
+    var nameEl = document.getElementById('patientName');
+    var current = nameEl ? nameEl.value.trim() : '';
+    if (patientSearch) patientSearch.value = current;
+    if (continueBtn) continueBtn.disabled = !current;
+    if (patientList) {
+      patientList.innerHTML = '<li class="text-muted small text-center py-3">' +
+        '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Loading…</li>';
+    }
+    fetchPatients().then(function (pts) { renderPatients(pts, current); });
+    if (patientModal && typeof bootstrap !== 'undefined') {
+      bootstrap.Modal.getOrCreateInstance(patientModal).show();
+      setTimeout(function () { if (patientSearch) patientSearch.focus(); }, 200);
+    }
+  }
+
+  function proceedFromModal() {
+    var nameEl = document.getElementById('patientName');
+    var name = patientSearch ? patientSearch.value.trim() : (nameEl ? nameEl.value.trim() : '');
+    if (nameEl) nameEl.value = name;
+    /* Store selected gender so the ambient/dictation pipelines can send it */
+    var genderChecked = document.querySelector('input[name="modalGender"]:checked');
+    var genderEl = document.getElementById('patientIdentifier'); // reuse existing hidden, or use new one
+    var patientGenderEl = document.getElementById('patientGender');
+    if (!patientGenderEl) {
+      patientGenderEl = document.createElement('input');
+      patientGenderEl.type = 'hidden';
+      patientGenderEl.id = 'patientGender';
+      document.body.appendChild(patientGenderEl);
+    }
+    patientGenderEl.value = genderChecked ? genderChecked.value : '';
+    if (patientModal && typeof bootstrap !== 'undefined') {
+      bootstrap.Modal.getInstance(patientModal).hide();
+    }
+    var fn = _patientProceed; _patientProceed = null;
+    if (fn) fn();
+  }
+
+  function skipModal() {
+    if (patientModal && typeof bootstrap !== 'undefined') {
+      bootstrap.Modal.getInstance(patientModal).hide();
+    }
+    var fn = _patientProceed; _patientProceed = null;
+    if (fn) fn();
+  }
+
+  if (patientSearch) {
+    patientSearch.addEventListener('input', function () {
+      var q = this.value;
+      if (continueBtn) continueBtn.disabled = !q.trim();
+      fetchPatients().then(function (pts) { renderPatients(pts, q); });
+    });
+    patientSearch.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (this.value.trim()) {
+          var nameEl = document.getElementById('patientName');
+          if (nameEl) nameEl.value = this.value.trim();
+          if (continueBtn) { continueBtn.disabled = false; continueBtn.click(); }
+        }
+      }
+    });
+  }
+
+  if (continueBtn) continueBtn.addEventListener('click', proceedFromModal);
+  if (skipBtn) skipBtn.addEventListener('click', skipModal);
+  if (skipFooterBtn) skipFooterBtn.addEventListener('click', skipModal);
+
+  /* Intercept generateBtn — show patient modal before wellnest.js handles it */
+  var generateBtn = document.getElementById('generateBtn');
+  if (generateBtn) {
+    generateBtn.addEventListener('click', function (e) {
+      if (_generateBtnHandled) { _generateBtnHandled = false; return; }
+      e.stopImmediatePropagation();
+      showPatientModal(function () {
+        _generateBtnHandled = true;
+        generateBtn.click();
+      });
+    }, true);
+  }
+
+  window.WELLNEST_showPatientModal = showPatientModal;
+}());
+</script>
+
+<script>
+/* Fix template dropdown — clamp to viewport after Popper positions it */
+document.addEventListener('DOMContentLoaded', function () {
+  var dropBtn = document.getElementById('templateDropdownBtn');
+  var dropMenu = document.getElementById('templateDropdownMenu');
+  if (!dropBtn || !dropMenu) return;
+  dropBtn.addEventListener('shown.bs.dropdown', function () {
+    /* Let Popper finish, then nudge the menu if it overflows the viewport */
+    requestAnimationFrame(function () {
+      /* Remove any previous inline correction so getBoundingClientRect is accurate */
+      dropMenu.style.marginLeft = '';
+      var rect = dropMenu.getBoundingClientRect();
+      var margin = 8;
+      if (rect.left < margin) {
+        dropMenu.style.marginLeft = (margin - rect.left) + 'px';
+      } else if (rect.right > window.innerWidth - margin) {
+        dropMenu.style.marginLeft = (window.innerWidth - margin - rect.right) + 'px';
+      }
+    });
+  });
+  dropBtn.addEventListener('hidden.bs.dropdown', function () {
+    dropMenu.style.marginLeft = '';
+  });
+});
+
+/* Init tooltips on mode tabs — auto-dismiss after 5 s on touch devices */
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.mode-tab[data-bs-toggle="tooltip"]').forEach(function (el) {
+    var tip = new bootstrap.Tooltip(el, {
+      trigger: 'hover focus',
+      delay: { show: 300, hide: 100 },
+    });
+    /* On touch: show on tap, hide after 5 s */
+    el.addEventListener('click', function () {
+      tip.show();
+      setTimeout(function () { tip.hide(); }, 5000);
+    });
+  });
+});
+</script>
+
+<script>
+(function () {
+  /* ---- Note length dropdown ---- */
+  (function () {
+    var lengthSelect = document.getElementById('recordLengthSelect');
+    var lengthInput  = document.getElementById('lengthModeSwitch');
+    if (lengthSelect && lengthInput) {
+      lengthSelect.addEventListener('change', function () {
+        lengthInput.value = this.value || 'normal';
+      });
+    }
   }());
 
   /* ---- Mode tab switcher ---- */
@@ -505,6 +1173,59 @@
   var ambientTimerInterval = null;
   var ambientElapsed = 0;
   var ambientRunning = false;
+
+  /* ---- Ambient waveform ---- */
+  var ambientWaveAnimHandle = 0;
+  var AMBIENT_BARS = 36;
+  (function () {
+    if (!ambientWaveform) return;
+    ambientWaveform.innerHTML = '';
+    for (var i = 0; i < AMBIENT_BARS; i++) ambientWaveform.appendChild(document.createElement('span'));
+  })();
+
+  function startAmbientWave(stream) {
+    if (!ambientWaveform) return;
+    try {
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      var source = ctx.createMediaStreamSource(stream);
+      var analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      var data = new Uint8Array(analyser.frequencyBinCount);
+      var spans = ambientWaveform.querySelectorAll('span');
+      function tick() {
+        ambientWaveAnimHandle = requestAnimationFrame(tick);
+        analyser.getByteFrequencyData(data);
+        spans.forEach(function (sp, i) {
+          var v = data[i * 3] || 0;
+          sp.style.height = Math.max(8, (v / 255) * 46) + 'px';
+        });
+      }
+      tick();
+    } catch (e) { /* AudioContext blocked — recording still works */ }
+  }
+
+  function stopAmbientWave() {
+    cancelAnimationFrame(ambientWaveAnimHandle);
+    if (ambientWaveform) ambientWaveform.querySelectorAll('span').forEach(function (sp) { sp.style.height = '8px'; });
+  }
+
+  /* Map raw backend stage names to friendly status text */
+  function friendlyStage(stage) {
+    var map = {
+      'transcribing': 'Transcribing audio',
+      'uploading': 'Uploading audio',
+      'preprocessing': 'Preparing audio',
+      'processing': 'Processing',
+      'generating': 'Generating note',
+      'waiting': 'Waiting in queue',
+      'queued': 'Queued',
+      'done': 'Done',
+    };
+    if (!stage) return 'Processing';
+    var key = stage.toLowerCase().trim();
+    return map[key] || stage.replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
 
   function formatTime(s) {
     return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
@@ -547,6 +1268,7 @@
       ambientRecordBtn.classList.add('is-recording');
       ambientCancelBtn.style.display = '';
       ambientMicDot.classList.add('is-active');
+      startAmbientWave(stream);
       ambientTimerInterval = setInterval(function () {
         ambientElapsed++;
         ambientTimer.textContent = formatTime(ambientElapsed);
@@ -564,6 +1286,7 @@
     ambientBtnLabel.textContent = 'Record';
     ambientRecordBtn.classList.remove('is-recording');
     ambientCancelBtn.style.display = 'none';
+    stopAmbientWave();
     if (ambientMediaRecorder && ambientMediaRecorder.state !== 'inactive') {
       ambientMediaRecorder.stop();
     }
@@ -578,6 +1301,7 @@
     ambientRecordBtn.disabled = false;
     ambientCancelBtn.style.display = 'none';
     ambientTimer.textContent = '0:00';
+    stopAmbientWave();
   }
 
   /* ---- Ambient file upload ---- */
@@ -635,7 +1359,7 @@
   async function runAmbientPipeline(blob) {
     ambientRecordBtn.disabled = true;
     var backend = getAmbientBackend();
-    var backendLabel = backend === 'modal' ? 'Modal L4 GPU' : 'Local CPU';
+    var backendLabel = backend === 'modal' ? 'Cloud' : 'Local';
     ambientStatus.textContent = 'Uploading audio...';
 
     try {
@@ -647,6 +1371,12 @@
       formData.append('audio', blob, 'ambient-' + Date.now() + '.webm');
       formData.append('csrfmiddlewaretoken', CSRF);
       if (window.WELLNEST_consentGiven) formData.append('consent_acknowledged', '1');
+      var _pnEl = document.getElementById('patientName');
+      var _piEl = document.getElementById('patientIdentifier');
+      var _pgEl = document.getElementById('patientGender');
+      if (_pnEl && _pnEl.value.trim()) formData.append('patient_name', _pnEl.value.trim());
+      if (_piEl && _piEl.value.trim()) formData.append('patient_identifier', _piEl.value.trim());
+      if (_pgEl && _pgEl.value) formData.append('patient_gender', _pgEl.value);
 
       var createResp = await fetch('/scribe/api/sessions/', { method: 'POST', credentials: 'same-origin', body: formData });
       var createData = await safeJson(createResp, 'create-session');
@@ -668,6 +1398,7 @@
       var pollMs = backend === 'modal' ? 2000 : 4000;
       var transcript = null;
       var jobResult = {};
+      var _shownSlowHint = false;
       while (true) {
         await new Promise(function (r) { setTimeout(r, pollMs); });
         var statusResp = await fetch('/scribe/api/ambient-jobs/' + jobId + '/', { credentials: 'same-origin' });
@@ -675,7 +1406,14 @@
         if (!statusData.ok) throw new Error('Could not read job status.');
         var job = statusData.job;
         var elapsed = Math.round((job.elapsed_ms || 0) / 1000);
-        ambientStatus.textContent = (job.stage || 'Processing...') + ' — ' + elapsed + 's';
+        if (elapsed > 20 && !_shownSlowHint) {
+          _shownSlowHint = true;
+          ambientStatus.textContent = 'Processing audio — this takes about 60 s on first use…';
+        } else if (_shownSlowHint) {
+          ambientStatus.textContent = friendlyStage(job.stage) + ' — ' + elapsed + 's (almost done…)';
+        } else {
+          ambientStatus.textContent = friendlyStage(job.stage) + ' — ' + elapsed + 's';
+        }
         if (job.status === 'done') {
           transcript = job.result.raw_text;
           jobResult = job.result;
@@ -693,10 +1431,21 @@
 
       // 4. Generate note
       ambientStatus.textContent = 'Generating note...';
+      var lengthSwitch = document.getElementById('lengthModeSwitch');
+      var lengthMode = lengthSwitch ? (lengthSwitch.value || 'normal') : 'normal';
+      var tmplInstructions = document.getElementById('templateInstructions');
+      var customInstructions = tmplInstructions ? (tmplInstructions.value || '') : '';
+      var suggestToggle = document.getElementById('suggestiveAssistToggle');
       var genResp = await fetch('/scribe/api/sessions/' + sessionId + '/generate/', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-        body: JSON.stringify({ transcript: transcript, note_format: noteStyle })
+        body: JSON.stringify({
+          transcript: transcript,
+          note_format: noteStyle,
+          length_mode: lengthMode,
+          custom_instructions: customInstructions,
+          suggestive_assist: suggestToggle ? suggestToggle.checked : undefined,
+        })
       });
       var genData = await safeJson(genResp, 'generate');
       if (!genData.ok) throw new Error(genData.error || 'Note generation failed.');
@@ -787,11 +1536,12 @@
     });
   }
 
-  // Expose gate — wellnest.js calls this before startRecording()
-  window.WELLNEST_beforeRecord = function (proceed) {
+  // Consent gate — wrapped by patient modal script that runs after this one.
+  window.WELLNEST_consentGate = function (proceed) {
     if (_consentGiven) { proceed(); return; }
     showConsentModal(proceed);
   };
+  window.WELLNEST_beforeRecord = window.WELLNEST_consentGate;
 
   /* ---- Mic calibration hint banner ---- */
   var hint = document.getElementById('micCalibrationHint');
@@ -827,6 +1577,144 @@
       if (hint) hint.style.display = 'none';
     }, { once: true });
   }
+}());
+</script>
+
+<script>
+(function () {
+  /* Chain: patient modal → consent gate → start recording.
+     Runs AFTER the consent gate script sets window.WELLNEST_consentGate. */
+  window.WELLNEST_beforeRecord = function (proceed) {
+    if (typeof window.WELLNEST_showPatientModal === 'function') {
+      window.WELLNEST_showPatientModal(function () {
+        if (typeof window.WELLNEST_consentGate === 'function') {
+          window.WELLNEST_consentGate(proceed);
+        } else {
+          proceed();
+        }
+      });
+    } else if (typeof window.WELLNEST_consentGate === 'function') {
+      window.WELLNEST_consentGate(proceed);
+    } else {
+      proceed();
+    }
+  };
+}());
+
+/* ── Mic test modal (shown once per browser, on first visit) ── */
+(function () {
+  var MIC_KEY = 'wn_mic_tested';
+  if (localStorage.getItem(MIC_KEY)) return;
+
+  var modalEl   = document.getElementById('micTestModal');
+  var selectEl  = document.getElementById('micTestDeviceSelect');
+  var meterEl   = document.getElementById('micTestMeter');
+  var statusEl  = document.getElementById('micTestStatus');
+  var skipBtn   = document.getElementById('micTestSkipBtn');
+  var confirmBtn = document.getElementById('micTestConfirmBtn');
+  if (!modalEl) return;
+
+  var bars = meterEl ? Array.from(meterEl.children) : [];
+  var _stream = null, _ctx = null, _analyser = null, _animId = null;
+
+  function stopMic() {
+    if (_animId) { cancelAnimationFrame(_animId); _animId = null; }
+    if (_ctx) { try { _ctx.close(); } catch (_) {} _ctx = null; }
+    if (_stream) { _stream.getTracks().forEach(function (t) { t.stop(); }); _stream = null; }
+    bars.forEach(function (b) { b.style.height = '4px'; b.style.background = 'var(--bs-border-color)'; });
+  }
+
+  var _peakSeen = 0;
+
+  function animateMeter() {
+    if (!_analyser) return;
+    var data = new Uint8Array(_analyser.frequencyBinCount);
+    _analyser.getByteFrequencyData(data);
+    /* Average the lower 2/3 of bins (voice frequencies) */
+    var voiceBins = Math.floor(data.length * 0.67);
+    var sum = 0;
+    for (var j = 0; j < voiceBins; j++) sum += data[j];
+    var avg = sum / voiceBins;
+    var pct = Math.round((avg / 255) * 100);
+    if (pct > _peakSeen) _peakSeen = pct;
+
+    var step = Math.floor(data.length / bars.length);
+    bars.forEach(function (b, i) {
+      var val = data[i * step] || 0;
+      var bpct = Math.round((val / 255) * 100);
+      var h = Math.max(4, Math.round(bpct * 0.26));
+      b.style.height = h + 'px';
+      b.style.background = bpct > 55 ? '#22c55e' : bpct > 18 ? '#0f7af2' : 'var(--bs-border-color)';
+    });
+
+    /* Threshold: average voice energy > 8% = acceptable */
+    if (statusEl) {
+      if (_peakSeen >= 8) {
+        statusEl.textContent = '✓ Level is good — microphone is working!';
+        statusEl.style.color = '#22c55e';
+        if (confirmBtn) confirmBtn.disabled = false;
+      } else {
+        statusEl.textContent = 'Speak a few words — listening for your voice…';
+        statusEl.style.color = '';
+      }
+    }
+    _animId = requestAnimationFrame(animateMeter);
+  }
+
+  function startMic(deviceId) {
+    _peakSeen = 0;
+    if (confirmBtn) confirmBtn.disabled = true;
+    if (statusEl) { statusEl.textContent = 'Requesting microphone access…'; statusEl.style.color = ''; }
+    stopMic();
+    var constraints = { audio: deviceId ? { deviceId: { exact: deviceId } } : true };
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      if (statusEl) statusEl.textContent = 'Microphone not available in this browser.';
+      return;
+    }
+    navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
+      _stream = stream;
+      _ctx = new (window.AudioContext || window.webkitAudioContext)();
+      _analyser = _ctx.createAnalyser();
+      _analyser.fftSize = 64;
+      _ctx.createMediaStreamSource(stream).connect(_analyser);
+      animateMeter();
+
+      /* Populate device list once we have permission */
+      navigator.mediaDevices.enumerateDevices().then(function (devices) {
+        var audioIn = devices.filter(function (d) { return d.kind === 'audioinput'; });
+        if (selectEl && audioIn.length > 1) {
+          selectEl.innerHTML = '';
+          audioIn.forEach(function (d) {
+            var opt = document.createElement('option');
+            opt.value = d.deviceId;
+            opt.textContent = d.label || ('Microphone ' + (selectEl.options.length + 1));
+            selectEl.appendChild(opt);
+          });
+        }
+      }).catch(function () {});
+    }).catch(function () {
+      if (statusEl) statusEl.textContent = 'Could not access microphone. Check browser permissions.';
+    });
+  }
+
+  function dismiss() {
+    stopMic();
+    localStorage.setItem(MIC_KEY, '1');
+    bootstrap.Modal.getInstance(modalEl).hide();
+  }
+
+  if (skipBtn) skipBtn.addEventListener('click', dismiss);
+  if (confirmBtn) confirmBtn.addEventListener('click', dismiss);
+  if (selectEl) selectEl.addEventListener('change', function () { startMic(selectEl.value); });
+
+  modalEl.addEventListener('shown.bs.modal', function () { startMic(''); });
+  modalEl.addEventListener('hidden.bs.modal', stopMic);
+
+  /* Show on page load (slight delay so page renders first) */
+  setTimeout(function () {
+    var m = new bootstrap.Modal(modalEl);
+    m.show();
+  }, 600);
 }());
 </script>
 {% endblock %}

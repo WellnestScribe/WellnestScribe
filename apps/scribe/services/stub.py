@@ -65,27 +65,40 @@ def fake_generate_note(
             full_note=f"{chart}\n\n{DISCLAIMER}",
         )
 
+    summary = (
+        "SUMMARY:\n"
+        "- 58 y/o female presenting for routine hypertension follow-up.\n"
+        "- BP suboptimally controlled on current regimen (home BP elevated last week).\n"
+        "- Amlodipine dose increased to 10mg OD; BP recheck scheduled in 2 weeks."
+    )
     s = (
         "S:\n"
         "CC: Routine hypertension follow-up.\n"
         "HPI: 58 y/o female. Reports taking amlodipine 5mg OD as prescribed. "
-        "Notes home BP was elevated last week. Denies CP, SOB, headache.\n"
+        "Notes home BP was elevated last week. Denies chest pain, SOB, or headache. "
+        "No dizziness or visual changes reported.\n"
+        "PMH: Hypertension (diagnosed 4 years ago).\n"
         "Current Medications: Amlodipine 5mg PO OD.\n"
         "Allergies: NKA."
     )
-    o = "O:\nVitals: BP 138/86 | HR 72 | RR 16."
+    o = (
+        "O:\n"
+        "Vitals: BP 138/86 mmHg | HR 72 bpm | RR 16.\n"
+        "Examination: Not documented."
+    )
     a = "A:\n1. Hypertension (uncontrolled) — target BP not achieved on current regimen."
     p = (
         "P:\n"
         "1. Hypertension\n"
         "   - Medications: Amlodipine 10mg PO OD x 30 days\n"
         "   - Follow-up: BP recheck in 2 weeks\n"
-        "   - Lifestyle: Continue low-salt diet."
+        "   - Education: Continue low-salt diet."
     )
-    full = f"{s}\n\n{o}\n\n{a}\n\n{p}\n\n{DISCLAIMER}"
+    full = f"{summary}\n\n{s}\n\n{o}\n\n{a}\n\n{p}\n\n{DISCLAIMER}"
     return GeneratedNote(
         note_format="soap",
         full_note=full,
+        visit_summary=summary.split("SUMMARY:\n", 1)[-1],
         subjective=s.split("S:\n", 1)[-1],
         objective=o.split("O:\n", 1)[-1],
         assessment=a.split("A:\n", 1)[-1],

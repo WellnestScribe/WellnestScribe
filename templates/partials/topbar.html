@@ -33,21 +33,67 @@
                     </button>
                 </div>
 
-                {% comment %}
-                  Dedicated font-size affordance — Dr Adrian feedback: the slider
-                  was buried behind the cog icon. This button opens the same
-                  Display dropdown so the existing prefFontScale handler still
-                  wires up unchanged.
-                {% endcomment %}
-                <div class="topbar-item">
+                <div class="dropdown topbar-item">
                     <button type="button"
-                            class="topbar-button"
-                            id="topbarFontSizeBtn"
+                            class="topbar-button dropdown-toggle dropdown-toggle-nocaret"
+                            id="topbarFontSizeDropdown"
+                            data-bs-toggle="dropdown"
+                            aria-haspopup="true"
+                            aria-expanded="false"
                             aria-label="Adjust font size"
                             title="Adjust font size">
-                        <iconify-icon icon="iconamoon:size-duotone" class="fs-22 align-middle"></iconify-icon>
+                        <span style="font-size:0.88rem;font-weight:700;letter-spacing:-0.03em;line-height:1;">Aa</span>
                     </button>
+                    <div class="dropdown-menu dropdown-menu-end topbar-font-dropdown">
+                        <h6 class="mb-2 fw-semibold">Font size</h6>
+                        <input type="range" min="80" max="160" step="10"
+                               class="form-range"
+                               id="topbarFontScaleInput"
+                               value="{{ ui_font_scale|default:100 }}">
+                        <div class="d-flex justify-content-between small text-muted mt-1">
+                            <span style="font-size:0.78rem;">A</span>
+                            <span class="fw-semibold" id="topbarFontScaleValue">{{ ui_font_scale|default:100 }}%</span>
+                            <span style="font-size:1.1rem;">A</span>
+                        </div>
+                    </div>
                 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var topbar = document.getElementById('topbarFontScaleInput');
+    var topbarVal = document.getElementById('topbarFontScaleValue');
+    var main = document.getElementById('prefFontScale');
+    if (!topbar) return;
+    topbar.addEventListener('input', function () {
+        var v = topbar.value;
+        if (topbarVal) topbarVal.textContent = v + '%';
+        document.documentElement.setAttribute('data-font-scale', v);
+        if (main) {
+            main.value = v;
+            main.dispatchEvent(new Event('input', { bubbles: true }));
+        } else {
+            /* Fallback: call preferences API directly */
+            var W = window.WELLNEST;
+            if (W && W.endpoints && W.endpoints.updatePreferences) {
+                var t; clearTimeout(t);
+                t = setTimeout(function () {
+                    fetch(W.endpoints.updatePreferences, {
+                        method: 'POST', credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': W.csrfToken },
+                        body: JSON.stringify({ font_scale: parseInt(v, 10) })
+                    });
+                }, 350);
+            }
+        }
+    });
+    /* Sync topbar slider when main slider changes */
+    if (main) {
+        main.addEventListener('input', function () {
+            topbar.value = main.value;
+            if (topbarVal) topbarVal.textContent = main.value + '%';
+        });
+    }
+});
+</script>
 
                 <div class="dropdown topbar-item">
                     <button type="button"

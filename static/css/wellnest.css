@@ -201,6 +201,7 @@ a { color: var(--wellnest-blue); }
 .record-toolbar-group-compact {
   align-items: flex-start;
 }
+/* Assist + Template sit after Note Style + Length on desktop (natural DOM order) */
 .record-toolbar-label {
   font-size: 0.74rem;
   font-weight: 700;
@@ -472,7 +473,81 @@ a { color: var(--wellnest-blue); }
 .status-pill.is-error { background: rgba(211,59,70,0.12); color: #d33b46; }
 .status-pill.is-success { background: rgba(45,138,78,0.12); color: #2d8a4e; }
 
-/* ---- Recent sessions list ---- */
+/* ---- Improved recent-session rows (record page sidebar) ---- */
+.recent-session-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--bs-body-color);
+  border-bottom: 1px solid var(--bs-border-color);
+  transition: background 0.13s;
+}
+.recent-session-row:last-child { border-bottom: none; }
+.recent-session-row:hover { background: var(--bs-tertiary-bg); color: var(--bs-body-color); }
+.rsr-icon {
+  width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--wellnest-blue-soft); color: var(--wellnest-blue);
+  font-size: 1rem;
+}
+.rsr-body { flex: 1 1 0; min-width: 0; }
+.rsr-name {
+  display: block; font-weight: 600; font-size: 0.875rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rsr-meta {
+  display: block; font-size: 0.75rem; color: var(--bs-secondary-color);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rsr-status {
+  flex-shrink: 0; font-size: 0.68rem; font-weight: 600;
+  padding: 2px 8px; border-radius: 20px; white-space: nowrap;
+  background: var(--bs-secondary-bg); color: var(--bs-secondary-color);
+}
+.rsr-status--review      { background: rgba(13,110,253,0.1);  color: #0d6efd; }
+.rsr-status--finalized   { background: rgba(45,138,78,0.1);   color: #2d8a4e; }
+.rsr-status--draft       { background: rgba(255,193,7,0.12);  color: #a07700; }
+.rsr-status--recording,
+.rsr-status--transcribing,
+.rsr-status--generating  { background: rgba(13,110,253,0.07); color: #0d6efd; }
+.rsr-status--error       { background: rgba(220,53,69,0.1);   color: #dc3545; }
+.recent-session-row.is-hidden   { display: none !important; }
+
+/* ---- Sidebar nav refinements ---- */
+.main-nav .menu-title {
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+  padding: 18px 20px 5px;
+  font-weight: 700;
+  opacity: 0.6;
+}
+.main-nav .navbar-nav .nav-item .nav-link {
+  border-radius: 8px;
+  margin: 1px 8px;
+  padding: 7px 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.main-nav .navbar-nav .nav-item .nav-link iconify-icon,
+.main-nav .navbar-nav .nav-item .nav-link .nav-icon iconify-icon {
+  font-size: 1.05rem;
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+.main-nav .navbar-nav .nav-item .nav-link.active iconify-icon,
+.main-nav .navbar-nav .nav-item .nav-link.active .nav-icon iconify-icon {
+  opacity: 1;
+}
+
+/* ---- Recent sessions list (history page + mobile strip) ---- */
 .session-row {
   display: flex;
   align-items: center;
@@ -556,39 +631,101 @@ a { color: var(--wellnest-blue); }
     padding: 12px 14px 4px;
   }
 
-  /* Mobile: shrink the record stack so the mic is visible without
-     scrolling past patient-bar + quick templates + note-style tabs. */
-  /* Higher specificity needed to override global .recorder-shell .record-cta { width: 168px } */
-  .recorder-shell .record-cta { width: 132px; height: 132px; font-size: 0.95rem; }
-  .record-cta .iconify, .record-cta iconify-icon { font-size: 2rem; }
-  /* Compact single-row toolbar — NOTE STYLE pills + AI MODE side by side */
+  /* ── Mobile record screen ── */
+
+  /* Slightly bigger base type on small screens */
+  body { font-size: 1rem; }
+  .card { font-size: 0.97rem; }
+
+  /* Record button — same size as before, but touch area is preserved */
+  .recorder-shell .record-cta { width: 148px; height: 148px; font-size: 1rem; }
+  .record-cta .iconify, .record-cta iconify-icon { font-size: 2.2rem; }
+
+  /* Mobile toolbar — two visual rows:
+     Row 1 — Note Style pills (full width)
+     Row 2 — Length + Suggestive assist (inline)
+     Row 3 — Template (full width)                */
   .record-toolbar {
     flex-direction: row;
-    align-items: center;
-    flex-wrap: nowrap;
-    gap: 10px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    overflow-x: visible;
   }
-  .record-toolbar::-webkit-scrollbar { display: none; }
-  .record-toolbar-label { display: none; }
-  .record-toolbar-group { flex-direction: row; align-items: center; gap: 6px; }
-  .note-style-tabs { flex-wrap: nowrap; overflow: visible; }
+  /* Show labels on mobile — small uppercase, gives "Length" context to the select */
+  .record-toolbar-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.07em;
+    margin-bottom: 2px;
+    display: block;
+  }
+  .record-toolbar { margin-bottom: 14px; gap: 10px; }
+  .record-toolbar-group { flex-direction: column; align-items: flex-start; gap: 3px; margin-left: 0 !important; }
+  /* Row 1 — Note Style pills: full width */
+  .record-toolbar-group:first-child { width: 100%; }
+  /* Row 2 — Length + Template: equal halves side by side */
+  .record-toolbar-group--length,
+  .record-toolbar-group--template { flex: 1; min-width: 0; }
+  .record-toolbar-group--length .length-select { width: 100%; }
+  .record-toolbar-group--template .btn-template-sel { width: 100%; justify-content: center; }
+  .record-toolbar-group--template .dropdown { width: 100%; }
+  /* Row 3 — Suggestive assist: full width */
+  .record-toolbar-group--assist { width: 100%; }
+  .record-toolbar-group--assist .suggestive-assist-chip-body { width: 100%; justify-content: center; }
+  /* Template dropdown: full-width, left-aligned so it never overflows */
+  #templateDropdownMenu {
+    min-width: 100%;
+    width: 100%;
+    left: 0 !important;
+    right: auto !important;
+  }
+
+  /* Note style pills — wrap so all are visible on touch screens */
+  .note-style-tabs { flex-wrap: wrap; overflow: visible; }
   .note-style-pill {
     width: auto !important;
+    max-width: none !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
     flex-shrink: 0;
-    font-size: 0.78rem;
-    padding: 5px 11px;
+    font-size: 0.85rem;
+    padding: 7px 14px;
   }
+
+  /* Transcript textarea — taller and clearly readable on mobile light mode */
+  #manualTranscript {
+    min-height: 160px;
+    font-size: 1rem;
+    color: #1a1a2e !important;
+    background: #ffffff !important;
+  }
+  .note-textarea {
+    font-size: 0.97rem;
+    color: var(--bs-body-color);
+  }
+
+  /* Length select + Template button — identical height so they look paired */
+  .length-select,
+  .btn-template-sel { font-size: 0.82rem; padding: 7px 12px; height: 36px; box-sizing: border-box; }
+  .length-select { padding-right: 28px; }
+
+  /* Mode tabs — bigger, easier to tap */
+  .mode-tab { font-size: 0.9rem; padding: 9px 18px; }
+
+  /* Suggestive assist */
   .suggestive-assist-chip-body {
-    width: auto !important;
     white-space: nowrap;
-    font-size: 0.78rem;
+    font-size: 0.84rem;
   }
-  .recorder-shell { padding: 14px 12px; }
-  .recorder-timer { font-size: 1.6rem; }
+
+  /* Ambient status text */
+  #ambientStatus { font-size: 0.88rem; }
+
+  /* Recorder layout */
+  .recorder-shell { padding: 16px 14px; }
+  .recorder-timer { font-size: 1.8rem; }
+
+  /* Card padding */
   .card .card-body.p-4 { padding: 1rem !important; }
 
   /* Footer hide on small to save space */
@@ -1196,18 +1333,30 @@ kbd {
    Copy All bar · Note length selector · Pause recording
    ══════════════════════════════════════════════════════════ */
 
-/* Note section: update header layout for the new Freed-style */
-.note-section { margin-bottom: 0; }
-.note-section + .note-section { border-top: 1px solid var(--bs-border-color); margin-top: 0; }
+/* Note section — each is its own bordered card */
+.note-section {
+  margin-bottom: 10px;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 10px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.note-section:focus-within {
+  border-color: var(--wellnest-blue);
+  box-shadow: 0 0 0 3px var(--wellnest-blue-soft);
+}
+.note-section + .note-section { margin-top: 0; }
 
+/* Layout only — position/sticky set below in sticky block */
 .note-section header,
 .note-section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 11px 2px;
+  padding: 10px 14px;
   margin-bottom: 0;
+  border-bottom: 1px solid var(--bs-border-color);
+  border-radius: 10px 10px 0 0;
 }
 
 /* Collapse trigger — clickable left portion (chevron + label) */
@@ -1232,8 +1381,48 @@ kbd {
 .note-section.is-collapsed .note-section-toggle-icon { transform: rotate(-90deg); }
 
 /* Collapsible body */
-.note-section-body { padding-bottom: 14px; }
+.note-section-body { padding: 10px 14px 14px; }
 .note-section.is-collapsed .note-section-body { display: none; }
+/* Textarea inside a section — no border/radius, blends with the card */
+.note-section-body .note-textarea {
+  border: none;
+  border-radius: 0;
+  box-shadow: none !important;
+  background: transparent;
+  padding: 2px 0;
+  resize: vertical;
+  line-height: 1.7;
+  font-size: 0.93rem;
+  tab-size: 2;
+  white-space: pre-wrap;
+}
+/* Collapsed header loses its bottom border */
+.note-section.is-collapsed .note-section-header {
+  border-bottom: none;
+  border-radius: 10px;
+}
+
+/* Rich formatted display div — shown instead of the textarea when not editing */
+.note-rich-display {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.7;
+  font-size: 0.93rem;
+  min-height: 48px;
+  padding: 2px 0;
+  cursor: text;
+  color: var(--bs-body-color);
+  font-family: inherit;
+  outline: none;
+}
+/* Bracket highlight spans inside the rich display (mirrors bracket-mirror styles) */
+.note-rich-display .bk-hl {
+  background: rgba(13,110,253,0.13);
+  border-radius: 3px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.note-rich-display .bk-hl.drug-hl { background: rgba(220,120,0,0.22); }
 
 /* Per-section action buttons row */
 .note-section-actions {
@@ -1278,6 +1467,34 @@ kbd {
   opacity: 0.45;
 }
 
+/* ── Sticky section headers ── */
+.ns-sticky-sentinel {
+  height: 1px;
+  pointer-events: none;
+  margin-bottom: -1px;
+}
+.note-section header,
+.note-section-header {
+  position: sticky;
+  top: calc(var(--bs-topbar-height, 70px));
+  z-index: 6;
+  background: var(--bs-body-bg);
+  transition: box-shadow 0.18s;
+}
+/* When stuck, paint bg colour 12px above the header so no text fragment bleeds through */
+.note-section-header.is-stuck {
+  box-shadow: 0 -12px 0 12px var(--bs-body-bg), 0 2px 8px rgba(0, 0, 0, 0.07);
+}
+/* ── Copy-all-bar label (tiny uppercase above each control) ── */
+.copy-all-bar-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+  line-height: 1;
+}
+
 /* ── Copy All bar — sits above note tabs ── */
 .copy-all-bar {
   display: flex;
@@ -1320,6 +1537,60 @@ kbd {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.10);
 }
 
+/* ── Note length dropdown ── */
+.length-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--bs-tertiary-bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%236c757d' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 999px;
+  padding: 5px 28px 5px 13px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--bs-body-color);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+  min-width: 96px;
+}
+.length-select:focus {
+  border-color: var(--wellnest-blue);
+  box-shadow: 0 0 0 2px rgba(12, 126, 194, 0.18);
+}
+.length-select:hover { border-color: var(--wellnest-blue); }
+
+/* ── Template selector dropdown button ── */
+.btn-template-sel {
+  appearance: none;
+  display: inline-flex; align-items: center; gap: 4px;
+  background-color: var(--bs-tertiary-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 999px;
+  padding: 5px 12px 5px 12px;
+  font-size: 0.8rem; font-weight: 600;
+  color: var(--bs-body-color);
+  cursor: pointer; outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+}
+.btn-template-sel::after {
+  display: inline-block; margin-left: 4px;
+  content: "";
+  border-top: 0.32em solid;
+  border-right: 0.28em solid transparent;
+  border-left: 0.28em solid transparent;
+  opacity: 0.55;
+}
+.btn-template-sel:hover, .btn-template-sel[aria-expanded="true"] {
+  border-color: var(--wellnest-blue, #0d6efd);
+  box-shadow: 0 0 0 2px rgba(12,126,194,0.14);
+}
+.btn-template-sel[aria-expanded="true"]::after { transform: rotate(180deg); }
+
 /* ── Pause / Resume recording button ── */
 .pause-record-btn {
   display: inline-flex;
@@ -1346,12 +1617,106 @@ kbd {
 }
 .pause-record-btn iconify-icon { font-size: 1.05rem; }
 
-/* Mobile: compact length selector + copy all bar */
+/* Mobile: compact copy all bar */
 @media (max-width: 575.98px) {
-  .length-btn { padding: 4px 9px; font-size: 0.75rem; }
+  .length-select { font-size: 0.75rem; padding: 4px 24px 4px 10px; min-width: 80px; }
   .copy-all-bar { gap: 8px; }
   .note-section-btn { width: 28px; height: 28px; font-size: 0.88rem; }
 }
 @media (max-width: 991.98px) {
   .note-section-actions { gap: 2px; }
+}
+
+/* ── Review screen: sticky actions column ── */
+@media (min-width: 1200px) {
+  .review-sticky-col {
+    position: sticky;
+    top: calc(var(--bs-topbar-height, 80px) + 14px);
+    align-self: flex-start;
+    max-height: calc(100vh - var(--bs-topbar-height, 80px) - 28px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+}
+
+/* ── Copy-all-bar: visual separator between length + format groups ── */
+.copy-all-bar-sep {
+  display: inline-block;
+  width: 1px;
+  height: 1.2em;
+  background: var(--bs-border-color);
+  opacity: 0.5;
+  flex-shrink: 0;
+  align-self: center;
+}
+.copy-all-bar .flex-grow-1 { min-width: 0; }
+
+/* ── Regenerate nudge: pulse when length changes ── */
+@keyframes regen-nudge-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(12, 126, 194, 0.45); }
+  70%  { box-shadow: 0 0 0 6px rgba(12, 126, 194, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(12, 126, 194, 0); }
+}
+.regen-nudge {
+  animation: regen-nudge-pulse 0.7s ease 3;
+  border-color: var(--wellnest-blue) !important;
+  color: var(--wellnest-blue) !important;
+}
+
+/* ── Patient selection modal ── */
+.patient-modal-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.patient-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.patient-item:hover { background: var(--bs-tertiary-bg, #f8f9fa); }
+.patient-item.is-selected {
+  background: var(--wellnest-blue-soft);
+  border-color: var(--wellnest-blue);
+}
+.patient-item .patient-icon {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--bs-primary-bg-subtle, #e7f0ff);
+  color: var(--wellnest-blue);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.05rem; flex-shrink: 0;
+}
+.patient-item.new-patient-item .patient-icon {
+  background: var(--bs-success-bg-subtle, #d1e7dd);
+  color: #198754;
+}
+.patient-item .patient-info { flex: 1; min-width: 0; }
+.patient-item .patient-last-link {
+  color: var(--bs-secondary-color);
+  text-decoration: none;
+  flex-shrink: 0;
+  padding: 4px;
+  opacity: 0.6;
+  transition: opacity 0.1s;
+}
+.patient-item:hover .patient-last-link,
+.patient-item.is-selected .patient-last-link { opacity: 1; }
+
+/* ── Topbar font-size dropdown: compact slider panel ── */
+.topbar-font-dropdown {
+  min-width: 210px;
+  padding: 12px 14px 10px;
+}
+.topbar-font-dropdown h6 {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
 }

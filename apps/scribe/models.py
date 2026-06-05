@@ -42,8 +42,16 @@ class ScribeSession(models.Model):
     # seeing many patients per day). Identifier can be DOB, hospital number,
     # ID number, or any free-text token doctor wants. Pilot rule: keep these
     # optional; if PILOT_MODE is on we discourage capturing real names.
+    GENDER_CHOICES = [
+        ("", "Unknown"),
+        ("M", "Male"),
+        ("F", "Female"),
+        ("O", "Other"),
+    ]
+
     patient_name = models.CharField(max_length=120, blank=True)
     patient_identifier = models.CharField(max_length=120, blank=True)
+    patient_gender = models.CharField(max_length=1, choices=GENDER_CHOICES, blank=True, default="")
 
     # Active conditions (multi-select checklist on record screen). Stored
     # as a comma-separated list of short keys: 'dm', 'htn', 'lipids',
@@ -129,6 +137,7 @@ class SOAPNote(models.Model):
         ScribeSession, on_delete=models.CASCADE, related_name="note"
     )
 
+    visit_summary = models.TextField(blank=True)
     subjective = models.TextField(blank=True)
     objective = models.TextField(blank=True)
     assessment = models.TextField(blank=True)

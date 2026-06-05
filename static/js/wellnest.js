@@ -624,10 +624,10 @@
       // the whole document — these IDs are unique on the page.
       const nameEl = document.getElementById("patientName");
       const idEl = document.getElementById("patientIdentifier");
+      const genderEl = document.getElementById("patientGender");
       if (nameEl && nameEl.value.trim()) fd.append("patient_name", nameEl.value.trim());
       if (idEl && idEl.value.trim()) fd.append("patient_identifier", idEl.value.trim());
-      // active_conditions checklist was removed — the AI infers conditions
-      // from the dictation/transcript instead.
+      if (genderEl && genderEl.value) fd.append("patient_gender", genderEl.value);
     }
 
     async function uploadAndProcess(blob) {
@@ -670,11 +670,13 @@
     }
 
     async function runGeneration(sid, transcript) {
+      const tmplInstr = document.getElementById("templateInstructions");
       const payload = {
         transcript: transcript,
         note_format: noteFormatSel ? noteFormatSel.value : "soap",
         length_mode: getRecordLengthMode(),
         suggestive_assist: suggestiveAssistToggle ? suggestiveAssistToggle.checked : undefined,
+        custom_instructions: tmplInstr ? (tmplInstr.value || "") : "",
       };
       const gen = await postJSON("/scribe/api/sessions/" + sid + "/generate/", payload);
       if (!gen.ok || !gen.body.ok) { setStatus(statusEl, (gen.body && gen.body.error) || "Note generation failed.", "error"); return; }

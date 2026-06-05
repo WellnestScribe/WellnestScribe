@@ -6,27 +6,36 @@
 {% block extra_head %}
 <style>
 .patient-review-bar {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
-  background: var(--bs-body-bg);
-  border: 1px solid var(--bs-border-color);
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  background: rgba(13,110,253,0.04);
+  border: 1px solid rgba(13,110,253,0.18);
   border-radius: var(--wellnest-radius, 8px);
-  padding: 8px 14px;
+  padding: 10px 16px;
   margin-bottom: 1rem;
 }
 .patient-review-bar .prb-label {
-  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em;
-  color: var(--bs-secondary-color); white-space: nowrap; min-width: 54px;
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em;
+  color: var(--wellnest-blue, #0d6efd); white-space: nowrap; min-width: 54px;
 }
 .patient-review-bar .prb-field {
   flex: 1 1 160px; min-width: 120px; max-width: 260px;
-  border: none; border-bottom: 1.5px dashed var(--bs-border-color);
-  background: transparent; font-size: 0.85rem; color: inherit;
-  padding: 2px 4px; outline: none; transition: border-color 0.15s;
+  border: none; border-bottom: 1.5px solid rgba(13,110,253,0.22);
+  background: transparent; font-size: 0.88rem; color: var(--bs-body-color);
+  font-weight: 500;
+  padding: 3px 6px; outline: none; transition: border-color 0.15s, background 0.15s;
+  border-radius: 4px 4px 0 0;
 }
-.patient-review-bar .prb-field:focus { border-bottom-color: var(--wellnest-blue, #0d6efd); }
-.patient-review-bar .prb-field::placeholder { color: var(--bs-secondary-color); opacity: 0.6; }
+.patient-review-bar .prb-field:focus {
+  border-bottom-color: var(--wellnest-blue, #0d6efd);
+  background: rgba(13,110,253,0.05);
+}
+.patient-review-bar .prb-field::placeholder { color: rgba(13,110,253,0.38); font-weight: 400; }
 .patient-review-bar .prb-complaint {
   flex: 2 1 240px; min-width: 180px; max-width: 400px;
+}
+.patient-review-bar .prb-gender {
+  flex: 0 0 auto; min-width: 90px; max-width: 110px;
+  cursor: pointer; appearance: auto;
 }
 /* ── Bracket placeholder highlight overlay ── */
 @media not print {
@@ -47,6 +56,8 @@
   }
   .bracket-mirror .bk-hl.drug-hl { background: rgba(220,120,0,0.15); }
   .note-textarea[data-note-field] { position: relative; z-index: 1; background: transparent !important; }
+  /* Inside SOAP sections the textarea has padding: 2px 0 and no border — mirror must match */
+  .note-section-body .bracket-mirror { padding: 2px 0; border: none; border-radius: 0; }
 }
 /* Missing bracket badge */
 .bracket-badge {
@@ -100,6 +111,50 @@
   border-radius: 6px; padding: 6px 10px; font-size: 0.85rem;
   cursor: pointer; color: var(--bs-secondary-color);
 }
+/* ── Narrative paragraph view ── */
+.narrative-view { padding: 2px 0; }
+.narrative-para {
+  position: relative;
+  padding: 6px 38px 6px 4px;
+  border-radius: 6px;
+  transition: background 0.12s;
+  cursor: text;
+}
+.narrative-para + .narrative-para { margin-top: 10px; }
+.narrative-para:hover { background: var(--bs-tertiary-bg); }
+.narrative-para-text {
+  white-space: pre-wrap;
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--bs-body-color);
+  word-break: break-word;
+}
+.narrative-para-copy {
+  display: none;
+  position: absolute;
+  right: 4px;
+  top: 6px;
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 6px;
+  width: 28px; height: 28px;
+  align-items: center; justify-content: center;
+  font-size: 0.95rem;
+  color: var(--bs-secondary-color);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.narrative-para:hover .narrative-para-copy { display: inline-flex; }
+.narrative-para-copy:hover {
+  background: var(--wellnest-blue-soft);
+  color: var(--wellnest-blue);
+  border-color: rgba(12,126,194,0.22);
+}
+.narrative-edit-btn {
+  font-size: 0.75rem;
+  padding: 2px 10px;
+}
+
 /* Quick-erase button (appears on text selection) */
 #quickEraseBtn {
   position: fixed; z-index: 9998;
@@ -126,6 +181,86 @@
 }
 .detected-chip-dismiss { cursor: pointer; opacity: 0.7; }
 .detected-chip-dismiss:hover { opacity: 1; }
+
+/* ── Magic Edit floating FAB + panel ── */
+#magicEditFloat {
+  position: fixed;
+  bottom: 24px;
+  right: 80px;
+  z-index: 1050;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+.magic-edit-fab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--wellnest-blue, #0d6efd);
+  color: #fff;
+  border: none;
+  border-radius: 24px;
+  padding: 10px 20px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(13,110,253,0.35);
+  transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+  white-space: nowrap;
+}
+.magic-edit-fab:hover {
+  background: #0b5ed7;
+  box-shadow: 0 6px 22px rgba(13,110,253,0.45);
+  transform: translateY(-1px);
+}
+.magic-edit-fab.is-open { background: #6c757d; box-shadow: none; transform: none; }
+.magic-edit-float-panel {
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 16px;
+  padding: 14px 16px;
+  width: 310px;
+  max-width: calc(100vw - 48px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  animation: meSlideUp 0.18s ease forwards;
+}
+@keyframes meSlideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Magic Edit chips + input ── */
+.magic-chip {
+  display: inline-flex; align-items: center;
+  background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);
+  border-radius: 20px; padding: 3px 10px;
+  font-size: 0.75rem; font-weight: 500; cursor: pointer;
+  color: var(--bs-body-color); transition: background 0.12s, border-color 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.magic-chip:hover {
+  background: var(--wellnest-blue-soft, #e8f0fe);
+  border-color: var(--wellnest-blue, #0d6efd);
+  color: var(--wellnest-blue, #0d6efd);
+}
+.magic-chip.is-active {
+  background: var(--wellnest-blue, #0d6efd);
+  border-color: var(--wellnest-blue, #0d6efd);
+  color: #fff;
+}
+.magic-edit-input {
+  width: 100%; resize: vertical;
+  border: 1px solid var(--bs-border-color); border-radius: 8px;
+  padding: 7px 10px; font-size: 0.88rem;
+  background: var(--bs-body-bg); color: var(--bs-body-color);
+  box-sizing: border-box; line-height: 1.5;
+  transition: border-color 0.15s;
+}
+.magic-edit-input:focus {
+  outline: none; border-color: var(--wellnest-blue, #0d6efd);
+  box-shadow: 0 0 0 3px rgba(13,110,253,0.12);
+}
 </style>
 {% endblock %}
 
@@ -200,6 +335,14 @@
                value="{{ session.patient_name }}"
                maxlength="120"
                {% if session.status == 'finalized' %}readonly{% endif %}>
+        <select class="prb-field prb-gender" id="prbGender"
+                style="max-width:110px;"
+                {% if session.status == 'finalized' %}disabled{% endif %}>
+            <option value="" {% if not session.patient_gender %}selected{% endif %}>Sex</option>
+            <option value="M" {% if session.patient_gender == 'M' %}selected{% endif %}>Male</option>
+            <option value="F" {% if session.patient_gender == 'F' %}selected{% endif %}>Female</option>
+            <option value="O" {% if session.patient_gender == 'O' %}selected{% endif %}>Other</option>
+        </select>
         <input type="text" class="prb-field" id="prbIdentifier"
                placeholder="DOB / ID #"
                value="{{ session.patient_identifier }}"
@@ -228,20 +371,30 @@
         <div class="col-12 col-xl-8">
             <div class="card">
                 <div class="card-body p-4">
-                    {# ── Freed-style: Copy All bar + Note length selector ── #}
+                    {# ── Copy All bar: length + format + regenerate + copy ── #}
                     <div class="copy-all-bar">
-                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                            <span class="small fw-semibold text-muted" style="white-space:nowrap;">Length:</span>
-                            <div class="length-selector" id="reviewLengthSelector">
-                                <button type="button" class="length-btn {% if session.length_mode == 'concise' %}is-active{% endif %}" data-length="concise">Concise</button>
-                                <button type="button" class="length-btn {% if session.length_mode == 'normal' or not session.length_mode %}is-active{% endif %}" data-length="normal">Standard</button>
-                                <button type="button" class="length-btn {% if session.length_mode == 'long_form' %}is-active{% endif %}" data-length="long_form">Long</button>
+                        <div class="d-flex align-items-end gap-3 flex-wrap flex-grow-1">
+                            <div class="d-flex flex-column gap-1">
+                                <span class="copy-all-bar-label">Note length</span>
+                                <select id="reviewLengthSelector" class="length-select" aria-label="Note length">
+                                    <option value="concise" {% if session.length_mode == 'concise' %}selected{% endif %}>Concise</option>
+                                    <option value="normal" {% if session.length_mode == 'normal' or not session.length_mode %}selected{% endif %}>Standard</option>
+                                    <option value="long_form" {% if session.length_mode == 'long_form' %}selected{% endif %}>Long</option>
+                                </select>
                             </div>
+                            <div class="d-flex flex-column gap-1">
+                                <span class="copy-all-bar-label">Format</span>
+                                <select id="regenFormatSelect" class="length-select" aria-label="Note format">
+                                    <option value="soap" {% if session.note_format == 'soap' %}selected{% endif %}>SOAP</option>
+                                    <option value="narrative" {% if session.note_format == 'narrative' %}selected{% endif %}>Narrative</option>
+                                    <option value="chart" {% if session.note_format == 'chart' %}selected{% endif %}>Chart</option>
+                                </select>
+                            </div>
+                            <button type="button" class="btn btn-outline-primary btn-sm flex-shrink-0" id="regenerateAllBtn">
+                                <iconify-icon icon="iconamoon:restart-duotone" class="me-1 align-middle"></iconify-icon>
+                                <span id="regenerateBtnLabel">Regenerate</span>
+                            </button>
                         </div>
-                        <button type="button" class="btn btn-primary btn-sm" id="copyAllBtn">
-                            <iconify-icon icon="iconamoon:copy-duotone" class="me-1 align-middle"></iconify-icon>
-                            Copy all
-                        </button>
                     </div>
 
                     <ul class="nav nav-tabs mb-3" role="tablist" id="reviewTabs">
@@ -313,22 +466,29 @@
                         <div class="tab-pane fade" id="tab-narrative">
                             <div class="d-flex justify-content-between align-items-center mb-2 gap-2 flex-wrap">
                                 <p class="text-muted small mb-0">
-                                    Combined view of the whole note. Edits here save with the rest.
+                                    Combined view. Hover a paragraph to copy it. Click to edit.
                                 </p>
-                                <button type="button"
-                                        class="quick-mic-btn"
-                                        data-quick-mic="[data-full-note]"
-                                        title="Tap once to start dictating, tap again to stop">
-                                    <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
-                                </button>
+                                <div class="d-flex align-items-center gap-2">
+                                    <button type="button" class="btn btn-outline-secondary narrative-edit-btn" id="narrativeEditToggle">Edit</button>
+                                    <button type="button"
+                                            class="quick-mic-btn"
+                                            data-quick-mic="[data-full-note]"
+                                            title="Tap once to start dictating, tap again to stop">
+                                        <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+                                    </button>
+                                </div>
                             </div>
-                            <textarea class="note-textarea narrative" data-full-note>{% if note %}{{ note.edited_note|default:note.full_note }}{% endif %}</textarea>
+                            <div class="narrative-view" id="narrativeView"></div>
+                            <textarea class="note-textarea narrative" data-full-note style="display:none;">{% if note %}{{ note.edited_note|default:note.full_note }}{% endif %}</textarea>
                         </div>
 
                         <div class="tab-pane fade" id="tab-transcript">
-                            <p class="text-muted small mb-2">Transcript from the recorded audio. Editable — regenerate the note after changes.</p>
+                            <p class="text-muted small mb-2">
+                                Interpreted transcript — processed from the recorded audio into English.
+                                Editable; regenerate the note after changes.
+                            </p>
                             <textarea class="note-textarea" id="transcriptArea"
-                                      style="min-height:160px;resize:vertical;overflow-y:hidden;">{{ session.transcript }}</textarea>
+                                      style="min-height:160px;resize:vertical;overflow-y:hidden;white-space:pre-wrap;">{{ session.transcript }}</textarea>
                         </div>
 
                         <div class="tab-pane fade" id="tab-bodydiagram">
@@ -400,79 +560,68 @@
             </div>
         </div>
 
-        <div class="col-12 col-xl-4">
+        <div class="col-12 col-xl-4 review-sticky-col">
             <div class="card">
-                <div class="card-body p-4">
-                    <h6 class="fw-semibold mb-3">Actions</h6>
-                    <div class="d-grid gap-2">
+                <div class="card-body p-3">
+                    {# Primary actions #}
+                    <div class="d-grid gap-2 mb-3">
                         <button type="button" class="btn btn-primary" id="copyBtn">
                             <iconify-icon icon="iconamoon:copy-duotone" class="me-1 align-middle"></iconify-icon>
-                            Copy to clipboard
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary" id="copyFhirBtn">
-                            <iconify-icon icon="iconamoon:code-duotone" class="me-1 align-middle"></iconify-icon>
-                            Copy FHIR
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary" id="qrBtn"
-                                data-bs-toggle="modal" data-bs-target="#shareModal">
-                            <iconify-icon icon="iconamoon:scan-duotone" class="me-1 align-middle"></iconify-icon>
-                            Share to desktop (QR)
-                        </button>
-                        <a href="{% url 'emr:scribe_intake' session.pk %}" class="btn btn-outline-secondary">
-                            <iconify-icon icon="iconamoon:files-duotone" class="me-1 align-middle"></iconify-icon>
-                            Send to EMR
-                        </a>
-                        {% if doctor_profile.suggestive_assist %}
-                        <button type="button" class="btn btn-outline-secondary" id="improveBtn"
-                                title="For interns / juniors. Returns 3-6 bullets of things a more senior clinician would have added.">
-                            <iconify-icon icon="iconamoon:lightning-1-duotone" class="me-1 align-middle"></iconify-icon>
-                            Check for missing details
-                        </button>
-                        {% endif %}
-                        <button type="button"
-                                class="btn {% if session.is_sensitive %}btn-warning{% else %}btn-outline-secondary{% endif %} btn-sm"
-                                id="sensitiveToggleBtn"
-                                title="Mark/unmark as sensitive (HIV, mental health, reproductive health, substance use). Blocks share links and adds enhanced audit logging.">
-                            <iconify-icon icon="iconamoon:lock-duotone" class="me-1 align-middle"></iconify-icon>
-                            {% if session.is_sensitive %}Sensitive — click to unmark{% else %}Mark as sensitive{% endif %}
+                            Copy note
                         </button>
                         <button type="button" class="btn btn-success" id="finalizeBtn">
                             <iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon>
                             Mark reviewed
                         </button>
-                        <button type="button" class="btn btn-outline-danger btn-sm" id="deleteSessionBtn"
-                                title="Permanently delete this session and audio — satisfies patient right to erasure">
-                            <iconify-icon icon="iconamoon:trash-duotone" class="me-1 align-middle"></iconify-icon>
-                            Delete session
+                    </div>
+
+                    {# Danger zone #}
+                    <div class="d-flex gap-2 mb-2">
+                        <button type="button"
+                                class="btn {% if session.is_sensitive %}btn-warning{% else %}btn-outline-secondary{% endif %} btn-sm flex-grow-1"
+                                id="sensitiveToggleBtn"
+                                title="Mark as sensitive (HIV, mental health, reproductive health, substance use). Blocks share links and adds enhanced audit logging.">
+                            <iconify-icon icon="iconamoon:lock-duotone" class="me-1 align-middle"></iconify-icon>
+                            {% if session.is_sensitive %}Sensitive{% else %}Mark sensitive{% endif %}
+                        </button>
+                        <button type="button" class="btn btn-outline-danger btn-sm px-3" id="deleteSessionBtn"
+                                title="Permanently delete this session and audio">
+                            <iconify-icon icon="iconamoon:trash-duotone"></iconify-icon>
                         </button>
                     </div>
 
-                    {# ---- Format switcher + Regenerate ---- #}
-                    <hr class="my-3">
-                    <div class="d-flex align-items-center justify-content-between mb-2">
-                        <span class="small fw-semibold text-muted text-uppercase" style="letter-spacing:0.06em;">Regenerate as</span>
-                        <span class="small text-muted" id="regenFormatHint">current: <strong>{{ session.get_note_format_display }}</strong></span>
-                    </div>
-                    <div class="d-flex gap-1 flex-wrap mb-2" id="regenFormatPills">
-                        <button type="button" class="quick-pill {% if session.note_format == 'soap' %}is-applied{% endif %}" data-regen-format="soap" style="font-size:0.8rem;padding:5px 12px;">SOAP</button>
-                        <button type="button" class="quick-pill {% if session.note_format == 'narrative' %}is-applied{% endif %}" data-regen-format="narrative" style="font-size:0.8rem;padding:5px 12px;">Narrative</button>
-                        <button type="button" class="quick-pill {% if session.note_format == 'chart' %}is-applied{% endif %}" data-regen-format="chart" style="font-size:0.8rem;padding:5px 12px;">Chart</button>
-                    </div>
-                    <button type="button" class="btn btn-outline-primary btn-sm w-100" id="regenerateAllBtn">
-                        <iconify-icon icon="iconamoon:restart-duotone" class="me-1 align-middle"></iconify-icon>
-                        Regenerate note
+                    {% if doctor_profile.suggestive_assist %}
+                    <button type="button" class="btn btn-outline-secondary btn-sm w-100 mb-2" id="improveBtn"
+                            title="Returns 3-6 bullets of things a more senior clinician would have added.">
+                        <iconify-icon icon="iconamoon:lightning-1-duotone" class="me-1 align-middle"></iconify-icon>
+                        Check for missing details
                     </button>
+                    {% endif %}
 
+                    {# More options collapse #}
                     <button type="button"
-                            class="btn btn-link btn-sm text-decoration-none mt-2 px-0"
+                            class="btn btn-link btn-sm text-decoration-none px-0"
                             data-bs-toggle="collapse"
                             data-bs-target="#moreActions"
                             aria-expanded="false">
-                        <iconify-icon icon="iconamoon:arrow-down-2-light"></iconify-icon>
+                        <iconify-icon icon="iconamoon:arrow-down-2-light" class="me-1 align-middle"></iconify-icon>
                         More options
                     </button>
                     <div class="collapse" id="moreActions">
                         <div class="d-grid gap-2 mt-2">
+                            <a href="{% url 'emr:scribe_intake' session.pk %}" class="btn btn-outline-secondary btn-sm" title="Send to EMR">
+                                <iconify-icon icon="iconamoon:files-duotone" class="me-1 align-middle"></iconify-icon>
+                                Send to EMR
+                            </a>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="qrBtn"
+                                    data-bs-toggle="modal" data-bs-target="#shareModal" title="Share to desktop via QR">
+                                <iconify-icon icon="iconamoon:scan-duotone" class="me-1 align-middle"></iconify-icon>
+                                Share via QR
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="copyFhirBtn" title="Copy FHIR R4 bundle">
+                                <iconify-icon icon="iconamoon:code-duotone" class="me-1 align-middle"></iconify-icon>
+                                Copy as FHIR
+                            </button>
                             <button type="button" class="btn btn-outline-secondary btn-sm" id="polishBtn">
                                 <iconify-icon icon="iconamoon:edit-duotone" class="me-1 align-middle"></iconify-icon>
                                 Polish grammar
@@ -483,7 +632,7 @@
                             </button>
                             <button type="button" class="btn btn-outline-secondary btn-sm" id="printBtn">
                                 <iconify-icon icon="iconamoon:print-duotone" class="me-1 align-middle"></iconify-icon>
-                                Print / save as PDF
+                                Print / PDF
                             </button>
                             <button type="button" class="btn btn-outline-secondary btn-sm" id="saveBtn">
                                 <iconify-icon icon="iconamoon:save-duotone" class="me-1 align-middle"></iconify-icon>
@@ -510,17 +659,12 @@
 
                     <hr class="my-3">
                     <p class="text-muted small mb-0">
-                        AI-generated draft. Review and edit required before clinical use.
+                        AI-generated draft. Review before clinical use.
                         Notes auto-save while you type.
                     </p>
-                </div>
-            </div>
-
-            <div class="card mt-3">
-                <div class="card-body p-3">
-                    <details>
-                        <summary class="fw-semibold small">Keyboard shortcuts</summary>
-                        <ul class="list-unstyled small text-muted mt-2 mb-0">
+                    <details class="mt-2">
+                        <summary class="small text-muted" style="cursor:pointer;">Keyboard shortcuts</summary>
+                        <ul class="list-unstyled small text-muted mt-1 mb-0">
                             <li><kbd>Ctrl</kbd> + <kbd>S</kbd> — save now</li>
                             <li><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd> — copy note</li>
                             <li><kbd>Esc</kbd> — stop dictation</li>
@@ -531,6 +675,44 @@
         </div>
     </div>
 </div>
+
+{# ── Floating Magic Edit FAB (bottom-right) ── #}
+{% if session.status != 'finalized' %}
+<div id="magicEditFloat">
+    <div id="magicEditFloatPanel" class="magic-edit-float-panel d-none">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-semibold" style="font-size:0.88rem;">
+                <iconify-icon icon="iconamoon:magic-wand-duotone" class="me-1 align-middle"></iconify-icon>
+                Magic Edit
+            </span>
+            <button type="button" class="btn-close" id="magicEditClose" style="font-size:0.7rem;" aria-label="Close"></button>
+        </div>
+        <div class="d-flex flex-wrap gap-1 mb-2">
+            <button type="button" class="magic-chip" data-chip="Make this note more concise">Concise</button>
+            <button type="button" class="magic-chip" data-chip="Use bullet points for lists">Bullets</button>
+            <button type="button" class="magic-chip" data-chip="Improve and expand the Plan section">Improve Plan</button>
+            <button type="button" class="magic-chip" data-chip="Fix grammar and clinical phrasing">Fix grammar</button>
+            <button type="button" class="magic-chip" data-chip="Add SOAP section headers if missing">Add headers</button>
+        </div>
+        <textarea id="magicEditInput" class="magic-edit-input" rows="2"
+                  placeholder="e.g. Make Subjective concise, use bullet points…"></textarea>
+        <div class="d-flex gap-2 mt-2">
+            <button type="button" class="btn btn-primary btn-sm flex-grow-1" id="magicEditApply">
+                <iconify-icon icon="iconamoon:lightning-1-duotone" class="me-1 align-middle"></iconify-icon>
+                <span id="magicEditApplyLabel">Apply</span>
+            </button>
+            <button type="button" class="note-section-btn" id="magicEditMicBtn" title="Dictate instruction">
+                <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+            </button>
+        </div>
+        <p id="magicEditStatus" class="small text-muted mt-1 mb-0"></p>
+    </div>
+    <button type="button" id="magicEditFloatBtn" class="magic-edit-fab">
+        <iconify-icon icon="iconamoon:magic-wand-duotone"></iconify-icon>
+        Magic Edit
+    </button>
+</div>
+{% endif %}
 
 <!-- Share modal -->
 <div class="modal fade" id="shareModal" tabindex="-1" aria-labelledby="shareModalLabel" aria-hidden="true">
@@ -575,6 +757,24 @@
 </div>
 
 <script>
+/* ── Suite alert/confirm helpers — replaces native alert()/confirm() ── */
+function _suiteAlert(msg, icon) {
+  icon = icon || 'info';
+  if (window.Swal) {
+    return window.Swal.fire({ text: msg, icon: icon, confirmButtonColor: '#0f7af2', confirmButtonText: 'OK' });
+  }
+  alert(msg);
+  return Promise.resolve();
+}
+function _suiteConfirm(title, text) {
+  if (window.WELLNEST_confirm) {
+    return window.WELLNEST_confirm({ title: title, text: text, icon: 'question', confirmText: 'Yes', cancelText: 'Cancel', focusCancel: true });
+  }
+  return Promise.resolve(confirm(title + (text ? '\n\n' + text : '')));
+}
+</script>
+
+<script>
 (function () {
   var _root = document.querySelector('[data-session-id]');
   var SESSION_ID = _root.dataset.sessionId;
@@ -595,17 +795,20 @@
     var name = (document.getElementById('prbName') || {}).value || '';
     var complaint = (document.getElementById('prbComplaint') || {}).value || '';
     name = name.trim(); complaint = complaint.trim();
-    var parts = [CREATED_TS];
+    /* Timestamp lives in the subtitle line below — no need to repeat it in the title */
+    var parts = [];
     if (name) parts.push(name);
     if (complaint) parts.push(complaint);
-    return parts.join(' · ');
+    return parts.length ? parts.join(' · ') : CREATED_TS;
   }
 
   function savePatientFields() {
     if (finalized) return;
+    var genderEl = document.getElementById('prbGender');
     var payload = {
       patient_name: document.getElementById('prbName').value.trim(),
       patient_identifier: document.getElementById('prbIdentifier').value.trim(),
+      patient_gender: genderEl ? genderEl.value : '',
       chief_complaint: document.getElementById('prbComplaint').value.trim(),
     };
     /* Auto-update title with timestamp + name + complaint */
@@ -625,6 +828,8 @@
     var el = document.getElementById(id);
     if (el) el.addEventListener('blur', savePatientFields);
   });
+  var genderSelEl = document.getElementById('prbGender');
+  if (genderSelEl) genderSelEl.addEventListener('change', savePatientFields);
 
   /* Auto-detect encounter type from generated note text */
   var TEMPLATES = [
@@ -705,11 +910,23 @@
     if (transcriptArea) {
       autoResizeTextarea(transcriptArea);
       transcriptArea.addEventListener('input', function () { autoResizeTextarea(this); });
-      /* Bootstrap tab show event */
       var transcriptTab = document.querySelector('[data-bs-target="#tab-transcript"]');
       if (transcriptTab) {
         transcriptTab.addEventListener('shown.bs.tab', function () {
           autoResizeTextarea(transcriptArea);
+        });
+      }
+    }
+
+    /* Auto-resize full-note narrative area when its tab is first shown */
+    var fullNoteArea = document.querySelector('[data-full-note]');
+    if (fullNoteArea) {
+      autoResizeTextarea(fullNoteArea);
+      fullNoteArea.addEventListener('input', function () { autoResizeTextarea(this); });
+      var narrativeTab = document.querySelector('[data-bs-target="#tab-narrative"]');
+      if (narrativeTab) {
+        narrativeTab.addEventListener('shown.bs.tab', function () {
+          autoResizeTextarea(fullNoteArea);
         });
       }
     }
@@ -782,30 +999,37 @@
   };
 
   /* ---- Format + Length switcher for Regenerate ---- */
-  var regenFormat = '{{ session.note_format }}';
-  var regenLength = '{{ session.length_mode|default:"normal" }}';
-  document.querySelectorAll('[data-regen-format]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      document.querySelectorAll('[data-regen-format]').forEach(function (b) {
-        b.classList.remove('is-applied');
-      });
-      this.classList.add('is-applied');
-      regenFormat = this.dataset.regenFormat;
-      var hint = document.getElementById('regenFormatHint');
-      if (hint) hint.innerHTML = 'format: <strong>' + regenFormat.toUpperCase() + '</strong>';
+  var regenFormat = window.WELLNEST_regenFormat = '{{ session.note_format }}';
+  var regenLength = window.WELLNEST_regenLength = '{{ session.length_mode|default:"normal" }}';
+  var regenFormatSel = document.getElementById('regenFormatSelect');
+  if (regenFormatSel) {
+    regenFormatSel.addEventListener('change', function () {
+      regenFormat = window.WELLNEST_regenFormat = this.value;
     });
-  });
-  /* Length selector sync — buttons live in the Copy-All bar; clicks also
-     update regenLength so the regenerate button uses the current selection. */
-  document.querySelectorAll('#reviewLengthSelector .length-btn').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      document.querySelectorAll('#reviewLengthSelector .length-btn').forEach(function (b) {
-        b.classList.remove('is-active');
-      });
-      this.classList.add('is-active');
-      regenLength = this.dataset.length || 'normal';
+  }
+  /* Length selector sync — also nudges the Regenerate button when changed */
+  var lengthSelect = document.getElementById('reviewLengthSelector');
+  if (lengthSelect) {
+    lengthSelect.addEventListener('change', function () {
+      var newLength = this.value || 'normal';
+      var changed = newLength !== regenLength;
+      regenLength = window.WELLNEST_regenLength = newLength;
+      if (changed) {
+        var regenBtn = document.getElementById('regenerateAllBtn');
+        var regenLabel = document.getElementById('regenerateBtnLabel');
+        if (regenBtn && !regenBtn.disabled) {
+          if (regenLabel) regenLabel.textContent = 'Regenerate?';
+          regenBtn.classList.add('regen-nudge');
+          setTimeout(function () {
+            regenBtn.classList.remove('regen-nudge');
+            if (regenLabel && regenLabel.textContent === 'Regenerate?') {
+              regenLabel.textContent = 'Regenerate';
+            }
+          }, 3000);
+        }
+      }
     });
-  });
+  }
 
   /* ---- Copy FHIR R4 Bundle ---- */
   var fhirBtn = document.getElementById('copyFhirBtn');
@@ -860,9 +1084,143 @@
             fhirBtn.innerHTML = '<iconify-icon icon="iconamoon:code-duotone" class="me-1 align-middle"></iconify-icon>Copy FHIR';
           }, 2000);
         })
-        .catch(function () { alert('Could not access clipboard.'); });
+        .catch(function () { _suiteAlert('Could not access clipboard.', 'warning'); });
     });
   }
+
+  /* ── Narrative paragraph view ── */
+  (function () {
+    function escHtml(s) {
+      return String(s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function renderParagraphs() {
+      var ta   = document.querySelector('[data-full-note]');
+      var view = document.getElementById('narrativeView');
+      if (!ta || !view) return;
+      var raw   = ta.value || '';
+      var paras = raw.split(/\n{2,}/).map(function (p) { return p.trim(); }).filter(Boolean);
+      if (!paras.length) {
+        view.innerHTML = '<p class="text-muted small mb-0">No content yet.</p>';
+        return;
+      }
+      view.innerHTML = paras.map(function (p, i) {
+        return '<div class="narrative-para" data-para-idx="' + i + '">' +
+          '<div class="narrative-para-text">' + escHtml(p) + '</div>' +
+          '<button type="button" class="narrative-para-copy" title="Copy paragraph">' +
+            '<iconify-icon icon="iconamoon:copy-duotone"></iconify-icon>' +
+          '</button>' +
+        '</div>';
+      }).join('');
+      view.querySelectorAll('.narrative-para-copy').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var idx = parseInt(btn.closest('[data-para-idx]').dataset.paraIdx, 10);
+          navigator.clipboard.writeText(paras[idx] || '').then(function () {
+            btn.innerHTML = '<iconify-icon icon="iconamoon:check-circle-1-duotone"></iconify-icon>';
+            setTimeout(function () {
+              btn.innerHTML = '<iconify-icon icon="iconamoon:copy-duotone"></iconify-icon>';
+            }, 1500);
+          }).catch(function () {});
+        });
+      });
+      /* Click paragraph → switch to edit mode at that position */
+      view.querySelectorAll('.narrative-para').forEach(function (div) {
+        div.addEventListener('click', function (e) {
+          if (e.target.closest('.narrative-para-copy')) return;
+          enterEditMode();
+        });
+      });
+    }
+
+    function enterEditMode() {
+      var ta   = document.querySelector('[data-full-note]');
+      var view = document.getElementById('narrativeView');
+      var btn  = document.getElementById('narrativeEditToggle');
+      if (!ta || !view) return;
+      view.style.display = 'none';
+      ta.style.display   = '';
+      autoResizeTextarea(ta);
+      ta.focus();
+      if (btn) btn.textContent = 'Done';
+    }
+
+    function exitEditMode() {
+      var ta   = document.querySelector('[data-full-note]');
+      var view = document.getElementById('narrativeView');
+      var btn  = document.getElementById('narrativeEditToggle');
+      if (!ta || !view) return;
+      renderParagraphs();
+      ta.style.display   = 'none';
+      view.style.display = '';
+      if (btn) btn.textContent = 'Edit';
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      var ta   = document.querySelector('[data-full-note]');
+      var view = document.getElementById('narrativeView');
+      var editBtn = document.getElementById('narrativeEditToggle');
+
+      if (!ta || !view) return;
+
+      renderParagraphs();
+
+      /* Edit / Done toggle button */
+      if (editBtn) {
+        editBtn.addEventListener('click', function () {
+          if (ta.style.display === 'none') enterEditMode();
+          else exitEditMode();
+        });
+      }
+
+      /* Re-render when tab is shown */
+      var narrativeTab = document.querySelector('[data-bs-target="#tab-narrative"]');
+      if (narrativeTab) {
+        narrativeTab.addEventListener('shown.bs.tab', function () {
+          if (ta.style.display === 'none') renderParagraphs();
+          else autoResizeTextarea(ta);
+        });
+      }
+
+      /* Auto-exit edit mode on blur (small delay to allow copy-btn clicks) */
+      ta.addEventListener('blur', function () {
+        setTimeout(function () {
+          if (document.activeElement && document.activeElement.closest('#tab-narrative')) return;
+          exitEditMode();
+        }, 150);
+      });
+
+      /* Re-render after regen */
+      var _origOnNoteGenerated = window.WELLNEST_onNoteGenerated;
+      window.WELLNEST_onNoteGenerated = function (data) {
+        if (_origOnNoteGenerated) _origOnNoteGenerated(data);
+        setTimeout(renderParagraphs, 100);
+      };
+    });
+  })();
+
+  /* ── Sticky header detection via IntersectionObserver ── */
+  document.addEventListener('DOMContentLoaded', function () {
+    if ('IntersectionObserver' in window) {
+      var topOffset = parseInt(
+        getComputedStyle(document.documentElement).getPropertyValue('--bs-topbar-height') || '70', 10
+      );
+      document.querySelectorAll('.ns-sticky-sentinel').forEach(function (sentinel) {
+        var hdr = sentinel.nextElementSibling;
+        if (!hdr || !hdr.classList.contains('note-section-header')) return;
+        new IntersectionObserver(
+          function (entries) {
+            entries.forEach(function (e) {
+              hdr.classList.toggle('is-stuck', !e.isIntersecting);
+            });
+          },
+          { threshold: 0, rootMargin: '-' + topOffset + 'px 0px 0px 0px' }
+        ).observe(sentinel);
+      });
+    }
+  });
 
   /* ── Debounced auto-save for patient bar (fires on every input keystroke) ── */
   var _debouncedPatientSave = (function () {
@@ -876,43 +1234,7 @@
     var el = document.getElementById(id);
     if (el && !el.readOnly) el.addEventListener('input', _debouncedPatientSave);
   });
-
-  var regenBtn = document.getElementById('regenerateAllBtn');
-  if (regenBtn) {
-    regenBtn.addEventListener('click', async function () {
-      var transcriptArea = document.getElementById('transcriptArea');
-      var transcript = transcriptArea ? transcriptArea.value.trim() : '';
-      if (!transcript) {
-        alert('No transcript to regenerate from. Check the Transcript tab.');
-        return;
-      }
-      if (!confirm('Regenerate as ' + regenFormat.toUpperCase() + '? Your current note edits will be replaced.')) return;
-      regenBtn.disabled = true;
-      regenBtn.textContent = 'Regenerating…';
-      try {
-        var resp = await fetch(
-          '/scribe/api/sessions/' + SESSION_ID + '/generate/',
-          {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-            body: JSON.stringify({ transcript: transcript, note_format: regenFormat, length_mode: regenLength }),
-          }
-        );
-        var data = await resp.json();
-        if (data.ok) {
-          window.location.reload();
-        } else {
-          alert(data.error || 'Regeneration failed.');
-          regenBtn.disabled = false;
-          regenBtn.innerHTML = '<iconify-icon icon="iconamoon:restart-duotone" class="me-1 align-middle"></iconify-icon>Regenerate note';
-        }
-      } catch (e) {
-        alert('Regeneration failed: ' + e.message);
-        regenBtn.disabled = false;
-      }
-    });
-  }
+  if (genderSelEl && !genderSelEl.disabled) genderSelEl.addEventListener('change', _debouncedPatientSave);
 
   /* ── Sensitive-encounter toggle ── */
   var sensitiveBtn = document.getElementById('sensitiveToggleBtn');
@@ -931,7 +1253,7 @@
       })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        if (!data.ok) { alert(data.error || 'Could not update sensitive flag.'); return; }
+        if (!data.ok) { _suiteAlert(data.error || 'Could not update sensitive flag.', 'error'); return; }
         _isSensitive = newVal;
         sensitiveBtn.className = newVal
           ? 'btn btn-warning btn-sm'
@@ -954,7 +1276,7 @@
           if (p) p.remove();
         }
       })
-      .catch(function () { alert('Network error — could not save.'); });
+      .catch(function () { _suiteAlert('Network error — could not save.', 'error'); });
     });
   }
 })();
@@ -1078,9 +1400,12 @@
     ta.style.height = Math.min(1200, Math.max(ta.scrollHeight + 2, 48)) + 'px';
     ta.dispatchEvent(new Event('input', { bubbles: true }));
     hidePop();
+    /* Switch back to rich display immediately so the applied value is visible */
+    if (ta._refreshRichView) ta._refreshRichView();
   }
 
   function showPop(ev, ta, s, e, content) {
+    hideEraseBtn();  /* prevent overlap between erase btn and bracket popover */
     var p = getPopover();
     popCtx = { ta: ta, s: s, e: e };
     var isDrug = /drug|medic|dose|\bmg\b|\bml\b/i.test(content);
@@ -1301,6 +1626,373 @@
     });
   });
 
+})();
+</script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  /* Capture-phase listener for #regenerateAllBtn — fires before both the
+     wellnest.js handler and any inline handler, gives us a single clean
+     entry point that respects the current regenFormat + regenLength. */
+  var regenBtn = document.getElementById('regenerateAllBtn');
+  if (!regenBtn) return;
+  var sessionEl = document.querySelector('[data-session-id]');
+  var SESSION_ID = sessionEl ? sessionEl.dataset.sessionId : '';
+  var CSRF = '{{ csrf_token }}';
+
+  regenBtn.addEventListener('click', function (e) {
+    e.stopImmediatePropagation(); // prevent wellnest.js handler + any others
+
+    var format = window.WELLNEST_regenFormat || '{{ session.note_format }}';
+    var length = window.WELLNEST_regenLength || '{{ session.length_mode|default:"normal" }}';
+    var transcriptEl = document.getElementById('transcriptArea');
+    var transcript = transcriptEl ? transcriptEl.value.trim() : '';
+
+    if (!transcript) {
+      _suiteAlert('No transcript to regenerate from. Check the Transcript tab.', 'warning');
+      return;
+    }
+
+    _suiteConfirm('Regenerate as ' + format.toUpperCase() + '?', 'Your current note edits will be replaced.').then(function (ok) {
+      if (!ok) return;
+
+      var labelEl = document.getElementById('regenerateBtnLabel');
+      var origLabel = labelEl ? labelEl.textContent : 'Regenerate';
+      if (labelEl) labelEl.textContent = 'Regenerating…';
+      regenBtn.disabled = true;
+
+      fetch('/scribe/api/sessions/' + SESSION_ID + '/generate/', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({ transcript: transcript, note_format: format, length_mode: length })
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.ok) {
+          window.location.reload();
+        } else {
+          regenBtn.disabled = false;
+          if (labelEl) labelEl.textContent = origLabel;
+          _suiteAlert(data.error || 'Regeneration failed.', 'error');
+        }
+      })
+      .catch(function (err) {
+        regenBtn.disabled = false;
+        if (labelEl) labelEl.textContent = origLabel;
+        _suiteAlert('Network error: ' + err.message, 'error');
+      });
+    });
+  }, true); // capture phase
+}());
+</script>
+
+<script>
+/* ── Magic Edit floating panel ── */
+(function () {
+  var sessionEl = document.querySelector('[data-session-id]');
+  if (!sessionEl) return;
+  var SESSION_ID = sessionEl.dataset.sessionId;
+  var CSRF = '{{ csrf_token }}';
+  var MAGIC_URL = '/scribe/api/sessions/' + SESSION_ID + '/magic-edit/';
+
+  var fab        = document.getElementById('magicEditFloatBtn');
+  var panel      = document.getElementById('magicEditFloatPanel');
+  var closeBtn   = document.getElementById('magicEditClose');
+  var input      = document.getElementById('magicEditInput');
+  var applyBtn   = document.getElementById('magicEditApply');
+  var applyLabel = document.getElementById('magicEditApplyLabel');
+  var micBtn     = document.getElementById('magicEditMicBtn');
+  var status     = document.getElementById('magicEditStatus');
+
+  if (!fab || !panel) return;
+
+  function openPanel() {
+    panel.classList.remove('d-none');
+    fab.classList.add('is-open');
+    if (input) input.focus();
+  }
+  function closePanel() {
+    panel.classList.add('d-none');
+    fab.classList.remove('is-open');
+  }
+
+  fab.addEventListener('click', function () {
+    if (panel.classList.contains('d-none')) openPanel(); else closePanel();
+  });
+  if (closeBtn) closeBtn.addEventListener('click', closePanel);
+
+  /* ── Chip click: set/toggle text in input ── */
+  panel.querySelectorAll('.magic-chip').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      var txt = chip.dataset.chip || '';
+      panel.querySelectorAll('.magic-chip').forEach(function (c) { c.classList.remove('is-active'); });
+      if (input.value.trim() === txt) {
+        input.value = '';
+      } else {
+        input.value = txt;
+        chip.classList.add('is-active');
+      }
+      input.focus();
+    });
+  });
+
+  /* ── Apply ── */
+  if (applyBtn) {
+    applyBtn.addEventListener('click', function () {
+      var instruction = input ? input.value.trim() : '';
+      if (!instruction) {
+        showStatus('Type or dictate an instruction first.', 'warning');
+        return;
+      }
+      applyBtn.disabled = true;
+      if (applyLabel) applyLabel.textContent = 'Applying…';
+      showStatus('', '');
+
+      fetch(MAGIC_URL, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({ instruction: instruction }),
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        applyBtn.disabled = false;
+        if (applyLabel) applyLabel.textContent = 'Apply';
+        if (!data.ok) {
+          showStatus(data.error || 'Magic edit failed.', 'danger');
+          return;
+        }
+        /* Update note textareas in DOM without a full reload */
+        if (data.subjective !== undefined) setField('subjective', data.subjective);
+        if (data.objective  !== undefined) setField('objective',  data.objective);
+        if (data.assessment !== undefined) setField('assessment', data.assessment);
+        if (data.plan       !== undefined) setField('plan',       data.plan);
+        /* Update full-note narrative textarea too */
+        if (data.edited_note) {
+          var fnEl = document.querySelector('[data-full-note]');
+          if (fnEl) {
+            fnEl.value = data.edited_note;
+            fnEl.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          if (window._bracketInitDone) {
+            document.querySelectorAll('textarea[data-note-field]').forEach(function (ta) {
+              var w = ta.closest('.bracket-textarea-wrap');
+              var m = w && w.querySelector('.bracket-mirror');
+              if (m && window._buildMirrorHtml) m.innerHTML = window._buildMirrorHtml(ta.value);
+              if (window._updateBadge) window._updateBadge(ta);
+            });
+          }
+        }
+        showStatus('Done! Note updated.', 'success');
+        panel.querySelectorAll('.magic-chip').forEach(function (c) { c.classList.remove('is-active'); });
+        if (input) input.value = '';
+      })
+      .catch(function (err) {
+        applyBtn.disabled = false;
+        if (applyLabel) applyLabel.textContent = 'Apply';
+        showStatus('Network error: ' + err.message, 'danger');
+      });
+    });
+  }
+
+  /* ── Mic: record → quick-transcribe → append to input ──
+     iOS Safari does not support MediaRecorder; fall back to the Web Speech API
+     (webkitSpeechRecognition) which IS available on iOS 14.5+. */
+  var _micStream = null, _micRecorder = null, _micChunks = [];
+  var _speechRecog = null;
+  var _micActive = false;
+
+  var SpeechRecog = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var canMediaRecord = (typeof MediaRecorder !== 'undefined') &&
+                       navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+
+  function micSetIcon(icon) {
+    var ic = micBtn && micBtn.querySelector('iconify-icon');
+    if (ic) ic.setAttribute('icon', icon);
+  }
+
+  function stopMicAll() {
+    if (_micRecorder && _micRecorder.state === 'recording') { _micRecorder.stop(); }
+    if (_speechRecog) { try { _speechRecog.stop(); } catch (_) {} _speechRecog = null; }
+    if (_micStream) { _micStream.getTracks().forEach(function (t) { t.stop(); }); _micStream = null; }
+    _micActive = false;
+    micSetIcon('iconamoon:microphone-duotone');
+    if (micBtn) micBtn.style.color = '';
+  }
+
+  if (micBtn) {
+    micBtn.addEventListener('click', function () {
+      if (_micActive) { stopMicAll(); return; }
+
+      /* ── Path A: MediaRecorder (Chrome, Firefox, Android Chrome) ── */
+      if (canMediaRecord) {
+        navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(function (stream) {
+            _micStream = stream;
+            _micChunks = [];
+            _micActive = true;
+            _micRecorder = new MediaRecorder(stream);
+            _micRecorder.addEventListener('dataavailable', function (e) {
+              if (e.data && e.data.size > 0) _micChunks.push(e.data);
+            });
+            _micRecorder.addEventListener('stop', function () {
+              _micStream.getTracks().forEach(function (t) { t.stop(); });
+              _micStream = null;
+              _micActive = false;
+              micSetIcon('iconamoon:microphone-duotone');
+              if (micBtn) micBtn.style.color = '';
+              var blob = new Blob(_micChunks, { type: 'audio/webm' });
+              var fd = new FormData();
+              fd.append('audio', blob, 'magic-instruction.webm');
+              showStatus('Transcribing…', '');
+              fetch('/scribe/api/quick-transcribe/', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'X-CSRFToken': CSRF },
+                body: fd,
+              })
+              .then(function (r) { return r.json(); })
+              .then(function (d) {
+                if (d.transcript) {
+                  if (input) { input.value = (input.value ? input.value + ' ' : '') + d.transcript.trim(); input.focus(); }
+                  showStatus('', '');
+                } else {
+                  showStatus(d.error || 'Transcription failed.', 'danger');
+                }
+              })
+              .catch(function () { showStatus('Transcription network error.', 'danger'); });
+            });
+            _micRecorder.start();
+            micSetIcon('iconamoon:stop-circle-duotone');
+            if (micBtn) micBtn.style.color = '#d33b46';
+            showStatus('Recording… tap again to stop.', '');
+          })
+          .catch(function () { showStatus('Microphone access denied.', 'danger'); });
+
+      /* ── Path B: Web Speech API (iOS Safari, Safari desktop) ── */
+      } else if (SpeechRecog) {
+        _speechRecog = new SpeechRecog();
+        _speechRecog.lang = 'en-US';
+        _speechRecog.continuous = false;
+        _speechRecog.interimResults = false;
+        _micActive = true;
+        _speechRecog.onresult = function (e) {
+          var text = e.results[0][0].transcript;
+          if (input) { input.value = (input.value ? input.value + ' ' : '') + text.trim(); input.focus(); }
+          showStatus('', '');
+          stopMicAll();
+        };
+        _speechRecog.onerror = function (e) {
+          showStatus('Voice input error: ' + e.error, 'danger');
+          stopMicAll();
+        };
+        _speechRecog.onend = function () { stopMicAll(); };
+        _speechRecog.start();
+        micSetIcon('iconamoon:stop-circle-duotone');
+        if (micBtn) micBtn.style.color = '#d33b46';
+        showStatus('Listening… speak your instruction.', '');
+
+      } else {
+        showStatus('Voice input not supported on this browser. Type your instruction instead.', 'warning');
+      }
+    });
+  }
+
+  function setField(field, value) {
+    var ta = document.querySelector('[data-note-field="' + field + '"]');
+    if (!ta) return;
+    ta.value = value || '';
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(1200, Math.max(ta.scrollHeight + 2, 48)) + 'px';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    if (ta._refreshRichView) ta._refreshRichView();
+  }
+
+  function showStatus(msg, type) {
+    if (!status) return;
+    if (!msg) { status.className = 'small mt-1 mb-0 d-none'; status.textContent = ''; return; }
+    var cls = { success: 'text-success', danger: 'text-danger', warning: 'text-warning' };
+    status.className = 'small mt-1 mb-0 ' + (cls[type] || 'text-muted');
+    status.textContent = msg;
+  }
+})();
+
+/* ── Rich note display: bold sub-labels + bracket highlights ─────────── */
+/* Must run after DOMContentLoaded so initMirror() has already wrapped each
+   textarea in .bracket-textarea-wrap before we insert the display div.      */
+(function () {
+  var TOP_LABEL_RE = /^(CC|HPI|PMH|Family History|Social History|Current Medications|Allergies|ROS|Vitals|Examination|Investigations|SUMMARY|Assessment|Plan):(.*)/;
+  var SUB_LABEL_RE = /^(\s+)(Medications|Investigations|Follow-?up|Referrals|Education|Procedures?|Lifestyle|Diet|Monitoring|Counselli?ng|Other|Imaging|Labs?):(.*)/i;
+
+  function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function formatNoteText(text) {
+    if (!text) return '';
+    var bld = window._buildMirrorHtml || escHtml;
+    return text.split('\n').map(function (line) {
+      var hl = bld(line);
+      var m = hl.match(TOP_LABEL_RE);
+      if (m) return '<strong>' + m[1] + ':</strong>' + m[2];
+      var sm = hl.match(SUB_LABEL_RE);
+      if (sm) return sm[1] + '<strong>' + sm[2] + ':</strong>' + sm[3];
+      return hl;
+    }).join('\n');
+  }
+
+  function showRich(ta, rd, wrap) {
+    rd.innerHTML = formatNoteText(ta.value);
+    rd.style.display = '';
+    (wrap || ta).style.display = 'none';
+  }
+
+  function showEdit(ta, rd, wrap) {
+    ta._editStartValue = ta.value;  /* snapshot for undo */
+    rd.style.display = 'none';
+    (wrap || ta).style.display = '';
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(1200, Math.max(ta.scrollHeight + 2, 48)) + 'px';
+    ta.focus();
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.note-section-body .note-textarea[data-note-field]').forEach(function (ta) {
+      var wrap = ta.closest('.bracket-textarea-wrap');
+      var parent = wrap ? wrap.parentNode : ta.parentNode;
+      var rd = document.createElement('div');
+      rd.className = 'note-rich-display';
+      parent.insertBefore(rd, wrap || ta);
+
+      showRich(ta, rd, wrap);
+
+      rd.addEventListener('click', function () { showEdit(ta, rd, wrap); });
+      ta.addEventListener('blur', function () { showRich(ta, rd, wrap); });
+      ta._refreshRichView = function () { showRich(ta, rd, wrap); };
+
+      /* Add undo button to this section's actions bar */
+      var section = ta.closest('.note-section');
+      if (section) {
+        var actions = section.querySelector('.note-section-actions');
+        if (actions) {
+          var undoBtn = document.createElement('button');
+          undoBtn.type = 'button';
+          undoBtn.className = 'note-section-btn';
+          undoBtn.title = 'Undo last edit';
+          undoBtn.innerHTML = '<iconify-icon icon="iconamoon:arrow-undo-left-duotone"></iconify-icon>';
+          undoBtn.addEventListener('click', function () {
+            if (ta._editStartValue !== undefined) {
+              ta.value = ta._editStartValue;
+              ta.dispatchEvent(new Event('input', { bubbles: true }));
+              showRich(ta, rd, wrap);
+            }
+          });
+          actions.insertBefore(undoBtn, actions.firstChild);
+        }
+      }
+    });
+  });
 })();
 </script>
 {% endblock %}

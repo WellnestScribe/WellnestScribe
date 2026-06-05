@@ -128,61 +128,91 @@ Patois -> clinical translations (apply when these phrases appear):
 # Layer 2 - User prompts (one-shot for small reasoning models)
 # ---------------------------------------------------------------------------
 
-SINGLE_SOAP_USER_PROMPT = """Convert the transcript into a SOAP note.
+SINGLE_SOAP_USER_PROMPT = """Convert the transcript into a comprehensive structured clinical note.
 
-Output exactly four labelled sections in this order. Each label on its own
-line. No markdown. End with the disclaimer.
+Output five labelled sections in exactly this order. Each label on its own line.
+No markdown. End with the disclaimer.
+
+SUMMARY:
+<2-3 concise bullet points (use plain "- ") giving a TL;DR: who the patient is,
+why they came, and the key action taken. Busy clinicians read this first.
+Only include what is in the transcript.>
 
 S:
-<Subjective: chief complaint, HPI, ROS if discussed, PMH, current meds,
-allergies, social history, family history - only what the transcript covers.
-You don't need explicit "CC:" / "HPI:" labels unless the doctor used them;
-just narrate the patient's reported history clearly.>
+<Subjective — use these sub-labels on their own lines, include only what
+the transcript covers, omit sub-labels that have no content:
+
+CC: <chief complaint in one clinical English sentence — do NOT quote patient
+in dialect/patois; translate to standard clinical language>
+HPI: <history of present illness — write as a flowing clinical narrative (2-4
+sentences). Weave together onset, duration, character, severity, associated
+symptoms, and aggravating/relieving factors into prose. Only break into bullets
+if there are 5 or more genuinely independent elements that cannot flow together.>
+PMH: <past medical / surgical history if stated>
+Family History: <only if stated>
+Social History: <smoking, alcohol, occupation, herbal remedies if stated>
+Current Medications: <list; one entry per line, indented:
+  • Drug Dose Route Frequency>
+Allergies: <drug allergies; write NKA if doctor confirmed none>
+ROS: <review of systems not already covered in HPI, only if stated>>
 
 O:
-<Objective: vitals, physical exam findings, lab/imaging results - only
-items the doctor stated. Omit any vital not mentioned. If nothing was
-examined or measured, write: Not documented.>
+<Objective — use these sub-labels, omit any that have no data:
+
+Vitals: <BP / HR / RR / T / SpO2 / Wt / Ht / BMI / Glucose. Write only the
+values the doctor stated. If a vital was mentioned as abnormal but the exact
+value was NOT stated, write it as [value not stated] so the doctor can fill
+it in — e.g. "BP [value not stated] — elevated per doctor".>
+Examination: <general appearance first, then system findings as INDENTED bullets:
+  • CVS: ...
+  • Respiratory: ...
+Omit any system not mentioned.>
+Investigations: <lab results, imaging, ECG — only values the doctor stated>>
 
 A:
-<Assessment: numbered diagnoses or clinical impressions in the doctor's
-words. Preserve uncertainty ("Likely X" stays "Likely X"). Add status in
-parens if stated (controlled/uncontrolled/stable/worsening/new onset).
-Do NOT add "rule out", "evaluate for", or differential suggestions unless
-the doctor explicitly said them.>
+<Assessment — number each problem or diagnosis. After each number write the
+clinical impression in the doctor's words, with status in parentheses if stated
+(controlled / uncontrolled / stable / worsening / new onset). Flag critical
+findings with [ALERT]. Do NOT add "rule out", "evaluate for", or differentials
+unless the doctor explicitly said them.>
 
 P:
-<Plan: numbered, matching assessment numbers when possible. Include
-medications (drug, dose, route, frequency, duration if stated), tests
-ordered, referrals, patient education, follow-up. If the doctor named a
-drug but no dose, write "[dose not stated]". Never fabricate a dose.
-Do NOT add tests, workup, referrals, or follow-up suggestions unless the
-doctor explicitly stated them.>
+<Plan — number to match assessment. Under each number use INDENTED sub-groups:
+  - Medications: Drug Dose Route Frequency x Duration (write [dose not stated]
+    if dose not given; NEVER fabricate)
+  - Investigations: tests ordered
+  - Referrals: if stated
+  - Education: advice given to patient
+  - Follow-up: timing if stated
+Omit any sub-category that has no content. Do NOT add items the doctor did not state.>
 
 AI-generated draft - review and edit required before clinical use.
 
-EXAMPLE - for a transcript like
-"Patient with chest pain past 30 minutes, pressure-like, radiating to left
-arm, with SOB. Severe lower abdominal pain since this morning, sharp,
-constant. Says he took some medication."
+EXAMPLE OUTPUT (abbreviated):
 
-a correct extraction is:
+SUMMARY:
+- 58 y/o female, routine hypertension follow-up.
+- BP suboptimally controlled on current regimen.
+- Amlodipine dose increased; BP recheck in 2 weeks.
 
 S:
-Pt reports chest pain x 30 min, pressure-like, radiating to left arm, with
-associated dyspnoea. Also reports severe lower abdominal pain since this
-morning, sharp and constant. States he took unspecified medication for
-relief.
+CC: Routine hypertension follow-up.
+HPI: Patient reports home BP was elevated last week. Denies chest pain, SOB, or headache.
+Current Medications: Amlodipine 5mg PO OD.
+Allergies: NKA.
 
 O:
-Not documented.
+Vitals: BP 138/86 mmHg | HR 72 bpm | RR 16.
+Examination: Not documented.
 
 A:
-1. [ALERT] Acute chest pain with left-arm radiation and dyspnoea.
-2. Acute lower abdominal pain.
+1. Hypertension (uncontrolled) — target BP not achieved on current regimen.
 
 P:
-Not documented.
+1. Hypertension
+   - Medications: Amlodipine 10mg PO OD x 30 days
+   - Follow-up: BP recheck in 2 weeks
+   - Education: Continue low-salt diet.
 
 AI-generated draft - review and edit required before clinical use.
 
@@ -194,62 +224,90 @@ TRANSCRIPT:
 """
 
 
-SINGLE_SOAP_USER_PROMPT_SUGGESTIVE = """Convert the transcript into a SOAP note.
+SINGLE_SOAP_USER_PROMPT_SUGGESTIVE = """Convert the transcript into a comprehensive structured clinical note.
 
-Output exactly four labelled sections in this order. Each label on its own
-line. No markdown. End with the disclaimer.
+Output five labelled sections in exactly this order. Each label on its own line.
+No markdown. End with the disclaimer.
+
+SUMMARY:
+<2-3 concise bullet points (use plain "- ") giving a TL;DR: who the patient is,
+why they came, and the key action taken. Busy clinicians read this first.
+Only include what is in the transcript.>
 
 S:
-<Subjective: chief complaint, HPI, ROS if discussed, PMH, current meds,
-allergies, social history, family history - only what the transcript covers.
-You don't need explicit "CC:" / "HPI:" labels unless the doctor used them;
-just narrate the patient's reported history clearly.>
+<Subjective — use these sub-labels on their own lines, include only what
+the transcript covers, omit sub-labels that have no content:
+
+CC: <chief complaint in one clinical English sentence — do NOT quote patient
+in dialect/patois; translate to standard clinical language>
+HPI: <history of present illness — write as a flowing clinical narrative (2-4
+sentences). Weave together onset, duration, character, severity, associated
+symptoms, and aggravating/relieving factors into prose. Only break into bullets
+if there are 5 or more genuinely independent elements that cannot flow together.>
+PMH: <past medical / surgical history if stated>
+Family History: <only if stated>
+Social History: <smoking, alcohol, occupation, herbal remedies if stated>
+Current Medications: <list; one entry per line, indented:
+  • Drug Dose Route Frequency>
+Allergies: <drug allergies; write NKA if doctor confirmed none>
+ROS: <review of systems not already covered in HPI, only if stated>>
 
 O:
-<Objective: vitals, physical exam findings, lab/imaging results - only
-items the doctor stated. Omit any vital not mentioned. If nothing was
-examined or measured, write: Not documented.>
+<Objective — use these sub-labels, omit any that have no data:
+
+Vitals: <BP / HR / RR / T / SpO2 / Wt / Ht / BMI / Glucose. Write only the
+values the doctor stated. If a vital was mentioned as abnormal but the exact
+value was NOT stated, write it as [value not stated] so the doctor can fill
+it in — e.g. "BP [value not stated] — elevated per doctor".>
+Examination: <general appearance first, then system findings as INDENTED bullets:
+  • CVS: ...
+  • Respiratory: ...
+Omit any system not mentioned.>
+Investigations: <lab results, imaging, ECG — only values the doctor stated>>
 
 A:
-<Assessment: numbered diagnoses or clinical impressions in the doctor's
-words. Preserve uncertainty ("Likely X" stays "Likely X"). Add status in
-parens if stated (controlled/uncontrolled/stable/worsening/new onset).
-When strongly implied by the transcript, you may add concise provisional
-"rule out", "consider", or similar wording.>
+<Assessment — number each problem. Include status in parentheses if stated.
+Flag critical findings with [ALERT]. When strongly implied by the transcript,
+you may add concise provisional "rule out", "consider", or "possible" wording.>
 
 P:
-<Plan: numbered, matching assessment numbers when possible. Include
-medications (drug, dose, route, frequency, duration if stated), tests
-ordered, referrals, patient education, follow-up. If the doctor named a
-drug but no dose, write "[dose not stated]". Never fabricate a dose.
-When strongly implied by the transcript, you may add concise generic
-next-step / workup suggestions.>
+<Plan — number to match assessment. Under each number group:
+- Medications: Drug Dose Route Frequency x Duration (write [dose not stated]
+  if dose not given; NEVER fabricate)
+- Investigations: tests ordered; when strongly implied, you may suggest generic workup
+- Referrals: if stated
+- Education: advice given to patient
+- Follow-up: timing if stated
+Omit any sub-category that has no content.>
 
 AI-generated draft - review and edit required before clinical use.
 
-EXAMPLE - for a transcript like
-"Patient with chest pain past 30 minutes, pressure-like, radiating to left
-arm, with SOB. Severe lower abdominal pain since this morning, sharp,
-constant. Says he took some medication."
+EXAMPLE OUTPUT (abbreviated):
 
-a correct extraction is:
+SUMMARY:
+- 58 y/o female, routine hypertension follow-up.
+- BP suboptimally controlled on current regimen.
+- Amlodipine dose increased; BP recheck in 2 weeks.
 
 S:
-Pt reports chest pain x 30 min, pressure-like, radiating to left arm, with
-associated dyspnoea. Also reports severe lower abdominal pain since this
-morning, sharp and constant. States he took unspecified medication for
-relief.
+CC: Routine hypertension follow-up.
+HPI: Patient reports home BP was elevated last week. Denies chest pain, SOB, or headache.
+Current Medications: Amlodipine 5mg PO OD.
+Allergies: NKA.
 
 O:
-Not documented.
+Vitals: BP 138/86 mmHg | HR 72 bpm | RR 16.
+Examination: Not documented.
 
 A:
-1. [ALERT] Acute chest pain with left-arm radiation and dyspnoea - rule out
-   acute coronary syndrome.
-2. Acute lower abdominal pain - aetiology pending workup.
+1. Hypertension (uncontrolled) — target BP not achieved; consider metabolic panel to rule out secondary causes.
 
 P:
-Not documented.
+1. Hypertension
+   - Medications: Amlodipine 10mg PO OD x 30 days
+   - Investigations: U&E, renal function in 4 weeks
+   - Follow-up: BP recheck in 2 weeks
+   - Education: Continue low-salt diet, weight reduction.
 
 AI-generated draft - review and edit required before clinical use.
 
@@ -305,9 +363,17 @@ TRANSCRIPT:
 SECTION_PROMPTS = {
     "subjective": """Write ONLY the Subjective (S) section.
 
-Capture chief complaint, HPI, ROS, PMH, current meds, allergies, social
-history, family history - only items present in the transcript. Narrate
-naturally; you don't need explicit sub-labels unless the doctor used them.
+Use these sub-labels on their own lines. Include ONLY what the transcript
+covers; omit any sub-label that has no content.
+
+CC: <chief complaint>
+HPI: <onset, duration, character, severity, radiation, aggravating/relieving, associated symptoms>
+PMH: <past medical/surgical history if stated>
+Family History: <only if stated>
+Social History: <smoking, alcohol, occupation, herbal remedies if stated>
+Current Medications: <each drug, dose, route, frequency if stated>
+Allergies: <allergies; write NKA if confirmed none>
+ROS: <review of systems not already in HPI, only if stated>
 
 Output starts with "S:" on its own line. If absolutely nothing relevant is
 in the transcript, write: S:\\nNot documented.
@@ -317,9 +383,12 @@ TRANSCRIPT:
 """,
     "objective": """Write ONLY the Objective (O) section.
 
-Vitals on a single line as BP/HR/RR/T/SpO2/Wt/BMI - omit any vital not
-stated. Physical exam findings only if stated. Investigations/results only
-if stated.
+Use these sub-labels on their own lines. Include ONLY what the doctor stated;
+omit any sub-label that has no data.
+
+Vitals: <BP / HR / RR / T / SpO2 / Wt / Ht / BMI / Glucose — stated values only>
+Examination: <general appearance then system findings as stated>
+Investigations: <lab results, imaging, ECG — only stated values>
 
 Output starts with "O:" on its own line. If nothing objective was
 documented, write: O:\\nNot documented.

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -134,6 +135,32 @@ class RecordView(LoginRequiredMixin, View):
                 "ambient_backend": dj_settings.AMBIENT_BACKEND,
             },
         )
+
+
+@login_required
+def patients_api(request):
+    """Unique patients from this doctor's sessions, most recent first."""
+    seen = set()
+    results = []
+    sessions = (
+        ScribeSession.objects.filter(doctor=request.user)
+        .exclude(patient_name="")
+        .order_by("-created_at")
+        .values("pk", "patient_name", "chief_complaint", "created_at")
+    )
+    for s in sessions:
+        name = (s["patient_name"] or "").strip()
+        key = name.lower()
+        if not name or key in seen:
+            continue
+        seen.add(key)
+        results.append({
+            "name": name,
+            "last_pk": s["pk"],
+            "last_cc": s["chief_complaint"] or "",
+            "last_visit": s["created_at"].strftime("%b %d, %Y"),
+        })
+    return JsonResponse({"patients": results[:50]})
 
 
 class HistoryView(LoginRequiredMixin, View):
@@ -852,6 +879,8 @@ def create_session_api(request):
     duration_raw = request.POST.get("duration_seconds", "").strip()
     patient_name = request.POST.get("patient_name", "").strip()[:120]
     patient_identifier = request.POST.get("patient_identifier", "").strip()[:120]
+    _pg_raw = request.POST.get("patient_gender", "").strip()[:1].upper()
+    patient_gender = _pg_raw if _pg_raw in {"M", "F", "O"} else ""
     active_conditions = request.POST.get("active_conditions", "").strip()[:200]
 
     valid_formats = dict(ScribeSession.NOTE_FORMAT_CHOICES)
@@ -865,6 +894,7 @@ def create_session_api(request):
             chief_complaint=chief_complaint,
             patient_name=patient_name,
             patient_identifier=patient_identifier,
+            patient_gender=patient_gender,
             active_conditions=active_conditions,
             note_format=note_format if note_format in valid_formats else "soap",
             length_mode=length_mode if length_mode in valid_lengths else "normal",
@@ -983,13 +1013,19 @@ def generate_note_api(request, pk):
         "transcript", "note_format", "length_mode", "status", "updated_at"
     ])
 
+    # Prepend patient sex so AI uses correct pronouns throughout the note.
+    _gender_map = {"M": "Male", "F": "Female", "O": "Other"}
+    _gender_label = _gender_map.get(session.patient_gender, "")
+    _patient_ctx = f"Patient sex: {_gender_label}. Use correct pronouns throughout." if _gender_label else ""
+    _custom = "\n".join(filter(None, [_patient_ctx, profile.custom_instructions])).strip()
+
     try:
         result = run_note_generation(
             transcript=transcript,
             note_format=note_format,
             specialty=profile.specialty,
             length_mode=length_mode,
-            custom_instructions=profile.custom_instructions,
+            custom_instructions=_custom,
             custom_terms=profile.custom_terms,
             suggestive_assist=suggestive_assist,
             is_sensitive=session.is_sensitive,
@@ -1017,6 +1053,7 @@ def generate_note_api(request, pk):
     note, _ = SOAPNote.objects.update_or_create(
         session=session,
         defaults={
+            "visit_summary": result.visit_summary,
             "subjective": result.subjective,
             "objective": result.objective,
             "assessment": result.assessment,
@@ -1028,7 +1065,23 @@ def generate_note_api(request, pk):
         },
     )
     session.status = "review"
-    session.save(update_fields=["status", "updated_at"])
+    # After a successful generation, replace the raw phonetic transcript with a
+    # clean English interpretation so the Transcript tab is readable by doctors.
+    # Failures here are non-fatal — the note is already saved.
+    if session.transcript:
+        try:
+            clean_transcript = run_interpret_patois(session.transcript)
+            if clean_transcript and clean_transcript.strip():
+                # Extract only the Step 2 assembled English — hide phonetic workings
+                m = re.search(
+                    r"STEP\s+2[^:]*:\s*\n+(.*?)(?=\nSTEP\s+3\b|\Z)",
+                    clean_transcript,
+                    re.DOTALL | re.IGNORECASE,
+                )
+                session.transcript = m.group(1).strip() if m else clean_transcript.strip()
+        except Exception:  # noqa: BLE001
+            pass
+    session.save(update_fields=["status", "transcript", "updated_at"])
     _log(session, "generated", f"format={result.note_format} flags={result.flags}")
 
     return JsonResponse(
@@ -1064,7 +1117,7 @@ def save_note_api(request, pk):
     note = getattr(session, "note", None) or SOAPNote.objects.create(session=session)
     payload = _json_body(request)
 
-    for field in ("subjective", "objective", "assessment", "plan", "narrative", "edited_note"):
+    for field in ("visit_summary", "subjective", "objective", "assessment", "plan", "narrative", "edited_note"):
         if field in payload:
             setattr(note, field, payload[field] or "")
 
@@ -1120,6 +1173,10 @@ def save_note_api(request, pk):
         session.patient_name = (payload["patient_name"] or "")[:120]
     if "patient_identifier" in payload:
         session.patient_identifier = (payload["patient_identifier"] or "")[:120]
+    if "patient_gender" in payload:
+        valid_genders = {"", "M", "F", "O"}
+        g = (payload["patient_gender"] or "")[:1].upper()
+        session.patient_gender = g if g in valid_genders else ""
     if "active_conditions" in payload:
         session.active_conditions = (payload["active_conditions"] or "")[:200]
     if payload.get("consent_acknowledged") and not session.consent_acknowledged_at:
@@ -1238,6 +1295,7 @@ def polish_note_api(request, pk):
     from .services.soap_generator import _split_soap  # local import
     sections = _split_soap(polished)
     if any(sections.values()):
+        note.visit_summary = sections["visit_summary"]
         note.subjective = sections["subjective"]
         note.objective = sections["objective"]
         note.assessment = sections["assessment"]
@@ -1254,6 +1312,50 @@ def polish_note_api(request, pk):
             "plan": note.plan,
         }
     )
+
+
+@require_POST
+@csrf_protect
+def magic_edit_api(request, pk):
+    """Apply a doctor-supplied instruction to the current note via AI."""
+    session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)
+    if session.status == "finalized":
+        return JsonResponse({"ok": False, "error": "Session is finalized."}, status=403)
+    note = getattr(session, "note", None)
+    if note is None:
+        return JsonResponse({"ok": False, "error": "Generate a note first."}, status=400)
+    payload = _json_body(request)
+    instruction = (payload.get("instruction") or "").strip()
+    if not instruction:
+        return JsonResponse({"ok": False, "error": "Instruction is required."}, status=400)
+    source = note.edited_note or note.full_note or note.narrative or ""
+    if not source.strip():
+        return JsonResponse({"ok": False, "error": "Note is empty."}, status=400)
+    try:
+        from .services.pipeline import run_magic_edit
+        result = run_magic_edit(source, instruction)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("magic_edit failed for session %s", pk)
+        return JsonResponse({"ok": False, "error": str(exc)}, status=500)
+    note.edited_note = result
+    from .services.soap_generator import _split_soap
+    sections = _split_soap(result)
+    if any(sections.values()):
+        note.visit_summary = sections["visit_summary"]
+        note.subjective = sections["subjective"]
+        note.objective = sections["objective"]
+        note.assessment = sections["assessment"]
+        note.plan = sections["plan"]
+    note.save()
+    _log(session, "edited", "magic-edit: " + instruction[:80])
+    return JsonResponse({
+        "ok": True,
+        "edited_note": note.edited_note,
+        "subjective": note.subjective,
+        "objective": note.objective,
+        "assessment": note.assessment,
+        "plan": note.plan,
+    })
 
 
 @login_required
@@ -1283,7 +1385,7 @@ def quick_transcribe_api(request):
             os.unlink(tmp_path)
         except OSError:
             pass
-    return JsonResponse({"ok": True, "text": (text or "").strip()})
+    return JsonResponse({"ok": True, "transcript": (text or "").strip()})
 
 
 @login_required

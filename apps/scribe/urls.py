@@ -44,6 +44,7 @@ urlpatterns = [
         name="api_delete",
     ),
     path("share/<str:token>/", views.share_view, name="share"),
+    path("api/patients/", views.patients_api, name="api_patients"),
     path("api/quick-transcribe/", views.quick_transcribe_api, name="api_quick_transcribe"),
     path("triage/", views.TriageView.as_view(), name="triage"),
     path("drug-check/", views.DrugCheckView.as_view(), name="drug_check"),
@@ -73,6 +74,11 @@ urlpatterns = [
         "api/sessions/<int:pk>/polish/",
         views.polish_note_api,
         name="api_polish",
+    ),
+    path(
+        "api/sessions/<int:pk>/magic-edit/",
+        views.magic_edit_api,
+        name="api_magic_edit",
     ),
     path(
         "api/preferences/",

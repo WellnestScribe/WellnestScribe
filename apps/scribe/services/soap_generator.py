@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 class GeneratedNote:
     note_format: str
     full_note: str
+    visit_summary: str = ""
     subjective: str = ""
     objective: str = ""
     assessment: str = ""
@@ -210,22 +211,24 @@ _SECTION_HEADERS = ("S:", "O:", "A:", "P:")
 
 
 def _split_soap(full_note: str) -> dict[str, str]:
-    """Best-effort split of a SOAP block into its four sections."""
-    pattern = re.compile(r"(?m)^(S:|O:|A:|P:)\s*")
+    """Best-effort split of a SOAP block into its four sections plus optional summary."""
+    pattern = re.compile(r"(?m)^(SUMMARY:|S:|O:|A:|P:)\s*")
     matches = list(pattern.finditer(full_note))
     if not matches:
         return {
+            "visit_summary": "",
             "subjective": full_note,
             "objective": "",
             "assessment": "",
             "plan": "",
         }
 
-    sections = {"S:": "", "O:": "", "A:": "", "P:": ""}
+    sections = {"SUMMARY:": "", "S:": "", "O:": "", "A:": "", "P:": ""}
     for i, match in enumerate(matches):
         end = matches[i + 1].start() if i + 1 < len(matches) else len(full_note)
         sections[match.group(1)] = full_note[match.end():end].strip()
     return {
+        "visit_summary": sections["SUMMARY:"],
         "subjective": sections["S:"],
         "objective": sections["O:"],
         "assessment": sections["A:"],
@@ -322,6 +325,7 @@ def generate_note(
     note.flags = _extract_flags(full_note)
     if note_format == "soap":
         sections = _split_soap(full_note)
+        note.visit_summary = _strip_ai_disclaimer(sections["visit_summary"])
         note.subjective = _strip_ai_disclaimer(sections["subjective"])
         note.objective = _strip_ai_disclaimer(sections["objective"])
         note.assessment = _strip_ai_disclaimer(sections["assessment"])
@@ -372,6 +376,7 @@ def generate_modular_soap(
     note = GeneratedNote(
         note_format="soap",
         full_note=full_note,
+        visit_summary=out.get("visit_summary", ""),
         subjective=out.get("subjective", ""),
         objective=out.get("objective", ""),
         assessment=out.get("assessment", ""),
@@ -453,6 +458,36 @@ def polish_grammar(note_text: str) -> str:
         [
             {"role": "system", "content": MASTER_SYSTEM_PROMPT},
             {"role": "user", "content": POLISH_PROMPT.format(note=note_text)},
+        ]
+    )
+
+
+MAGIC_EDIT_PROMPT = """You are a clinical documentation editor.
+
+The doctor has given this instruction for how to revise the note:
+INSTRUCTION: {instruction}
+
+Apply the instruction to the note below. Preserve all clinical facts unless
+the instruction explicitly asks to change them. Keep the same section
+structure (S:/O:/A:/P: labels, or narrative format). Output only the
+revised note — no explanation, no preamble.
+
+NOTE:
+{note}
+"""
+
+
+def magic_edit_note(note_text: str, *, instruction: str) -> str:
+    note_text = (note_text or "").strip()
+    instruction = (instruction or "").strip()
+    if not note_text or not instruction:
+        return note_text
+    return _chat(
+        [
+            {"role": "system", "content": MASTER_SYSTEM_PROMPT},
+            {"role": "user", "content": MAGIC_EDIT_PROMPT.format(
+                note=note_text, instruction=instruction
+            )},
         ]
     )
 
