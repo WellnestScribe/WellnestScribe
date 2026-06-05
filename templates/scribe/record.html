@@ -548,7 +548,10 @@
                     <iconify-icon icon="iconamoon:profile-circle-duotone" class="text-primary" style="font-size:1.3rem;"></iconify-icon>
                     Who is this session for?
                 </h5>
-                <button type="button" class="btn-close" id="patientModalSkipBtn" aria-label="Skip"></button>
+                <button type="button" id="patientModalSkipBtn" aria-label="Skip"
+                        style="background:none;border:none;padding:4px 6px;cursor:pointer;line-height:1;opacity:0.6;color:var(--bs-body-color,#212529);">
+                    <iconify-icon icon="iconamoon:close-circle-1-duotone" style="font-size:1.2rem;"></iconify-icon>
+                </button>
             </div>
             <div class="modal-body pt-1 pb-2">
                 <div class="input-group mb-2">
@@ -616,7 +619,7 @@
                 <p class="small fw-semibold mb-1" style="letter-spacing:0.04em;text-transform:uppercase;font-size:0.7rem;color:#6b7280;">
                     Suggested script — read this to your patient:
                 </p>
-                <div class="rounded-3 p-3 mb-3" style="background:#dbeafe;border:1px solid #93c5fd;font-size:0.875rem;line-height:1.6;font-style:italic;color:#1e3a5f;">
+                <div class="rounded-3 p-3 mb-3" style="background:#f1f3f5;border:1px solid #ced4da;font-size:0.875rem;line-height:1.6;font-style:italic;color:#212529;">
                     &ldquo;I&rsquo;m using a note-taking assistant today that listens to our conversation and writes up my notes for me. It&rsquo;s private, only used for your records, and not shared with anyone. You can say no at any time. Is that okay?&rdquo;
                 </div>
 
@@ -935,6 +938,7 @@
   var _patientProceed = null;
   var _patientsCache = null;
   var _generateBtnHandled = false;
+  var _selectedPatientItem = null;
 
   var patientModal   = document.getElementById('patientModal');
   var patientSearch  = document.getElementById('patientSearch');
@@ -965,7 +969,7 @@
 
     var html = '';
     filtered.forEach(function (p) {
-      html += '<li class="patient-item" data-name="' + _esc(p.name) + '">' +
+      html += '<li class="patient-item" data-name="' + _esc(p.name) + '" data-last-pk="' + (p.last_pk || '') + '">' +
         '<div class="patient-icon"><iconify-icon icon="iconamoon:profile-duotone"></iconify-icon></div>' +
         '<div class="patient-info">' +
           '<strong class="d-block" style="font-size:0.9rem;">' + _esc(p.name) + '</strong>' +
@@ -1006,6 +1010,7 @@
           i.classList.remove('is-selected');
         });
         item.classList.add('is-selected');
+        _selectedPatientItem = item;
         var name = item.dataset.name;
         var nameEl = document.getElementById('patientName');
         if (nameEl) nameEl.value = name;
@@ -1044,9 +1049,25 @@
     var nameEl = document.getElementById('patientName');
     var name = patientSearch ? patientSearch.value.trim() : (nameEl ? nameEl.value.trim() : '');
     if (nameEl) nameEl.value = name;
-    /* Store selected gender so the ambient/dictation pipelines can send it */
+
     var genderChecked = document.querySelector('input[name="modalGender"]:checked');
-    var genderEl = document.getElementById('patientIdentifier'); // reuse existing hidden, or use new one
+    var genderVal = genderChecked ? genderChecked.value : '';
+
+    /* Existing patient selected → redirect to their last note so doctor can review, then record new */
+    if (_selectedPatientItem && !_selectedPatientItem.classList.contains('new-patient-item')) {
+      var lastPk = _selectedPatientItem.dataset.lastPk;
+      if (lastPk) {
+        if (patientModal && typeof bootstrap !== 'undefined') {
+          bootstrap.Modal.getInstance(patientModal).hide();
+        }
+        var url = '/scribe/' + lastPk + '/review/?new_for=' + encodeURIComponent(name);
+        if (genderVal) url += '&new_gender=' + encodeURIComponent(genderVal);
+        window.location.href = url;
+        return;
+      }
+    }
+
+    /* New patient or no last session — proceed to recording as before */
     var patientGenderEl = document.getElementById('patientGender');
     if (!patientGenderEl) {
       patientGenderEl = document.createElement('input');
@@ -1054,7 +1075,7 @@
       patientGenderEl.id = 'patientGender';
       document.body.appendChild(patientGenderEl);
     }
-    patientGenderEl.value = genderChecked ? genderChecked.value : '';
+    patientGenderEl.value = genderVal;
     if (patientModal && typeof bootstrap !== 'undefined') {
       bootstrap.Modal.getInstance(patientModal).hide();
     }
@@ -1073,6 +1094,7 @@
   if (patientSearch) {
     patientSearch.addEventListener('input', function () {
       var q = this.value;
+      _selectedPatientItem = null; /* typed a new name — clear item selection */
       if (continueBtn) continueBtn.disabled = !q.trim();
       fetchPatients().then(function (pts) { renderPatients(pts, q); });
     });
@@ -1106,6 +1128,29 @@
   }
 
   window.WELLNEST_showPatientModal = showPatientModal;
+
+  /* Pre-fill patient name from ?patient= query param (arriving from review page "Record new session") */
+  (function () {
+    var params = new URLSearchParams(window.location.search);
+    var preName = params.get('patient');
+    var preGender = params.get('gender');
+    if (!preName) return;
+    /* Set patient name field */
+    var nameEl = document.getElementById('patientName');
+    if (nameEl) nameEl.value = preName;
+    /* Set gender */
+    if (preGender) {
+      var genderEl = document.getElementById('patientGender');
+      if (!genderEl) {
+        genderEl = document.createElement('input');
+        genderEl.type = 'hidden'; genderEl.id = 'patientGender';
+        document.body.appendChild(genderEl);
+      }
+      genderEl.value = preGender;
+    }
+    /* Clean URL without reload */
+    history.replaceState(null, '', window.location.pathname);
+  }());
 }());
 </script>
 
@@ -1199,6 +1244,7 @@ document.addEventListener('DOMContentLoaded', function () {
   var ambientTimerInterval = null;
   var ambientElapsed = 0;
   var ambientRunning = false;
+  var ambientCancelled = false;
 
   /* ---- Ambient waveform ---- */
   var ambientWaveAnimHandle = 0;
@@ -1268,6 +1314,7 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   ambientCancelBtn.addEventListener('click', function () {
+    ambientCancelled = true;
     if (ambientMediaRecorder && ambientMediaRecorder.state !== 'inactive') {
       ambientMediaRecorder.stop();
     }
@@ -1278,12 +1325,14 @@ document.addEventListener('DOMContentLoaded', function () {
   function startAmbient() {
     navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
       ambientChunks = [];
+      ambientCancelled = false;
       ambientMediaRecorder = new MediaRecorder(stream);
       ambientMediaRecorder.ondataavailable = function (e) {
         if (e.data.size > 0) ambientChunks.push(e.data);
       };
       ambientMediaRecorder.onstop = function () {
         stream.getTracks().forEach(function (t) { t.stop(); });
+        if (ambientCancelled) { ambientCancelled = false; ambientChunks = []; return; }
         var blob = new Blob(ambientChunks, { type: 'audio/webm' });
         runAmbientPipeline(blob);
       };

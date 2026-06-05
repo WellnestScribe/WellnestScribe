@@ -563,6 +563,18 @@
         <div class="col-12 col-xl-4 review-sticky-col">
             <div class="card">
                 <div class="card-body p-3">
+                    {# Record new session banner — shown when arriving from patient modal (existing patient) #}
+                    <div id="recordNewBanner" class="d-none mb-3">
+                        <a id="recordNewBtn" href="{% url 'scribe:record' %}"
+                           class="btn btn-primary w-100">
+                            <iconify-icon icon="iconamoon:microphone-duotone" class="me-1 align-middle"></iconify-icon>
+                            Record new session
+                        </a>
+                        <p class="small text-muted text-center mt-1 mb-0" id="recordNewSubtext" style="font-size:0.76rem;">
+                            Reviewing last visit — tap above to start a new session
+                        </p>
+                    </div>
+
                     {# Primary actions #}
                     <div class="d-grid gap-2 mb-3">
                         <button type="button" class="btn btn-primary" id="copyBtn">
@@ -1993,6 +2005,24 @@ function _suiteConfirm(title, text) {
       }
     });
   });
+})();
+
+/* ── Record-new-session banner (shown when arriving via existing-patient modal) ── */
+(function () {
+  var params = new URLSearchParams(window.location.search);
+  var newFor = params.get('new_for');
+  if (!newFor) return;
+  var banner = document.getElementById('recordNewBanner');
+  var btn    = document.getElementById('recordNewBtn');
+  var sub    = document.getElementById('recordNewSubtext');
+  if (!banner || !btn) return;
+  var gender = params.get('new_gender') || '';
+  var dest = '{% url "scribe:record" %}?patient=' + encodeURIComponent(newFor);
+  if (gender) dest += '&gender=' + encodeURIComponent(gender);
+  btn.href = dest;
+  if (sub) sub.textContent = 'Reviewing last visit for ' + newFor + ' — tap above to start a new session';
+  banner.classList.remove('d-none');
+  history.replaceState(null, '', window.location.pathname);
 })();
 </script>
 {% endblock %}
