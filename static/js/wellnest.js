@@ -435,6 +435,9 @@
     const uploadBtn = $("#audioUploadBtn", root);
     const cancelBtn = $("#recordCancelBtn", root);
 
+    /* Restore note style from localStorage (overrides server default if user changed it) */
+    const _savedStyle = localStorage.getItem("wn_pref_style");
+    if (_savedStyle && noteFormatSel) noteFormatSel.value = _savedStyle;
     if (noteFormatSel) syncRecordNoteStyle(noteFormatSel.value);
     noteStyleBtns.forEach(function (btn) {
       btn.addEventListener("click", function () {
@@ -442,6 +445,7 @@
         if (!next || !noteFormatSel) return;
         noteFormatSel.value = next;
         syncRecordNoteStyle(next);
+        localStorage.setItem("wn_pref_style", next);
       });
     });
     if (suggestiveAssistToggle) {

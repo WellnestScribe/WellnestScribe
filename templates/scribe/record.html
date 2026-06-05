@@ -613,11 +613,11 @@
             <div class="modal-body pt-1">
 
                 {# Suggested script for the doctor to read to the patient #}
-                <p class="small fw-semibold text-muted mb-1" style="letter-spacing:0.04em;text-transform:uppercase;font-size:0.7rem;">
+                <p class="small fw-semibold mb-1" style="letter-spacing:0.04em;text-transform:uppercase;font-size:0.7rem;color:#6b7280;">
                     Suggested script — read this to your patient:
                 </p>
-                <div class="rounded-3 p-3 mb-3" style="background:var(--bs-primary-bg-subtle,#e7f0ff);border:1px solid var(--bs-primary-border-subtle,#b6d4fe);font-size:0.9rem;line-height:1.65;font-style:italic;color:var(--bs-emphasis-color,#212529);">
-                    &ldquo;I&rsquo;d like to use a tool today that listens to our conversation and automatically writes up my notes for me. It uses an AI — kind of like a smart computer assistant — so I can focus on you instead of writing while we talk. The recording is kept private, only used to create your notes, and deleted automatically after 30 days. You&rsquo;re welcome to say no at any time and I&rsquo;ll just take notes the regular way. Are you okay with that?&rdquo;
+                <div class="rounded-3 p-3 mb-3" style="background:#dbeafe;border:1px solid #93c5fd;font-size:0.875rem;line-height:1.6;font-style:italic;color:#1e3a5f;">
+                    &ldquo;I&rsquo;m using a note-taking assistant today that listens to our conversation and writes up my notes for me. It&rsquo;s private, only used for your records, and not shared with anyone. You can say no at any time. Is that okay?&rdquo;
                 </div>
 
                 <p class="small text-muted mb-3" style="font-size:0.78rem;">
@@ -755,7 +755,29 @@
       var styleBtn = document.querySelector('[data-note-style="' + tpl.format + '"]');
       if (styleBtn) styleBtn.click();
     }
+    /* Persist template selection */
+    try {
+      localStorage.setItem('wn_pref_template', JSON.stringify({
+        key: key, isCustom: !!isCustom,
+        label: tpl.label || 'General',
+        instructions: tpl.instructions || ''
+      }));
+    } catch(e) {}
   }
+
+  /* Restore last-used template */
+  (function () {
+    try {
+      var saved = JSON.parse(localStorage.getItem('wn_pref_template') || 'null');
+      if (!saved) return;
+      /* For custom templates, verify it still exists */
+      if (saved.isCustom) {
+        var custom = loadCustom();
+        if (!custom.find(function(t){ return t.id === saved.key; })) return;
+      }
+      applyTemplate(saved.key, saved.isCustom);
+    } catch(e) {}
+  }());
 
   function renderCustomDropdownItems() {
     var custom = loadCustom();
@@ -1135,8 +1157,12 @@ document.addEventListener('DOMContentLoaded', function () {
     var lengthSelect = document.getElementById('recordLengthSelect');
     var lengthInput  = document.getElementById('lengthModeSwitch');
     if (lengthSelect && lengthInput) {
+      /* Restore last-used length preference */
+      var _savedLen = localStorage.getItem('wn_pref_length');
+      if (_savedLen) { lengthSelect.value = _savedLen; lengthInput.value = _savedLen; }
       lengthSelect.addEventListener('change', function () {
         lengthInput.value = this.value || 'normal';
+        localStorage.setItem('wn_pref_length', this.value || 'normal');
       });
     }
   }());
