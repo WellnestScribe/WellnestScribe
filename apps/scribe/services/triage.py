@@ -27,6 +27,8 @@ from typing import Any
 
 from django.conf import settings
 
+from .mms_asr import MMSDependencyError, transcribe_mms_file
+
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +221,17 @@ def transcribe_mms(audio_path: str | Path, *, device: str = "cpu", target_lang: 
         ids = torch.argmax(logits, dim=-1)
         out.append(processor.batch_decode(ids)[0])
     return " ".join(out).strip()
+
+
+# Prefer the shared helper so the Lightning GPU service and the local triage
+# sandbox run the same MMS implementation. Keeping this wrapper preserves the
+# existing public import path used elsewhere in the app.
+def transcribe_mms(audio_path: str | Path, *, device: str = "cpu", target_lang: str = "jam") -> str:
+    try:
+        result = transcribe_mms_file(audio_path, device=device, target_lang=target_lang)
+        return result.text
+    except MMSDependencyError as exc:  # noqa: BLE001
+        raise TriageDependencyError(str(exc)) from exc
 
 
 # ---- T5 paraphrase / translate (text-side helper) ---------------------------
@@ -612,9 +625,17 @@ def transcribe_modal_mms(
             "Add it or switch AMBIENT_BACKEND=local."
         )
 
+    headers = {}
+    token = (getattr(settings, "MODAL_MMS_TOKEN", "") or "").strip()
+    if token:
+        # Mirror the speech API's simple auth mode so ambient voice can use the
+        # same protected Modal deployment as the rest of the app.
+        headers["X-API-Key"] = token
+
     with open(audio_path, "rb") as f:
         resp = requests.post(
             url,
+            headers=headers,
             files={"file": (Path(audio_path).name, f)},
             data={"backend": "mms", "target_lang": target_lang},
             timeout=300,
