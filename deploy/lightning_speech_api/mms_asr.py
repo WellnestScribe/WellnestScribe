@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -36,6 +39,16 @@ class MMSTranscriptionResult:
 _MMS_CACHE: dict[str, Any] = {}
 
 
+def _huggingface_cache_dir() -> Path:
+    hf_home = os.getenv("HF_HOME", "").strip()
+    if hf_home:
+        return Path(hf_home) / "hub"
+    transformers_cache = os.getenv("TRANSFORMERS_CACHE", "").strip()
+    if transformers_cache:
+        return Path(transformers_cache)
+    return Path.home() / ".cache" / "huggingface" / "hub"
+
+
 def probe_mms_runtime() -> dict[str, Any]:
     info: dict[str, Any] = {
         "torch": False,
@@ -47,7 +60,9 @@ def probe_mms_runtime() -> dict[str, Any]:
         "librosa": False,
         "av": False,
         "numpy": False,
+        "ffmpeg": False,
         "model_cached_mms": False,
+        "model_loaded_mms": False,
     }
     try:
         import torch  # type: ignore
@@ -79,12 +94,15 @@ def probe_mms_runtime() -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             pass
 
-    cache = Path.home() / ".cache" / "huggingface" / "hub"
+    info["ffmpeg"] = shutil.which("ffmpeg") is not None
+
+    cache = _huggingface_cache_dir()
     if cache.exists():
         info["model_cached_mms"] = any(
             p.name.startswith("models--facebook--mms")
             for p in cache.iterdir()
         )
+    info["model_loaded_mms"] = bool(_MMS_CACHE)
     return info
 
 
@@ -132,6 +150,60 @@ def load_mms_model(*, device: str, target_lang: str, model_id: str):
 
 def _read_audio(audio_path: str | Path, *, sample_rate: int = 16_000):
     try:
+        return _read_audio_ffmpeg(audio_path, sample_rate=sample_rate)
+    except MMSDependencyError:
+        return _read_audio_python(audio_path, sample_rate=sample_rate)
+
+
+def _read_audio_ffmpeg(audio_path: str | Path, *, sample_rate: int = 16_000):
+    try:
+        import numpy as np  # type: ignore
+    except ImportError as exc:
+        raise MMSDependencyError("numpy is required for ffmpeg audio normalization.") from exc
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise MMSDependencyError("ffmpeg is not installed.")
+
+    command = [
+        ffmpeg,
+        "-nostdin",
+        "-v",
+        "error",
+        "-i",
+        str(audio_path),
+        "-ac",
+        "1",
+        "-ar",
+        str(sample_rate),
+        "-f",
+        "f32le",
+        "-acodec",
+        "pcm_f32le",
+        "pipe:1",
+    ]
+    completed = subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if completed.returncode != 0:
+        error = completed.stderr.decode("utf-8", errors="ignore").strip()
+        raise MMSDependencyError(
+            f"ffmpeg failed to normalize audio: {error or 'unknown error'}"
+        )
+
+    audio = np.frombuffer(completed.stdout, dtype=np.float32)
+    if audio.size == 0:
+        raise MMSDependencyError(f"Unable to decode audio frames from {audio_path}.")
+
+    audio_seconds = float(len(audio) / sample_rate)
+    return audio, audio_seconds
+
+
+def _read_audio_python(audio_path: str | Path, *, sample_rate: int = 16_000):
+    try:
         import av  # type: ignore
         import librosa  # type: ignore
         import numpy as np  # type: ignore
@@ -161,6 +233,11 @@ def _read_audio(audio_path: str | Path, *, sample_rate: int = 16_000):
     return audio, audio_seconds
 
 
+def _batched(iterable: list[Any], batch_size: int) -> list[list[Any]]:
+    size = max(int(batch_size), 1)
+    return [iterable[index : index + size] for index in range(0, len(iterable), size)]
+
+
 def transcribe_mms_file(
     audio_path: str | Path,
     *,
@@ -168,6 +245,7 @@ def transcribe_mms_file(
     target_lang: str = "jam",
     model_id: str = "facebook/mms-1b-l1107",
     chunk_seconds: int = 25,
+    batch_size: int = 4,
     sample_rate: int = 16_000,
 ) -> MMSTranscriptionResult:
     try:
@@ -193,13 +271,21 @@ def transcribe_mms_file(
 
     inference_started = perf_counter()
     decoded_chunks: list[str] = []
-    for chunk in chunks:
-        inputs = processor(chunk, sampling_rate=sample_rate, return_tensors="pt")
+    for batch in _batched(chunks, batch_size=batch_size):
+        inputs = processor(
+            batch,
+            sampling_rate=sample_rate,
+            return_tensors="pt",
+            padding=True,
+        )
         input_values = inputs.input_values.to(runtime_device)
-        with torch.no_grad():
-            logits = model(input_values).logits
+        attention_mask = getattr(inputs, "attention_mask", None)
+        if attention_mask is not None:
+            attention_mask = attention_mask.to(runtime_device)
+        with torch.inference_mode():
+            logits = model(input_values, attention_mask=attention_mask).logits
         ids = torch.argmax(logits, dim=-1)
-        decoded_chunks.append(processor.batch_decode(ids)[0])
+        decoded_chunks.extend(processor.batch_decode(ids))
     inference_ms = int((perf_counter() - inference_started) * 1000)
     total_ms = int((perf_counter() - started) * 1000)
 

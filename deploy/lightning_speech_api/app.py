@@ -35,6 +35,7 @@ DEFAULT_WHISPER_BEAM_SIZE = int(os.getenv("LIGHTNING_WHISPER_BEAM_SIZE", "5"))
 DEFAULT_MMS_MODEL_ID = os.getenv("LIGHTNING_MMS_MODEL_ID", "facebook/mms-1b-l1107").strip()
 DEFAULT_MMS_TARGET_LANG = os.getenv("LIGHTNING_MMS_TARGET_LANG", "jam").strip()
 DEFAULT_MMS_CHUNK_SECONDS = int(os.getenv("LIGHTNING_MMS_CHUNK_SECONDS", "25"))
+DEFAULT_MMS_BATCH_SIZE = int(os.getenv("LIGHTNING_MMS_BATCH_SIZE", "4"))
 API_TOKEN = os.getenv("LIGHTNING_SPEECH_API_TOKEN", os.getenv("LIGHTNING_MMS_API_TOKEN", "")).strip()
 PRELOAD_MODELS = os.getenv("LIGHTNING_PRELOAD_MODELS", "").strip().lower() in {"1", "true", "yes"}
 PRELOAD_BACKENDS = {
@@ -46,12 +47,162 @@ PRELOAD_BACKENDS = {
 app = FastAPI(title=APP_TITLE, version="0.2.0")
 
 
-def _check_auth(authorization: str | None) -> None:
+def _check_auth(
+    authorization: str | None,
+    x_api_key: str | None = None,
+) -> None:
     if not API_TOKEN:
         return
     expected = f"Bearer {API_TOKEN}"
-    if authorization != expected:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    if authorization == expected or x_api_key == API_TOKEN:
+        return
+    raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+@app.get("/")
+def root(
+    authorization: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_auth(authorization, x_api_key)
+    return {
+        "ok": True,
+        "service": APP_TITLE,
+        "default_backend": DEFAULT_BACKEND,
+        "preload_models": PRELOAD_MODELS,
+        "preload_backends": sorted(_selected_preload_backends()) if PRELOAD_MODELS else [],
+        "endpoints": [
+            "/health",
+            "/warm",
+            "/transcribe/file",
+            "/transcribe/whisper/file",
+            "/transcribe/mms/file",
+        ],
+    }
+
+
+@app.get("/health")
+def health(
+    authorization: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_auth(authorization, x_api_key)
+    return {
+        "ok": True,
+        "service": APP_TITLE,
+        "default_backend": DEFAULT_BACKEND,
+        "default_device": DEFAULT_DEVICE,
+        "preload_models": PRELOAD_MODELS,
+        "preload_backends": sorted(_selected_preload_backends()) if PRELOAD_MODELS else [],
+        "defaults": {
+            "whisper_model_id": DEFAULT_WHISPER_MODEL_ID,
+            "whisper_language": DEFAULT_WHISPER_LANGUAGE,
+            "whisper_task": DEFAULT_WHISPER_TASK,
+            "whisper_compute_type": DEFAULT_WHISPER_COMPUTE_TYPE,
+            "mms_model_id": DEFAULT_MMS_MODEL_ID,
+            "mms_target_lang": DEFAULT_MMS_TARGET_LANG,
+            "mms_chunk_seconds": DEFAULT_MMS_CHUNK_SECONDS,
+            "mms_batch_size": DEFAULT_MMS_BATCH_SIZE,
+        },
+        "runtime": {
+            "mms": probe_mms_runtime(),
+            "whisper": probe_whisper_runtime(),
+        },
+    }
+
+
+def _selected_preload_backends() -> set[str]:
+    return PRELOAD_BACKENDS or {DEFAULT_BACKEND}
+
+
+def _warm_backend(
+    backend: str,
+    *,
+    device: str,
+    model_id: str | None,
+    compute_type: str | None = None,
+    target_lang: str | None = None,
+) -> dict[str, str]:
+    normalized_backend = _normalized_backend(backend)
+    if normalized_backend == "whisper":
+        _, runtime_device, runtime_compute_type = load_whisper_model(
+            device=device or DEFAULT_DEVICE,
+            model_id=(model_id or DEFAULT_WHISPER_MODEL_ID),
+            compute_type=(compute_type or DEFAULT_WHISPER_COMPUTE_TYPE or "auto"),
+        )
+        return {
+            "backend": "whisper",
+            "device": runtime_device,
+            "model_id": model_id or DEFAULT_WHISPER_MODEL_ID,
+            "compute_type": runtime_compute_type,
+        }
+
+    _, _, runtime_device = load_mms_model(
+        device=device or DEFAULT_DEVICE,
+        target_lang=(target_lang or DEFAULT_MMS_TARGET_LANG),
+        model_id=(model_id or DEFAULT_MMS_MODEL_ID),
+    )
+    return {
+        "backend": "mms",
+        "device": runtime_device,
+        "model_id": model_id or DEFAULT_MMS_MODEL_ID,
+        "target_lang": target_lang or DEFAULT_MMS_TARGET_LANG,
+    }
+
+
+@app.on_event("startup")
+def preload_models() -> None:
+    if not PRELOAD_MODELS:
+        return
+    selected_backends = _selected_preload_backends()
+    if "whisper" in selected_backends:
+        try:
+            _warm_backend(
+                "whisper",
+                device=DEFAULT_DEVICE,
+                model_id=DEFAULT_WHISPER_MODEL_ID,
+                compute_type=DEFAULT_WHISPER_COMPUTE_TYPE,
+            )
+        except Exception:
+            pass
+    if "mms" in selected_backends:
+        try:
+            _warm_backend(
+                "mms",
+                device=DEFAULT_DEVICE,
+                model_id=DEFAULT_MMS_MODEL_ID,
+                target_lang=DEFAULT_MMS_TARGET_LANG,
+            )
+        except Exception:
+            pass
+
+
+@app.post("/warm")
+def warm_backend(
+    backend: str = Form(DEFAULT_BACKEND),
+    device: str = Form(DEFAULT_DEVICE),
+    model_id: str | None = Form(default=None),
+    target_lang: str | None = Form(default=None),
+    compute_type: str | None = Form(default=None),
+    authorization: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    _check_auth(authorization, x_api_key)
+    warmed = _warm_backend(
+        backend,
+        device=device,
+        model_id=model_id,
+        compute_type=compute_type,
+        target_lang=target_lang,
+    )
+    return {
+        "ok": True,
+        "warmed": warmed,
+        "runtime": {
+            "mms": probe_mms_runtime(),
+            "whisper": probe_whisper_runtime(),
+        },
+    }
 
 
 def _normalized_backend(value: str | None) -> str:
@@ -68,69 +219,6 @@ def _temp_file(upload: UploadFile, content: bytes) -> str:
         return tmp.name
 
 
-@app.on_event("startup")
-def preload_models() -> None:
-    if not PRELOAD_MODELS:
-        return
-    selected_backends = PRELOAD_BACKENDS or {DEFAULT_BACKEND}
-    if "whisper" in selected_backends:
-        try:
-            load_whisper_model(
-                device=DEFAULT_DEVICE,
-                model_id=DEFAULT_WHISPER_MODEL_ID,
-                compute_type=DEFAULT_WHISPER_COMPUTE_TYPE,
-            )
-        except Exception:
-            pass
-    if "mms" in selected_backends:
-        try:
-            load_mms_model(
-                device=DEFAULT_DEVICE,
-                target_lang=DEFAULT_MMS_TARGET_LANG,
-                model_id=DEFAULT_MMS_MODEL_ID,
-            )
-        except Exception:
-            pass
-
-
-@app.get("/")
-def root():
-    return {
-        "ok": True,
-        "service": APP_TITLE,
-        "default_backend": DEFAULT_BACKEND,
-        "endpoints": [
-            "/health",
-            "/transcribe/file",
-            "/transcribe/whisper/file",
-            "/transcribe/mms/file",
-        ],
-    }
-
-
-@app.get("/health")
-def health():
-    return {
-        "ok": True,
-        "service": APP_TITLE,
-        "default_backend": DEFAULT_BACKEND,
-        "default_device": DEFAULT_DEVICE,
-        "defaults": {
-            "whisper_model_id": DEFAULT_WHISPER_MODEL_ID,
-            "whisper_language": DEFAULT_WHISPER_LANGUAGE,
-            "whisper_task": DEFAULT_WHISPER_TASK,
-            "whisper_compute_type": DEFAULT_WHISPER_COMPUTE_TYPE,
-            "mms_model_id": DEFAULT_MMS_MODEL_ID,
-            "mms_target_lang": DEFAULT_MMS_TARGET_LANG,
-            "mms_chunk_seconds": DEFAULT_MMS_CHUNK_SECONDS,
-        },
-        "runtime": {
-            "mms": probe_mms_runtime(),
-            "whisper": probe_whisper_runtime(),
-        },
-    }
-
-
 def _transcribe(
     *,
     upload: UploadFile,
@@ -144,6 +232,7 @@ def _transcribe(
     compute_type: str | None,
     beam_size: int | None,
     chunk_seconds: int | None,
+    batch_size: int | None,
 ):
     tmp_path = _temp_file(upload, content)
     try:
@@ -182,6 +271,7 @@ def _transcribe(
             target_lang=(target_lang or DEFAULT_MMS_TARGET_LANG),
             model_id=(model_id or DEFAULT_MMS_MODEL_ID),
             chunk_seconds=chunk_seconds if chunk_seconds is not None else DEFAULT_MMS_CHUNK_SECONDS,
+            batch_size=batch_size if batch_size is not None else DEFAULT_MMS_BATCH_SIZE,
         )
         return JSONResponse(
             {
@@ -226,9 +316,11 @@ async def transcribe_file(
     compute_type: str | None = Form(default=None),
     beam_size: int | None = Form(default=None),
     chunk_seconds: int | None = Form(default=None),
+    batch_size: int | None = Form(default=None),
     authorization: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    _check_auth(authorization)
+    _check_auth(authorization, x_api_key)
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Empty upload.")
@@ -247,6 +339,7 @@ async def transcribe_file(
         compute_type=compute_type,
         beam_size=beam_size,
         chunk_seconds=chunk_seconds,
+        batch_size=batch_size,
     )
 
 
@@ -260,8 +353,9 @@ async def transcribe_whisper(
     compute_type: str = Form(DEFAULT_WHISPER_COMPUTE_TYPE),
     beam_size: int = Form(DEFAULT_WHISPER_BEAM_SIZE),
     authorization: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    _check_auth(authorization)
+    _check_auth(authorization, x_api_key)
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Empty upload.")
@@ -280,6 +374,7 @@ async def transcribe_whisper(
         compute_type=compute_type,
         beam_size=beam_size,
         chunk_seconds=None,
+        batch_size=None,
     )
 
 
@@ -290,9 +385,11 @@ async def transcribe_mms(
     model_id: str = Form(DEFAULT_MMS_MODEL_ID),
     target_lang: str = Form(DEFAULT_MMS_TARGET_LANG),
     chunk_seconds: int = Form(DEFAULT_MMS_CHUNK_SECONDS),
+    batch_size: int = Form(DEFAULT_MMS_BATCH_SIZE),
     authorization: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
-    _check_auth(authorization)
+    _check_auth(authorization, x_api_key)
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Empty upload.")
@@ -311,4 +408,5 @@ async def transcribe_mms(
         compute_type=None,
         beam_size=None,
         chunk_seconds=chunk_seconds,
+        batch_size=batch_size,
     )

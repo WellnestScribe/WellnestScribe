@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -37,6 +38,16 @@ class WhisperTranscriptionResult:
 _WHISPER_CACHE: dict[str, Any] = {}
 
 
+def _huggingface_cache_dir() -> Path:
+    hf_home = os.getenv("HF_HOME", "").strip()
+    if hf_home:
+        return Path(hf_home) / "hub"
+    transformers_cache = os.getenv("TRANSFORMERS_CACHE", "").strip()
+    if transformers_cache:
+        return Path(transformers_cache)
+    return Path.home() / ".cache" / "huggingface" / "hub"
+
+
 def probe_whisper_runtime() -> dict[str, Any]:
     info: dict[str, Any] = {
         "torch": False,
@@ -50,6 +61,7 @@ def probe_whisper_runtime() -> dict[str, Any]:
         "av": False,
         "numpy": False,
         "model_cached_whisper": False,
+        "model_loaded_whisper": False,
     }
     try:
         import torch  # type: ignore
@@ -88,9 +100,10 @@ def probe_whisper_runtime() -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             pass
 
-    cache = Path.home() / ".cache" / "huggingface" / "hub"
+    cache = _huggingface_cache_dir()
     if cache.exists():
         info["model_cached_whisper"] = any("whisper" in p.name for p in cache.iterdir())
+    info["model_loaded_whisper"] = bool(_WHISPER_CACHE)
     return info
 
 

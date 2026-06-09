@@ -625,9 +625,17 @@ def transcribe_modal_mms(
             "Add it or switch AMBIENT_BACKEND=local."
         )
 
+    headers = {}
+    token = (getattr(settings, "MODAL_MMS_TOKEN", "") or "").strip()
+    if token:
+        # Mirror the speech API's simple auth mode so ambient voice can use the
+        # same protected Modal deployment as the rest of the app.
+        headers["X-API-Key"] = token
+
     with open(audio_path, "rb") as f:
         resp = requests.post(
             url,
+            headers=headers,
             files={"file": (Path(audio_path).name, f)},
             data={"backend": "mms", "target_lang": target_lang},
             timeout=300,

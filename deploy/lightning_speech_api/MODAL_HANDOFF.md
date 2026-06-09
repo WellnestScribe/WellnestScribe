@@ -14,6 +14,7 @@ Send this whole folder:
 - `whisper_asr.py`
 - `requirements.txt`
 - `modal_app.py`
+- `modal_app_mms.py`
 - `modal_app_a100.py`
 - `Dockerfile`
 - `run.py`
@@ -24,7 +25,7 @@ If the goal is **T4 + MMS only**, the minimum files they need to understand are:
 - `app.py`
 - `mms_asr.py`
 - `requirements.txt`
-- `modal_app.py`
+- `modal_app_mms.py`
 
 ## What each file does
 
@@ -32,6 +33,7 @@ If the goal is **T4 + MMS only**, the minimum files they need to understand are:
 - `mms_asr.py`: MMS model loading, audio decode/resample, chunking, inference
 - `requirements.txt`: Python dependencies
 - `modal_app.py`: Modal deployment wrapper for a T4 GPU
+- `modal_app_mms.py`: Modal deployment wrapper tuned for MMS on a T4
 - `modal_app_a100.py`: Modal deployment wrapper for an A100 GPU
 - `Dockerfile`: portable container for non-Modal hosts
 
@@ -53,7 +55,13 @@ modal setup
 modal deploy modal_app.py --stream-logs
 ```
 
-That deploys the FastAPI app on a **T4**.
+That deploys the general-purpose FastAPI app on a **T4**.
+
+For the fast MMS/T4 path:
+
+```bash
+modal deploy modal_app_mms.py --stream-logs
+```
 
 If they want the A100 test version instead:
 
@@ -66,6 +74,7 @@ modal deploy modal_app_a100.py --stream-logs
 Routes:
 
 - `GET /health`
+- `POST /warm`
 - `POST /transcribe/file`
 - `POST /transcribe/whisper/file`
 - `POST /transcribe/mms/file`
@@ -81,13 +90,15 @@ That avoids the generic backend switch and makes intent explicit.
 Health:
 
 ```bash
-curl "https://YOUR-MODAL-URL/health"
+curl "https://YOUR-MODAL-URL/health" \
+  -H "X-API-Key: YOUR_TOKEN"
 ```
 
 MMS direct route:
 
 ```bash
 curl -X POST "https://YOUR-MODAL-URL/transcribe/mms/file" \
+  -H "X-API-Key: YOUR_TOKEN" \
   -F "file=@/path/to/audio.wav" \
   -F "target_lang=jam"
 ```
@@ -96,6 +107,7 @@ Generic route using MMS:
 
 ```bash
 curl -X POST "https://YOUR-MODAL-URL/transcribe/file" \
+  -H "X-API-Key: YOUR_TOKEN" \
   -F "file=@/path/to/audio.wav" \
   -F "backend=mms" \
   -F "target_lang=jam"
@@ -110,6 +122,14 @@ curl -X POST "https://YOUR-MODAL-URL/transcribe/mms/file" \
   -F "target_lang=jam"
 ```
 
+Warm the MMS model before the first clinic request:
+
+```bash
+curl -X POST "https://YOUR-MODAL-URL/warm" \
+  -H "X-API-Key: YOUR_TOKEN" \
+  -F "backend=mms"
+```
+
 ## Best speed settings for MMS on T4
 
 If the goal is "fast enough for multiple doctors" on Modal, the most useful
@@ -117,8 +137,10 @@ settings are:
 
 - `LIGHTNING_SPEECH_BACKEND=mms`
 - `LIGHTNING_PRELOAD_MODELS=true`
+- `LIGHTNING_PRELOAD_BACKENDS=mms`
 - `LIGHTNING_MMS_TARGET_LANG=jam`
 - `LIGHTNING_MMS_CHUNK_SECONDS=25` to start, then benchmark `35`, `45`, `60`
+- `LIGHTNING_MMS_BATCH_SIZE=4` to start, then benchmark `6` and `8`
 
 Why:
 
@@ -130,7 +152,7 @@ Why:
 
 These are not in `app.py`. They are part of the Modal wrapper.
 
-For fast clinic-hour behavior, the important settings are:
+The important settings are:
 
 - `min_containers`
 - `buffer_containers`
@@ -139,35 +161,35 @@ For fast clinic-hour behavior, the important settings are:
 
 What they mean:
 
-- `min_containers=1`: always keep one warm MMS worker alive
-- `buffer_containers=1`: keep one extra warm worker when traffic is active
+- `min_containers=0`: scale to zero when idle and stop burning credits
+- `buffer_containers=0`: do not hold extra warm workers by default
 - `max_containers=3` or `4`: allow multiple doctors to transcribe in parallel
-- `scaledown_window=300`: keep a worker warm for 5 minutes after a request
+- `scaledown_window=30`: drop idle workers quickly by default
 
-## Recommended production-ish T4 profile
+## Recommended default T4 profile
 
-Use this logic for clinic hours:
+Use this logic if cost control is the priority:
 
-- one always-warm T4
+- no always-warm T4
 - preload MMS
 - allow 2 to 4 T4 containers total under load
 
 That gives:
 
-- much faster first request
-- less model reload pain
+- much lower idle spend
+- no silent GPU drain when nobody is using the API
 - parallel handling for multiple doctors
 
-## Recommended cheap testing profile
+## Optional fast clinic-hours profile
 
-Use this logic for low-cost testing:
+Only opt into this when you knowingly want to pay for faster first requests:
 
-- `min_containers=0`
-- `buffer_containers=0`
-- `scaledown_window=30`
-- preload optional
+- `min_containers=1`
+- `buffer_containers=1`
+- `scaledown_window=300`
+- preload MMS
 
-That saves money, but the first request after idle will be slower.
+That is faster, but it will keep costing money while the GPU is warm.
 
 ## Why requests feel slow today
 
@@ -196,7 +218,7 @@ Not just "GPU is too weak."
 
 Order of impact:
 
-1. Keep one T4 warm during active hours
+1. Keep one T4 warm during active hours only if the business is okay with the cost
 2. Preload the MMS model
 3. Upload already-normalized audio
 4. Use a dedicated MMS deployment
@@ -239,6 +261,17 @@ Suggested first limit:
 Then raise if demand proves it is needed.
 
 ## Hugging Face token
+
+Use one Modal secret for both the speech API token and the optional
+Hugging Face token:
+
+```bash
+modal secret create wellnest-speech-runtime \
+  LIGHTNING_SPEECH_API_TOKEN=replace-me \
+  HF_TOKEN=replace-me-if-you-have-one
+
+export MODAL_RUNTIME_SECRET_NAME=wellnest-speech-runtime
+```
 
 If they see warnings about unauthenticated HF Hub requests, set `HF_TOKEN`.
 

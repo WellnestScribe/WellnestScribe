@@ -314,6 +314,11 @@ SCRIBE_LIGHTNING_TRANSCRIBE_CHUNK_SECONDS = config(
     default=25,
     cast=int,
 )
+SCRIBE_LIGHTNING_TRANSCRIBE_MMS_BATCH_SIZE = config(
+    "SCRIBE_LIGHTNING_TRANSCRIBE_MMS_BATCH_SIZE",
+    default=4,
+    cast=int,
+)
 
 # SOAP generation is Azure OpenAI deployment.
 SCRIBE_AZURE_OPENAI_ENDPOINT = config(
@@ -359,6 +364,10 @@ TRIAGE_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 # Set AMBIENT_BACKEND=local to fall back to on-device MMS (CPU).
 # Remove both lines after the testing phase.
 MODAL_MMS_URL = config("MODAL_MMS_URL", default="")
+MODAL_MMS_TOKEN = config(
+    "MODAL_MMS_TOKEN",
+    default=config("SCRIBE_LIGHTNING_TRANSCRIBE_TOKEN", default=""),
+)
 AMBIENT_BACKEND = config("AMBIENT_BACKEND", default="local")  # modal | local
 
 # ---- Logging ----

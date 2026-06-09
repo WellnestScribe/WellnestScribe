@@ -26,11 +26,14 @@ The goal is to keep **one codebase** that can move across:
 - `start.sh`: small shell launcher
 - `test_client.py`: local request tester
 - `modal_app.py`: Modal wrapper
+- `modal_app_mms.py`: Modal wrapper tuned for fast MMS on a T4
+- `modal_app_a100.py`: Modal wrapper for A100 tests
 - `requirements.txt`: Python dependencies
 
 ## API routes
 
 - `GET /health`
+- `POST /warm`
 - `POST /transcribe/file`
 - `POST /transcribe/whisper/file`
 - `POST /transcribe/mms/file`
@@ -86,6 +89,15 @@ MMS:
 LIGHTNING_MMS_MODEL_ID=facebook/mms-1b-l1107
 LIGHTNING_MMS_TARGET_LANG=jam
 LIGHTNING_MMS_CHUNK_SECONDS=25
+LIGHTNING_MMS_BATCH_SIZE=4
+```
+
+Recommended MMS production preload:
+
+```env
+LIGHTNING_SPEECH_BACKEND=mms
+LIGHTNING_PRELOAD_MODELS=true
+LIGHTNING_PRELOAD_BACKENDS=mms
 ```
 
 ## Local Docker
@@ -183,11 +195,19 @@ pip install modal
 modal setup
 ```
 
-Create the secret:
+Create one runtime secret for the API token. You can also include `HF_TOKEN` in
+the same secret:
 
 ```bash
-modal secret create wellnest-speech-api \
-  LIGHTNING_SPEECH_API_TOKEN=replace-me
+modal secret create wellnest-speech-runtime \
+  LIGHTNING_SPEECH_API_TOKEN=replace-me \
+  HF_TOKEN=replace-me-if-you-have-one
+```
+
+Point the deploy wrappers at that secret:
+
+```bash
+export MODAL_RUNTIME_SECRET_NAME=wellnest-speech-runtime
 ```
 
 ### Deploy to Modal
@@ -198,7 +218,65 @@ From inside this folder:
 modal deploy modal_app.py
 ```
 
-That deploys the FastAPI app with a T4 GPU.
+That deploys the general-purpose FastAPI app with a T4 GPU.
+
+For the dedicated fast MMS/T4 setup:
+
+```bash
+modal deploy modal_app_mms.py
+```
+
+That wrapper is tuned for:
+
+- `LIGHTNING_SPEECH_BACKEND=mms`
+- `LIGHTNING_PRELOAD_MODELS=true`
+- `LIGHTNING_PRELOAD_BACKENDS=mms`
+- persistent Hugging Face cache on a Modal Volume
+- scale-to-zero defaults so idle deployments stop spending credits
+
+Default low-cost autoscaler behavior:
+
+```bash
+export MODAL_MMS_MIN_CONTAINERS=0
+export MODAL_MMS_BUFFER_CONTAINERS=0
+export MODAL_MMS_MAX_CONTAINERS=4
+export MODAL_MMS_SCALEDOWN_WINDOW=30
+```
+
+If you want a faster clinic-hours warm pool later, opt in explicitly:
+
+```bash
+export MODAL_MMS_MIN_CONTAINERS=1
+export MODAL_MMS_BUFFER_CONTAINERS=1
+export MODAL_MMS_MAX_CONTAINERS=4
+export MODAL_MMS_SCALEDOWN_WINDOW=300
+```
+
+Fast warmup request:
+
+```bash
+curl -X POST "https://YOUR-MODAL-URL/warm" \
+  -H "X-API-Key: replace-me" \
+  -F "backend=mms"
+```
+
+Fast MMS request:
+
+```bash
+curl -X POST "https://YOUR-MODAL-URL/transcribe/mms/file" \
+  -H "X-API-Key: replace-me" \
+  -F "file=@/path/to/audio.wav" \
+  -F "target_lang=jam" \
+  -F "chunk_seconds=25" \
+  -F "batch_size=4"
+```
+
+Authenticated health check:
+
+```bash
+curl "https://YOUR-MODAL-URL/health" \
+  -H "X-API-Key: replace-me"
+```
 
 During development you can also run:
 
@@ -262,6 +340,7 @@ SCRIBE_LIGHTNING_TRANSCRIBE_COMPUTE_TYPE=auto
 SCRIBE_LIGHTNING_TRANSCRIBE_BEAM_SIZE=5
 SCRIBE_LIGHTNING_TRANSCRIBE_TARGET_LANG=jam
 SCRIBE_LIGHTNING_TRANSCRIBE_CHUNK_SECONDS=25
+SCRIBE_LIGHTNING_TRANSCRIBE_MMS_BATCH_SIZE=4
 SCRIBE_LIGHTNING_TRANSCRIBE_TIMEOUT=600
 ```
 

@@ -2,12 +2,25 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import modal
 
 
 APP_DIR = Path(__file__).resolve().parent
+MODEL_DIR = Path("/models")
+CACHE_VOLUME = modal.Volume.from_name(
+    os.getenv("MODAL_HF_CACHE_VOLUME", "wellnest-speech-hf-cache"),
+    create_if_missing=True,
+)
+RUNTIME_SECRET_NAME = (
+    os.getenv("MODAL_RUNTIME_SECRET_NAME", "").strip()
+    or os.getenv("MODAL_SPEECH_SECRET_NAME", "").strip()
+    or os.getenv("MODAL_HF_SECRET_NAME", "").strip()
+    or "wellnest-speech-runtime"
+)
+SECRETS = [modal.Secret.from_name(RUNTIME_SECRET_NAME)]
 
 image = (
     modal.Image.from_registry(
@@ -21,6 +34,7 @@ image = (
             "HF_HOME": "/models/huggingface",
             "TRANSFORMERS_CACHE": "/models/huggingface",
             "XDG_CACHE_HOME": "/models/cache",
+            "HF_XET_HIGH_PERFORMANCE": "1",
             "LD_LIBRARY_PATH": "/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64",
             "LIGHTNING_SPEECH_DEVICE": "auto",
             "LIGHTNING_SPEECH_BACKEND": "whisper",
@@ -39,9 +53,13 @@ app = modal.App("wellnest-speech-api-modal-v2")
 @app.function(
     image=image,
     gpu="T4",
+    secrets=SECRETS,
+    volumes={MODEL_DIR.as_posix(): CACHE_VOLUME},
     timeout=60 * 20,
+    startup_timeout=60 * 10,
+    max_containers=int(os.getenv("MODAL_MAX_CONTAINERS", "2")),
     # Keep the GPU warm only briefly during testing to reduce idle spend.
-    scaledown_window=30,
+    scaledown_window=int(os.getenv("MODAL_SCALEDOWN_WINDOW", "30")),
 )
 @modal.asgi_app()
 def fastapi_app_v2():

@@ -1,4 +1,4 @@
-"""Modal wrapper for the portable speech API on an A100."""
+"""Modal wrapper for MMS transcription on a T4 with scale-to-zero defaults."""
 
 from __future__ import annotations
 
@@ -37,7 +37,9 @@ image = (
             "HF_XET_HIGH_PERFORMANCE": "1",
             "LD_LIBRARY_PATH": "/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64",
             "LIGHTNING_SPEECH_DEVICE": "auto",
-            "LIGHTNING_SPEECH_BACKEND": "whisper",
+            "LIGHTNING_SPEECH_BACKEND": "mms",
+            "LIGHTNING_PRELOAD_MODELS": "true",
+            "LIGHTNING_PRELOAD_BACKENDS": "mms",
             "PORT": "8000",
         }
     )
@@ -47,22 +49,24 @@ image = (
     .add_local_dir(APP_DIR, remote_path="/app", copy=True)
 )
 
-app = modal.App("wellnest-speech-api-modal-a100")
+app = modal.App("wellnest-speech-api-modal-mms")
 
 
 @app.function(
     image=image,
-    gpu="A100",
+    gpu="T4",
     secrets=SECRETS,
     volumes={MODEL_DIR.as_posix(): CACHE_VOLUME},
     timeout=60 * 20,
     startup_timeout=60 * 10,
-    max_containers=int(os.getenv("MODAL_A100_MAX_CONTAINERS", "1")),
-    # Keep the GPU warm only briefly during testing to reduce idle spend.
-    scaledown_window=int(os.getenv("MODAL_A100_SCALEDOWN_WINDOW", "30")),
+    # Default to scale-to-zero so unused deployments do not keep draining credits.
+    min_containers=int(os.getenv("MODAL_MMS_MIN_CONTAINERS", "0")),
+    buffer_containers=int(os.getenv("MODAL_MMS_BUFFER_CONTAINERS", "0")),
+    max_containers=int(os.getenv("MODAL_MMS_MAX_CONTAINERS", "4")),
+    scaledown_window=int(os.getenv("MODAL_MMS_SCALEDOWN_WINDOW", "30")),
 )
 @modal.asgi_app()
-def fastapi_app_a100():
+def fastapi_app_mms():
     from app import app as api
 
     return api

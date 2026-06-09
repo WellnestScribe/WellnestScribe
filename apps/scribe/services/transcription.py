@@ -52,7 +52,7 @@ def transcribe_via_openai(file_path: str | Path, *, language: str = "en") -> str
 def transcribe_via_lightning(file_path: str | Path) -> str:
     """Send an audio file to the remote Lightning AI transcription API."""
 
-    endpoint = (settings.SCRIBE_LIGHTNING_TRANSCRIBE_URL or "").strip()
+    endpoint = _resolve_lightning_endpoint()
     if not endpoint:
         raise AIConfigError(
             "SCRIBE_LIGHTNING_TRANSCRIBE_URL is not set. Point it to the "
@@ -66,21 +66,12 @@ def transcribe_via_lightning(file_path: str | Path) -> str:
 
     path = Path(file_path)
     content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    payload = _lightning_request_payload()
     with path.open("rb") as audio:
         response = requests.post(
             endpoint,
             headers=headers,
-            data={
-                "backend": settings.SCRIBE_LIGHTNING_TRANSCRIBE_ENGINE,
-                "language": settings.SCRIBE_LIGHTNING_TRANSCRIBE_LANGUAGE,
-                "target_lang": settings.SCRIBE_LIGHTNING_TRANSCRIBE_TARGET_LANG,
-                "device": settings.SCRIBE_LIGHTNING_TRANSCRIBE_DEVICE,
-                "model_id": settings.SCRIBE_LIGHTNING_TRANSCRIBE_MODEL_ID,
-                "task": settings.SCRIBE_LIGHTNING_TRANSCRIBE_TASK,
-                "compute_type": settings.SCRIBE_LIGHTNING_TRANSCRIBE_COMPUTE_TYPE,
-                "beam_size": str(settings.SCRIBE_LIGHTNING_TRANSCRIBE_BEAM_SIZE),
-                "chunk_seconds": str(settings.SCRIBE_LIGHTNING_TRANSCRIBE_CHUNK_SECONDS),
-            },
+            data=payload,
             files={"file": (path.name, audio, content_type)},
             timeout=settings.SCRIBE_LIGHTNING_TRANSCRIBE_TIMEOUT,
         )
@@ -105,3 +96,54 @@ def transcribe_audio(file_path: str | Path, *, language: str = "en") -> str:
     if backend in {"lightning", "lightning_mms"}:
         return transcribe_via_lightning(file_path)
     return transcribe_via_openai(file_path, language=language)
+
+
+def _lightning_engine() -> str:
+    return (settings.SCRIBE_LIGHTNING_TRANSCRIBE_ENGINE or "whisper").strip().lower()
+
+
+def _resolve_lightning_endpoint() -> str:
+    endpoint = (settings.SCRIBE_LIGHTNING_TRANSCRIBE_URL or "").strip()
+    if not endpoint:
+        return endpoint
+
+    engine = _lightning_engine()
+    if endpoint.endswith("/transcribe/file"):
+        if engine == "mms":
+            return endpoint[: -len("/transcribe/file")] + "/transcribe/mms/file"
+        if engine == "whisper":
+            return endpoint[: -len("/transcribe/file")] + "/transcribe/whisper/file"
+    return endpoint
+
+
+def _lightning_request_payload() -> dict[str, str]:
+    engine = _lightning_engine()
+    base_payload = {
+        "device": settings.SCRIBE_LIGHTNING_TRANSCRIBE_DEVICE,
+        "model_id": settings.SCRIBE_LIGHTNING_TRANSCRIBE_MODEL_ID,
+    }
+    if engine == "mms":
+        return {
+            **base_payload,
+            "target_lang": settings.SCRIBE_LIGHTNING_TRANSCRIBE_TARGET_LANG,
+            "chunk_seconds": str(settings.SCRIBE_LIGHTNING_TRANSCRIBE_CHUNK_SECONDS),
+            "batch_size": str(settings.SCRIBE_LIGHTNING_TRANSCRIBE_MMS_BATCH_SIZE),
+        }
+    if engine == "whisper":
+        return {
+            **base_payload,
+            "language": settings.SCRIBE_LIGHTNING_TRANSCRIBE_LANGUAGE,
+            "task": settings.SCRIBE_LIGHTNING_TRANSCRIBE_TASK,
+            "compute_type": settings.SCRIBE_LIGHTNING_TRANSCRIBE_COMPUTE_TYPE,
+            "beam_size": str(settings.SCRIBE_LIGHTNING_TRANSCRIBE_BEAM_SIZE),
+        }
+    return {
+        "backend": engine,
+        "language": settings.SCRIBE_LIGHTNING_TRANSCRIBE_LANGUAGE,
+        "target_lang": settings.SCRIBE_LIGHTNING_TRANSCRIBE_TARGET_LANG,
+        **base_payload,
+        "task": settings.SCRIBE_LIGHTNING_TRANSCRIBE_TASK,
+        "compute_type": settings.SCRIBE_LIGHTNING_TRANSCRIBE_COMPUTE_TYPE,
+        "beam_size": str(settings.SCRIBE_LIGHTNING_TRANSCRIBE_BEAM_SIZE),
+        "chunk_seconds": str(settings.SCRIBE_LIGHTNING_TRANSCRIBE_CHUNK_SECONDS),
+    }
