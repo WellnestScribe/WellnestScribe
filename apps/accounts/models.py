@@ -67,6 +67,11 @@ class DoctorProfile(models.Model):
         default="light",
     )
 
+    custom_drugs = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Doctor-specific medication names shown in the note editor picker.",
+    )
     custom_instructions = models.TextField(blank=True)
     custom_terms = models.TextField(
         blank=True,

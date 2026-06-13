@@ -78,6 +78,9 @@ class ScribeSession(models.Model):
     error_message = models.TextField(blank=True)
 
     transcript = models.TextField(blank=True)
+    # Original ASR output — never overwritten. Used to re-run the Patois
+    # interpreter on regeneration so prompt improvements take effect.
+    raw_transcript = models.TextField(blank=True)
 
     # Sensitive-encounter flag — set by the doctor for HIV, mental health,
     # reproductive health, substance use, or any encounter they judge as

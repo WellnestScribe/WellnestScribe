@@ -19,25 +19,25 @@ Sections are collapsible — state saved in localStorage.
 <div id="nav-ed">
 <li class="nav-item">
     <a class="nav-link {% if request.path == ed_board_url %}active{% endif %}" href="{{ ed_board_url }}">
-        <span class="nav-icon"><iconify-icon icon="iconamoon:clipboard-duotone"></iconify-icon></span>
+        <span class="nav-icon"><iconify-icon icon="mdi:clipboard-pulse-outline"></iconify-icon></span>
         <span class="nav-text">ED Board</span>
     </a>
 </li>
 <li class="nav-item">
     <a class="nav-link {% if request.path == ed_new_url %}active{% endif %}" href="{{ ed_new_url }}">
-        <span class="nav-icon"><iconify-icon icon="iconamoon:sign-plus-circle-duotone"></iconify-icon></span>
+        <span class="nav-icon"><iconify-icon icon="mdi:account-arrow-right"></iconify-icon></span>
         <span class="nav-text">New arrival</span>
     </a>
 </li>
 <li class="nav-item">
     <a class="nav-link {% if request.path == ed_list_url %}active{% endif %}" href="{{ ed_list_url }}">
-        <span class="nav-icon"><iconify-icon icon="iconamoon:calendar-2-duotone"></iconify-icon></span>
+        <span class="nav-icon"><iconify-icon icon="mdi:calendar-today"></iconify-icon></span>
         <span class="nav-text">Today's visits</span>
     </a>
 </li>
 <li class="nav-item">
     <a class="nav-link {% if request.path == ed_shifts_url %}active{% endif %}" href="{{ ed_shifts_url }}">
-        <span class="nav-icon"><iconify-icon icon="iconamoon:arrow-right-circle-duotone"></iconify-icon></span>
+        <span class="nav-icon"><iconify-icon icon="mdi:account-switch"></iconify-icon></span>
         <span class="nav-text">Shifts &amp; handover</span>
     </a>
 </li>
@@ -63,14 +63,14 @@ Sections are collapsible — state saved in localStorage.
 </li>
 <li class="nav-item">
     <a class="nav-link {% if request.path|slice:":5" == '/emr/' %}active{% endif %}" href="{{ emr_url }}">
-        <span class="nav-icon"><iconify-icon icon="iconamoon:files-duotone"></iconify-icon></span>
+        <span class="nav-icon"><iconify-icon icon="mdi:file-document-multiple"></iconify-icon></span>
         <span class="nav-text">EMR</span>
     </a>
 </li>
 {% url 'scribe:drug_check' as drug_check_url %}
 <li class="nav-item">
     <a class="nav-link {% if request.path == drug_check_url %}active{% endif %}" href="{{ drug_check_url }}">
-        <span class="nav-icon"><iconify-icon icon="iconamoon:pill-duotone"></iconify-icon></span>
+        <span class="nav-icon"><iconify-icon icon="mdi:pill"></iconify-icon></span>
         <span class="nav-text">Drug check</span>
     </a>
 </li>
@@ -80,7 +80,7 @@ Sections are collapsible — state saved in localStorage.
 <li class="nav-item">
     <a class="nav-link {% if request.path == triage_url %}active{% endif %}" href="{{ triage_url }}">
         <span class="nav-icon">
-            <iconify-icon icon="iconamoon:lab-duotone"></iconify-icon>
+            <iconify-icon icon="mdi:test-tube"></iconify-icon>
         </span>
         <span class="nav-text">Triage <span class="badge bg-primary-subtle text-primary ms-1" style="font-size:0.62rem;">Lab</span></span>
     </a>
@@ -88,9 +88,12 @@ Sections are collapsible — state saved in localStorage.
 {% endif %}
 </div>
 
+{% if is_admin or is_org_admin %}
+{% url 'accounts:users_admin' as users_admin_url %}
 {% if is_admin %}
 {% url 'scribe:audit_log' as audit_url %}
 {% url 'scribe:compliance' as compliance_url %}
+{% endif %}
 
 <li class="menu-title nav-section-toggle" data-section="nav-admin" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;">
   <span>Admin</span>
@@ -98,6 +101,7 @@ Sections are collapsible — state saved in localStorage.
 </li>
 <div id="nav-admin">
 
+{% if is_admin %}
 <li class="nav-item">
     <a class="nav-link {% if request.path == audit_url %}active{% endif %}" href="{{ audit_url }}">
         <span class="nav-icon">
@@ -115,7 +119,18 @@ Sections are collapsible — state saved in localStorage.
         <span class="nav-text">Compliance</span>
     </a>
 </li>
+{% endif %}
 
+<li class="nav-item">
+    <a class="nav-link {% if request.path == users_admin_url %}active{% endif %}" href="{{ users_admin_url }}">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:profile-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">Users &amp; Orgs</span>
+    </a>
+</li>
+
+{% if is_admin %}
 <li class="nav-item">
     <a class="nav-link" href="/admin/">
         <span class="nav-icon">
@@ -124,6 +139,7 @@ Sections are collapsible — state saved in localStorage.
         <span class="nav-text">Django admin</span>
     </a>
 </li>
+{% endif %}
 </div>
 {% endif %}
 

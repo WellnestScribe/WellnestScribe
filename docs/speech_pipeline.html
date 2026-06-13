@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WellNest Scribe — Speech Pipeline Architecture</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+    padding: 2rem;
+    min-height: 100vh;
+  }
+  h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+    color: #f8fafc;
+  }
+  .subtitle {
+    font-size: 0.85rem;
+    color: #94a3b8;
+    margin-bottom: 2.5rem;
+  }
+  .section {
+    margin-bottom: 3rem;
+  }
+  h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #7dd3fc;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid #1e293b;
+    padding-bottom: 0.5rem;
+  }
+  .diagram-wrap {
+    background: #1e293b;
+    border-radius: 12px;
+    padding: 2rem;
+    overflow-x: auto;
+  }
+  .mermaid { margin: 0 auto; }
+  .notes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-top: 2rem;
+  }
+  .note {
+    background: #1e293b;
+    border-left: 3px solid #3b82f6;
+    border-radius: 0 8px 8px 0;
+    padding: 0.85rem 1rem;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    color: #cbd5e1;
+  }
+  .note.warn { border-left-color: #f59e0b; }
+  .note.danger { border-left-color: #ef4444; }
+  .note.ok { border-left-color: #22c55e; }
+  .note strong { display: block; color: #f1f5f9; margin-bottom: 0.25rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  code {
+    font-family: 'Fira Code', 'Cascadia Code', monospace;
+    background: #0f1117;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 0.78rem;
+    color: #86efac;
+  }
+</style>
+</head>
+<body>
+
+<h1>WellNest Scribe — Speech Pipeline Architecture</h1>
+<p class="subtitle">End-to-end flow from recorded audio to finalised clinical note · Last updated June 2026</p>
+
+<!-- ── DIAGRAM 1: High-level overview ─────────────────────────── -->
+<div class="section">
+  <h2>1 · High-level overview</h2>
+  <div class="diagram-wrap">
+    <div class="mermaid">
+flowchart TD
+    A([🎙️ Doctor records audio\nconsultation]) --> B
+
+    B["📡 MMS ASR Model\n(Facebook Massively\nMultilingual Speech)"]
+    B -->|"raw phonetic transcript\n(Latin-script Patwa tokens)"| C
+
+    C["🔤 Patois Interpreter LLM\nPATOIS_INTERPRETER_SYSTEM_PROMPT"]
+    C --> D1["STEP 1\nPhonetic Resolution\ntoken → English word"]
+    D1 --> D2["STEP 2\nAssembled English\ngrammatical sentences"]
+    D2 --> D3["STEP 3\nClinical Interpretation\nstructured fields"]
+
+    D2 -->|"Step 2 English\n(display + generation input)"| E
+    D3 -.->|"reference only\n(not sent to SOAP gen)"| E
+
+    E["📋 SOAP Generator LLM\nJAMAICAN_CONTEXT_ADDENDUM\n+ SOAP / Narrative / Chart prompts"]
+    E --> F["Structured Note\nSUMMARY · S · O · A · P"]
+
+    F --> G["💾 Saved to DB\nstatus: Ready for review"]
+
+    G --> H(["👨‍⚕️ Doctor reviews\nedits if needed\nfinalises"])
+
+    H --> I([✅ Finalised note\nin patient record])
+
+    style A fill:#1e3a5f,stroke:#3b82f6,color:#e2e8f0
+    style B fill:#1e293b,stroke:#475569,color:#e2e8f0
+    style C fill:#1e293b,stroke:#475569,color:#e2e8f0
+    style D1 fill:#0f2035,stroke:#3b82f6,color:#93c5fd
+    style D2 fill:#0f2035,stroke:#22c55e,color:#86efac
+    style D3 fill:#0f2035,stroke:#475569,color:#94a3b8
+    style E fill:#1e293b,stroke:#475569,color:#e2e8f0
+    style F fill:#1a2e1a,stroke:#22c55e,color:#86efac
+    style G fill:#1e293b,stroke:#475569,color:#e2e8f0
+    style H fill:#1e3a5f,stroke:#3b82f6,color:#e2e8f0
+    style I fill:#14291a,stroke:#22c55e,color:#86efac
+    </div>
+  </div>
+</div>
+
+<!-- ── DIAGRAM 2: Transcript storage & regeneration ───────────── -->
+<div class="section">
+  <h2>2 · Transcript storage &amp; regeneration logic</h2>
+  <div class="diagram-wrap">
+    <div class="mermaid">
+flowchart TD
+    A([Audio transcribed]) -->|"stored once,\nnever overwritten"| B1[(raw_transcript\nDB field)]
+    A -->|"initially same as raw"| B2[(transcript\nDB field\ndisplay copy)]
+
+    B2 -->|"after first generation:\nreplaced with Step 2 English"| B2
+
+    R([Doctor clicks Regenerate]) --> C{doctor edited\ntranscript in UI?}
+
+    C -->|"yes — honour their edits"| G[Use doctor's version\nas transcript]
+    C -->|"no"| D{raw_transcript\nexists?}
+
+    D -->|"yes — new session"| E["Re-run Patois Interpreter\non raw_transcript\n(picks up prompt fixes)"]
+    D -->|"no — old session\npre-dates field"| F["_reconstruct_raw_from_step1()\nextracts left-side tokens\nfrom Step 1 lines"]
+
+    F -->|"backfills raw_transcript\nfor future runs"| B1
+    F --> E
+
+    E -->|"extract Step 2"| G
+    G --> H["SOAP Generator\nproduces fresh note"]
+
+    style B1 fill:#1a1a2e,stroke:#6366f1,color:#a5b4fc
+    style B2 fill:#1a2e1a,stroke:#22c55e,color:#86efac
+    style E fill:#1e293b,stroke:#3b82f6,color:#93c5fd
+    style F fill:#2d1a00,stroke:#f59e0b,color:#fde68a
+    style G fill:#1e293b,stroke:#475569,color:#e2e8f0
+    style H fill:#1a2e1a,stroke:#22c55e,color:#86efac
+    </div>
+  </div>
+</div>
+
+<!-- ── DIAGRAM 3: Known failure points ────────────────────────── -->
+<div class="section">
+  <h2>3 · Known failure points in the interpreter</h2>
+  <div class="diagram-wrap">
+    <div class="mermaid">
+flowchart LR
+    RAW["Raw Patois\nphonetic token"]
+
+    RAW --> N1["❌ nou ambiguity\n'nou' = now OR no\nLLM defaults to 'now'"]
+    RAW --> N2["❌ iz ant iz\nSpeech stutter/restart\nread as double-negative"]
+    RAW --> N3["❌ Double negation\n'nuh have no pain'\n= NO pain — not pain"]
+    RAW --> N4["❌ Tense markers\n'mi did' (past)\nvs 'mi a' (ongoing now)"]
+    RAW --> N5["❌ Minimising pattern\n'likkle likkle'\n'a nuh nutten'"]
+    RAW --> N6["❌ Numeral safety\nPatois numerals in doses,\npain scores, BP readings"]
+
+    N1 --> FIX1["✅ Disambiguation rule\nin RULE 6 + FINAL REMINDERS\n+ phonetic dictionary entry"]
+    N2 --> FIX1
+    N3 --> FIX2["✅ RULE 2 — Negation Rules\nexplicit double-neg handling"]
+    N4 --> FIX3["✅ RULE 5 — Tense & Aspect\nmarkers listed"]
+    N5 --> FIX4["✅ RULE 4 — Minimising Pattern\nflag for clinician"]
+    N6 --> FIX5["✅ RULE 6 — Numeral mapping\nwan=1 tu=2 … ten=10"]
+
+    style N1 fill:#2d0a0a,stroke:#ef4444,color:#fca5a5
+    style N2 fill:#2d0a0a,stroke:#ef4444,color:#fca5a5
+    style N3 fill:#2d1a00,stroke:#f59e0b,color:#fde68a
+    style N4 fill:#2d1a00,stroke:#f59e0b,color:#fde68a
+    style N5 fill:#1a1a00,stroke:#eab308,color:#fef08a
+    style N6 fill:#2d0a0a,stroke:#ef4444,color:#fca5a5
+    style FIX1 fill:#0f2d0f,stroke:#22c55e,color:#86efac
+    style FIX2 fill:#0f2d0f,stroke:#22c55e,color:#86efac
+    style FIX3 fill:#0f2d0f,stroke:#22c55e,color:#86efac
+    style FIX4 fill:#0f2d0f,stroke:#22c55e,color:#86efac
+    style FIX5 fill:#0f2d0f,stroke:#22c55e,color:#86efac
+    </div>
+  </div>
+</div>
+
+<!-- ── DIAGRAM 4: Patois interpreter prompt structure ─────────── -->
+<div class="section">
+  <h2>4 · PATOIS_INTERPRETER_SYSTEM_PROMPT structure</h2>
+  <div class="diagram-wrap">
+    <div class="mermaid">
+block-beta
+  columns 3
+
+  block:header:3
+    H["Content Filter Declaration\n(Azure false-positive bypass)"]
+  end
+
+  block:role:3
+    R["Role Definition\nPatois-to-clinical-English interpreter"]
+  end
+
+  block:rules:3
+    R1["RULE 1\nProcess in 3 steps\nnever skip"]
+    R2["RULE 2\nNegation Rules\nnuh/nah/kyaahn/neva\n⚠️ patient-safety critical"]
+    R3["RULE 3\nDiscourse Markers\nnot symptoms"]
+    R4["RULE 4\nMinimising Pattern\nflag clinically"]
+    R5["RULE 5\nTense & Aspect\nclinical urgency markers"]
+    R6["RULE 6\nNumerals & Pain Scores\nCase A (correction)\nvs Case B (temporal)\n⚠️ patient-safety critical"]
+    R7["RULE 7\nMetaphorical Language\ncultural symptom mapping"]
+  end
+
+  block:dict:3
+    D1["Phonetic Dict\nCore Grammar\nnou disambiguation added"]
+    D2["Body Parts\nhan/fut/batam/beli…"]
+    D3["Pain & Symptoms\nHerbal Remedies\nHerb-Drug Interactions"]
+  end
+
+  block:examples:3
+    E1["Few-Shot Example 1\nbatam op mi fut\n→ plantar foot"]
+    E2["Few-Shot Example 2\nhedging + negation pattern"]
+    E3["Few-Shot Example 3\nfull transcript walkthrough"]
+  end
+
+  block:output:3
+    O["Output Template\nSTEP 1 / STEP 2 / STEP 3 format"]
+  end
+
+  block:reminders:3
+    REM["Final Reminders\n+ MANDATORY OVERRIDE for\n'ipien levl iz a siks nou iz ant iz a iet'"]
+  end
+
+  style R2 fill:#2d0a0a,stroke:#ef4444,color:#fca5a5
+  style R6 fill:#2d0a0a,stroke:#ef4444,color:#fca5a5
+  style REM fill:#2d1a00,stroke:#f59e0b,color:#fde68a
+    </div>
+  </div>
+</div>
+
+<!-- ── Notes ──────────────────────────────────────────────────── -->
+<div class="section">
+  <h2>5 · Key design decisions &amp; open risks</h2>
+  <div class="notes">
+    <div class="note ok">
+      <strong>Doctor-in-the-loop</strong>
+      Every note is labelled "Ready for review." The doctor edits and finalises.
+      They are the medico-legal author — the AI is a drafting assistant.
+    </div>
+    <div class="note ok">
+      <strong>raw_transcript preserved</strong>
+      Original ASR output stored in <code>raw_transcript</code> and never overwritten.
+      Regeneration re-runs the interpreter so prompt fixes take effect retroactively.
+    </div>
+    <div class="note warn">
+      <strong>Two-LLM handoff risk</strong>
+      Step 2 English is ground truth for the SOAP generator. A wrong sentence in
+      Step 2 (wrong pain score, wrong drug name) propagates undetected. Doctor
+      review of the transcript tab is the only current safeguard.
+    </div>
+    <div class="note warn">
+      <strong>nou / now ambiguity</strong>
+      Prompt rules added but LLM still occasionally misreads "nou" (correction)
+      as "now" (temporal) between two numbers. Pre-processing regex may be needed
+      as a harder guard. See <code>PATOIS_ASR_RESEARCH.md</code> Q9.
+    </div>
+    <div class="note danger">
+      <strong>Numerical value safety</strong>
+      Pain scores, BP readings, medication doses, and gestational age are
+      highest-risk fields. Any numeral misread or inversion is a clinical error.
+      No automated range-check exists yet.
+    </div>
+    <div class="note">
+      <strong>Old session backfill</strong>
+      Sessions created before the <code>raw_transcript</code> field get their raw
+      tokens reconstructed on-the-fly from Step 1 left-side tokens via
+      <code>_reconstruct_raw_from_step1()</code>. Accurate for most cases.
+    </div>
+    <div class="note">
+      <strong>Prompt size</strong>
+      <code>PATOIS_INTERPRETER_SYSTEM_PROMPT</code> ≈ 4 200 tokens.
+      <code>JAMAICAN_CONTEXT_ADDENDUM</code> ≈ 750 tokens.
+      Both are within acceptable limits for the task complexity.
+    </div>
+    <div class="note warn">
+      <strong>MMS bias</strong>
+      MMS has no Patois-specific training data. Output is phonetic English
+      approximation of Patwa speech. Systematic biases expected for tonal
+      emphasis, vowel clusters, and unstressed syllables. See research brief.
+    </div>
+  </div>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      primaryColor: '#1e293b',
+      primaryTextColor: '#e2e8f0',
+      primaryBorderColor: '#475569',
+      lineColor: '#64748b',
+      secondaryColor: '#0f172a',
+      tertiaryColor: '#1e293b',
+      background: '#0f1117',
+      mainBkg: '#1e293b',
+      nodeBorder: '#475569',
+      clusterBkg: '#1e293b',
+      titleColor: '#f1f5f9',
+      edgeLabelBackground: '#1e293b',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    },
+    flowchart: { curve: 'basis', padding: 20 },
+  });
+</script>
+</body>
+</html>

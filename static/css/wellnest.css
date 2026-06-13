@@ -477,8 +477,8 @@ a { color: var(--wellnest-blue); }
 .recent-session-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 12px;
+  padding: 12px 14px;
   border-radius: 10px;
   text-decoration: none;
   color: var(--bs-body-color);
@@ -488,23 +488,24 @@ a { color: var(--wellnest-blue); }
 .recent-session-row:last-child { border-bottom: none; }
 .recent-session-row:hover { background: var(--bs-tertiary-bg); color: var(--bs-body-color); }
 .rsr-icon {
-  width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0;
+  width: 38px; height: 38px; border-radius: 9px; flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--wellnest-blue-soft); color: var(--wellnest-blue);
-  font-size: 1rem;
+  font-size: 1.15rem;
 }
 .rsr-body { flex: 1 1 0; min-width: 0; }
 .rsr-name {
-  display: block; font-weight: 600; font-size: 0.875rem;
+  display: block; font-weight: 600; font-size: 0.975rem;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .rsr-meta {
-  display: block; font-size: 0.75rem; color: var(--bs-secondary-color);
+  display: block; font-size: 0.825rem; color: var(--bs-secondary-color);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-top: 1px;
 }
 .rsr-status {
-  flex-shrink: 0; font-size: 0.68rem; font-weight: 600;
-  padding: 2px 8px; border-radius: 20px; white-space: nowrap;
+  flex-shrink: 0; font-size: 0.75rem; font-weight: 600;
+  padding: 3px 9px; border-radius: 20px; white-space: nowrap;
   background: var(--bs-secondary-bg); color: var(--bs-secondary-color);
 }
 .rsr-status--review      { background: rgba(13,110,253,0.1);  color: #0d6efd; }
@@ -1579,11 +1580,15 @@ kbd {
 }
 .btn-template-sel::after {
   display: inline-block; margin-left: 4px;
+  width: 12px; height: 12px;
   content: "";
-  border-top: 0.32em solid;
-  border-right: 0.28em solid transparent;
-  border-left: 0.28em solid transparent;
-  opacity: 0.55;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%236c757d' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: contain;
+  background-position: center;
+  flex-shrink: 0;
+  opacity: 0.8;
+  transition: transform 0.2s;
 }
 .btn-template-sel:hover, .btn-template-sel[aria-expanded="true"] {
   border-color: var(--wellnest-blue, #0d6efd);
@@ -1625,6 +1630,11 @@ kbd {
 }
 @media (max-width: 991.98px) {
   .note-section-actions { gap: 2px; }
+}
+
+/* Desktop: tighten chip vertical padding to align with select/button */
+@media (min-width: 992px) {
+  .suggestive-assist-chip-body { padding-top: 5px; padding-bottom: 5px; }
 }
 
 /* ── Review screen: sticky actions column ── */

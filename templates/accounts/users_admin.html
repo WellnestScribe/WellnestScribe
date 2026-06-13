@@ -1,0 +1,942 @@
+{% extends "base.html" %}
+{% load static account_tags %}
+
+{% block title %}Users & Organizations · WellNest{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── Layout ── */
+.ua-page { padding: 24px; max-width: 1280px; }
+.ua-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+.ua-breadcrumb { font-size: 0.8rem; color: var(--bs-secondary-color); margin-bottom: 4px; }
+.ua-breadcrumb a { color: inherit; text-decoration: none; }
+.ua-breadcrumb a:hover { text-decoration: underline; }
+.ua-title { font-size: 1.4rem; font-weight: 700; margin: 0; }
+.ua-card { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-radius: 12px; overflow: hidden; }
+/* Tabs */
+.ua-tabs { display: flex; border-bottom: 1px solid var(--bs-border-color); padding: 0 16px; gap: 4px; }
+.ua-tab { padding: 10px 16px; font-size: 0.88rem; font-weight: 600; color: var(--bs-secondary-color);
+  border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.ua-tab.active { color: #0d6efd; border-bottom-color: #0d6efd; }
+/* Toolbar */
+.ua-toolbar { display: flex; align-items: center; gap: 10px; padding: 14px 16px; flex-wrap: wrap; border-bottom: 1px solid var(--bs-border-color); }
+.ua-search { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 220px;
+  border: 1px solid var(--bs-border-color); border-radius: 8px; padding: 7px 12px;
+  background: var(--bs-body-bg); color: var(--bs-body-color); font-size: 0.9rem; }
+.ua-search input { border: none; outline: none; background: transparent; flex: 1; color: var(--bs-body-color); font-size: 0.9rem; min-width: 0; }
+.ua-select { border: 1px solid var(--bs-border-color); border-radius: 8px; padding: 7px 32px 7px 12px;
+  background: var(--bs-body-bg); color: var(--bs-body-color); font-size: 0.88rem; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%23999' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; cursor: pointer; }
+.ua-select:focus { outline: none; border-color: #0d6efd; }
+/* Table */
+.ua-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.ua-table thead th { padding: 10px 14px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--bs-secondary-color); border-bottom: 1px solid var(--bs-border-color); white-space: nowrap; }
+.ua-table tbody td { padding: 11px 14px; border-bottom: 1px solid rgba(0,0,0,0.05); vertical-align: middle; }
+[data-bs-theme="dark"] .ua-table tbody td { border-bottom-color: rgba(255,255,255,0.06); }
+.ua-table tbody tr:last-child td { border-bottom: none; }
+.ua-table tbody tr:hover { background: rgba(13,110,253,0.025); }
+/* Column help icon */
+.col-help { display: inline-flex; align-items: center; gap: 4px; }
+.col-help-icon { font-size: 0.9rem; opacity: 0.4; cursor: pointer; }
+.col-help-icon:hover { opacity: 1; color: #0d6efd; }
+/* Avatar */
+.ua-avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 0.8rem; flex-shrink: 0; }
+.ua-user-cell { display: flex; align-items: center; gap: 10px; }
+.ua-user-name { font-weight: 600; font-size: 0.9rem; line-height: 1.25; }
+.ua-user-sub { font-size: 0.76rem; color: var(--bs-secondary-color); }
+.ua-org-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.ua-org-tag { font-size: 0.68rem; padding: 1px 7px; border-radius: 20px;
+  background: rgba(13,110,253,0.08); color: #0d6efd; border: 1px solid rgba(13,110,253,0.15); white-space: nowrap; }
+[data-bs-theme="dark"] .ua-org-tag { background: rgba(96,165,250,0.12); color: #60a5fa; }
+/* Badges */
+.ua-badge { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 20px;
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.03em; white-space: nowrap; }
+.ua-badge-admin        { background: #e3f0ff; color: #1a6fd4; }
+.ua-badge-lead         { background: #e8f5e9; color: #2e7d32; }
+.ua-badge-clinician    { background: #f1f5f9; color: #475569; }
+.ua-badge-nurse        { background: #fce4ec; color: #c62828; }
+.ua-badge-scribe       { background: #f3e5f5; color: #7b1fa2; }
+.ua-badge-ed_nurse     { background: #fff3e0; color: #e65100; }
+.ua-badge-receptionist { background: #e8eaf6; color: #3949ab; }
+.ua-badge-other        { background: #f1f5f9; color: #6b7280; }
+.ua-badge-superuser    { background: #fff1f2; color: #be123c; }
+.ua-badge-staff        { background: #fff8e1; color: #b45309; }
+.ua-badge-user         { background: #f1f5f9; color: #64748b; }
+.ua-badge-active       { background: #dcfce7; color: #166534; }
+.ua-badge-inactive     { background: #f1f5f9; color: #6b7280; }
+[data-bs-theme="dark"] .ua-badge-admin     { background: rgba(26,111,212,0.2); color: #60a5fa; }
+[data-bs-theme="dark"] .ua-badge-active    { background: rgba(22,163,74,0.2); color: #4ade80; }
+[data-bs-theme="dark"] .ua-badge-clinician { background: rgba(71,85,105,0.2); color: #94a3b8; }
+[data-bs-theme="dark"] .ua-badge-superuser { background: rgba(190,18,60,0.18); color: #fb7185; }
+/* Role info button */
+.role-info-btn { border: none; background: none; padding: 0 2px; cursor: pointer; opacity: 0.35; line-height: 1; color: var(--bs-body-color); }
+.role-info-btn:hover { opacity: 1; color: #0d6efd; }
+/* Role select inline */
+.ua-role-select { border: 1px solid rgba(13,110,253,0.35); border-radius: 6px; padding: 4px 8px;
+  font-size: 0.82rem; background: var(--bs-body-bg); color: var(--bs-body-color); cursor: pointer; }
+.ua-role-select:focus { outline: none; border-color: #0d6efd; }
+/* Org section */
+.ua-org-header-row { cursor: pointer; transition: background 0.1s; }
+.ua-org-header-row:hover { background: rgba(13,110,253,0.03); }
+.ua-org-chevron { transition: transform 0.2s; display: inline-block; }
+.ua-org-expand-area { background: rgba(13,110,253,0.012); }
+[data-bs-theme="dark"] .ua-org-expand-area { background: rgba(255,255,255,0.02); }
+.ua-org-expand-area > td { padding: 0 !important; }
+/* Member section inside expanded row */
+.ua-member-section { padding: 14px 20px 18px 20px; }
+.ua-member-section-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--bs-border-color); }
+.ua-member-section-hdr-label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--bs-secondary-color); }
+/* Member cards grid */
+.ua-member-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 8px; }
+.ua-member-card { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;
+  border: 1px solid var(--bs-border-color); background: var(--bs-body-bg); transition: border-color 0.15s; }
+.ua-member-card:hover { border-color: rgba(13,110,253,0.3); }
+[data-bs-theme="dark"] .ua-member-card { background: rgba(255,255,255,0.025); }
+/* Empty */
+.ua-empty { text-align: center; padding: 48px 24px; color: var(--bs-secondary-color); }
+/* Toast */
+#uaToast { position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+  background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-radius: 10px;
+  padding: 12px 18px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); font-size: 0.88rem;
+  display: none; gap: 10px; align-items: center; max-width: 340px; }
+#uaToast.show { display: flex; }
+#uaToast.success { border-left: 4px solid #22c55e; }
+#uaToast.error   { border-left: 4px solid #ef4444; }
+/* Glossary card */
+.ua-glossary { font-size: 0.82rem; padding: 14px 16px; border-top: 1px solid var(--bs-border-color);
+  background: rgba(13,110,253,0.02); color: var(--bs-secondary-color); display: flex; flex-wrap: wrap; gap: 16px; }
+.ua-glossary strong { color: var(--bs-body-color); }
+/* Role perms modal */
+.rp-card { border: 1px solid var(--bs-border-color); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; transition: border-color 0.15s; }
+.rp-card.rp-highlight { border-color: #0d6efd; background: rgba(13,110,253,0.03); }
+.rp-card:last-child { margin-bottom: 0; }
+.rp-title { font-weight: 700; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.rp-desc { font-size: 0.8rem; color: var(--bs-secondary-color); margin-bottom: 8px; }
+.rp-perms { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 3px; }
+.rp-perms li { font-size: 0.8rem; display: flex; align-items: flex-start; gap: 6px; }
+.rp-perms li iconify-icon { flex-shrink: 0; margin-top: 1px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ua-page">
+
+  {# ── Header ── #}
+  <div class="ua-header">
+    <div>
+      <div class="ua-breadcrumb">
+        <a href="{% url 'scribe:record' %}">Home</a>
+        &rsaquo; Admin &rsaquo; Users &amp; Organizations
+      </div>
+      <h1 class="ua-title">
+        <iconify-icon icon="iconamoon:profile-circle-duotone" class="text-primary me-2 align-middle" style="font-size:1.3rem;"></iconify-icon>
+        Users &amp; Organizations
+      </h1>
+    </div>
+    <div class="d-flex gap-2 align-items-center">
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="showRolePerms()">
+        <iconify-icon icon="iconamoon:shield-duotone" class="me-1 align-middle"></iconify-icon>
+        Role guide
+      </button>
+      {% if is_system_admin %}
+      <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createUserModal">
+        <iconify-icon icon="iconamoon:sign-plus-circle-duotone" class="me-1 align-middle"></iconify-icon>
+        Add user
+      </button>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Glossary ── #}
+  <div class="ua-card mb-3">
+    <div class="ua-glossary">
+      <div>
+        <strong>WellNest Role</strong> — what the user can <em>do</em> in the app
+        (record sessions, finalize notes, access ED board, see audit log, etc.).
+        {% if is_system_admin %}Change this with the dropdown in each user row.{% endif %}
+        <button class="btn btn-link btn-sm p-0 ms-1 align-baseline" style="font-size:0.82rem;" onclick="showRolePerms()">
+          View role guide &rarr;
+        </button>
+      </div>
+      <div>
+        <strong>System Type</strong> — Django's built-in access level.
+        <span class="ua-badge ua-badge-superuser">Superuser</span> = full /admin/ access &amp; can manage any data.
+        <span class="ua-badge ua-badge-staff">Staff</span> = limited /admin/ access.
+        <span class="ua-badge ua-badge-user">User</span> = app-only, no /admin/.
+        {% if is_system_admin %}Change via <a href="/admin/auth/user/" target="_blank">Django admin → Users</a>.{% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── Main card ── #}
+  <div class="ua-card">
+
+    {# Tabs #}
+    <div class="ua-tabs">
+      <button class="ua-tab active" id="tabUsers" onclick="showTab('users')">
+        <iconify-icon icon="iconamoon:profile-duotone" class="me-1 align-middle" style="font-size:0.95rem;"></iconify-icon>
+        Users
+        <span class="badge bg-secondary ms-1" style="font-size:0.68rem;">{{ users.count }}</span>
+      </button>
+      <button class="ua-tab" id="tabOrgs" onclick="showTab('orgs')">
+        <iconify-icon icon="iconamoon:building-1-duotone" class="me-1 align-middle" style="font-size:0.95rem;"></iconify-icon>
+        Organizations
+        <span class="badge bg-secondary ms-1" style="font-size:0.68rem;">{{ organisations.count }}</span>
+      </button>
+    </div>
+
+    {# ── USERS TAB ── #}
+    <div id="panelUsers">
+      <form method="get" class="ua-toolbar" id="usersFilterForm">
+        <label class="ua-search">
+          <iconify-icon icon="iconamoon:search-duotone" style="font-size:1rem;opacity:0.45;flex-shrink:0;"></iconify-icon>
+          <input type="text" name="q" value="{{ q }}" placeholder="Search name, email, username…"
+                 oninput="clearTimeout(this._t);this._t=setTimeout(function(){document.getElementById('usersFilterForm').submit();},400)">
+        </label>
+        <select class="ua-select" name="role" onchange="this.form.submit()">
+          <option value="">All Roles</option>
+          {% for val, label in role_choices %}
+          <option value="{{ val }}" {% if role_filter == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <select class="ua-select" name="status" onchange="this.form.submit()">
+          <option value="">All Status</option>
+          <option value="active"   {% if status_filter == "active"   %}selected{% endif %}>Active</option>
+          <option value="inactive" {% if status_filter == "inactive" %}selected{% endif %}>Inactive</option>
+        </select>
+        <noscript><button type="submit" class="btn btn-sm btn-outline-primary">Filter</button></noscript>
+      </form>
+
+      {% if users_with_orgs %}
+      <div style="overflow-x:auto;">
+        <table class="ua-table">
+          <thead>
+            <tr>
+              <th style="width:28%;">User</th>
+              <th>Email</th>
+              <th>
+                <span class="col-help" title="Click ⓘ on any row to see what this role allows">
+                  WellNest Role
+                  <iconify-icon icon="iconamoon:information-circle-duotone" class="col-help-icon"
+                                onclick="showRolePerms()"></iconify-icon>
+                </span>
+              </th>
+              <th>
+                <span class="col-help" title="Django system type — Superuser = full /admin/ access, Staff = limited, User = app-only">
+                  System Type
+                  <iconify-icon icon="iconamoon:information-circle-duotone" class="col-help-icon"></iconify-icon>
+                </span>
+              </th>
+              <th>Status</th>
+              <th>Last login</th>
+              {% if is_system_admin %}<th style="text-align:right;">Actions</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for u, memberships in users_with_orgs %}
+            {% with profile=u.doctor_profile %}
+            <tr data-user-id="{{ u.pk }}" id="user-row-{{ u.pk }}">
+              <td>
+                <div class="ua-user-cell">
+                  <div class="ua-avatar" style="background:{{ u.pk|ua_avatar_color }};color:#fff;">
+                    {{ u|ua_initials }}
+                  </div>
+                  <div>
+                    <div class="ua-user-name">
+                      {% if profile %}{{ profile.display_name }}{% else %}{{ u.username }}{% endif %}
+                    </div>
+                    <div class="ua-user-sub">@{{ u.username }}</div>
+                    {% if memberships %}
+                    <div class="ua-org-tags">
+                      {% for m in memberships %}
+                      <span class="ua-org-tag" title="{{ m.get_role_display }} at {{ m.organisation.name }}">{{ m.organisation.name }}</span>
+                      {% endfor %}
+                    </div>
+                    {% endif %}
+                  </div>
+                </div>
+              </td>
+              <td style="color:var(--bs-secondary-color);">{{ u.email|default:"—" }}</td>
+              <td>
+                {% if profile %}
+                <div class="d-flex align-items-center gap-1">
+                  <span class="ua-badge ua-badge-{{ profile.role }}" id="role-badge-{{ u.pk }}">{{ profile.get_role_display }}</span>
+                  <button class="role-info-btn" onclick="showRolePerms('{{ profile.role }}')" title="View permissions for this role">
+                    <iconify-icon icon="iconamoon:information-circle-duotone" style="font-size:0.9rem;"></iconify-icon>
+                  </button>
+                </div>
+                {% else %}
+                <span class="ua-badge ua-badge-other">No profile</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if u.is_superuser %}
+                <span class="ua-badge ua-badge-superuser">Superuser</span>
+                {% elif u.is_staff %}
+                <span class="ua-badge ua-badge-staff">Staff</span>
+                {% else %}
+                <span class="ua-badge ua-badge-user">User</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="ua-badge {% if u.is_active %}ua-badge-active{% else %}ua-badge-inactive{% endif %}"
+                      id="active-badge-{{ u.pk }}">
+                  {% if u.is_active %}Active{% else %}Inactive{% endif %}
+                </span>
+              </td>
+              <td style="color:var(--bs-secondary-color);font-size:0.8rem;white-space:nowrap;">
+                {% if u.last_login %}{{ u.last_login|timesince }} ago{% else %}Never{% endif %}
+              </td>
+              {% if is_system_admin %}
+              <td style="text-align:right;">
+                <div class="d-flex align-items-center justify-content-end gap-1">
+                  {% if profile %}
+                  <select class="ua-role-select" onchange="changeRole({{ u.pk }}, this.value)">
+                    {% for val, label in role_choices %}
+                    <option value="{{ val }}" {% if profile.role == val %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                  {% endif %}
+                  <button class="btn btn-outline-secondary btn-sm px-2"
+                          onclick="openChangePass({{ u.pk }}, '{% if profile %}{{ profile.display_name|escapejs }}{% else %}{{ u.username|escapejs }}{% endif %}')"
+                          title="Change password">
+                    <iconify-icon icon="iconamoon:key-duotone" style="font-size:0.9rem;"></iconify-icon>
+                  </button>
+                  {% if u.pk != request.user.pk %}
+                  <button class="btn btn-sm px-2 {% if u.is_active %}btn-outline-warning{% else %}btn-outline-success{% endif %}"
+                          id="active-btn-{{ u.pk }}"
+                          onclick="toggleActive({{ u.pk }}, {{ u.is_active|yesno:'true,false' }})"
+                          title="{% if u.is_active %}Deactivate user{% else %}Activate user{% endif %}">
+                    <iconify-icon icon="{% if u.is_active %}iconamoon:pause-circle-duotone{% else %}iconamoon:play-circle-duotone{% endif %}"
+                                  style="font-size:0.9rem;"></iconify-icon>
+                  </button>
+                  {% endif %}
+                  <a href="/admin/auth/user/{{ u.pk }}/change/" class="btn btn-outline-secondary btn-sm px-2"
+                     title="Edit in Django admin" target="_blank">
+                    <iconify-icon icon="iconamoon:settings-duotone" style="font-size:0.9rem;"></iconify-icon>
+                  </a>
+                </div>
+              </td>
+              {% endif %}
+            </tr>
+            {% endwith %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="ua-empty">
+        <iconify-icon icon="iconamoon:profile-duotone" style="font-size:2.5rem;opacity:0.25;display:block;margin-bottom:8px;"></iconify-icon>
+        No users found{% if q %} matching &ldquo;{{ q }}&rdquo;{% endif %}.
+      </div>
+      {% endif %}
+    </div>
+
+    {# ── ORGANISATIONS TAB ── #}
+    <div id="panelOrgs" style="display:none;">
+      {% if organisations %}
+      <div style="overflow-x:auto;">
+        <table class="ua-table">
+          <thead>
+            <tr>
+              <th>Organization</th>
+              <th>Type</th>
+              <th>Parish</th>
+              <th>Members</th>
+              <th style="text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for org in organisations %}
+            <tr class="ua-org-header-row" onclick="toggleOrg({{ org.pk }})">
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  <iconify-icon icon="iconamoon:building-1-duotone" class="text-primary" style="font-size:1.2rem;flex-shrink:0;"></iconify-icon>
+                  <span class="fw-semibold">{{ org.name }}</span>
+                  <iconify-icon icon="iconamoon:arrow-down-2-light" class="ua-org-chevron text-muted ms-1"
+                                style="font-size:0.85rem;" id="org-chevron-{{ org.pk }}"></iconify-icon>
+                </div>
+              </td>
+              <td><span class="ua-badge ua-badge-clinician">{{ org.get_organisation_type_display }}</span></td>
+              <td style="color:var(--bs-secondary-color);">{{ org.parish|default:"—" }}</td>
+              <td>
+                <span class="fw-semibold">{{ org.memberships.count }}</span>
+                <span class="text-muted" style="font-size:0.8rem;"> member{{ org.memberships.count|pluralize }}</span>
+              </td>
+              <td style="text-align:right;" onclick="event.stopPropagation();">
+                {% if org.pk in managed_org_ids %}
+                <button class="btn btn-outline-primary btn-sm"
+                        onclick="openAddMember({{ org.pk }}, '{{ org.name|escapejs }}')"
+                        title="Add a user to this organization">
+                  <iconify-icon icon="iconamoon:sign-plus-circle-duotone" class="me-1 align-middle"></iconify-icon>
+                  Add member
+                </button>
+                {% endif %}
+              </td>
+            </tr>
+            {# Expandable members row #}
+            <tr id="org-members-{{ org.pk }}" class="ua-org-expand-area">
+              <td colspan="5">
+                <div class="ua-member-section">
+                  <div class="ua-member-section-hdr">
+                    <span class="ua-member-section-hdr-label">
+                      Members &middot; {{ org.memberships.count }}
+                    </span>
+                    {% if org.pk in managed_org_ids %}
+                    <button class="btn btn-outline-primary btn-sm" style="font-size:0.78rem;"
+                            onclick="openAddMember({{ org.pk }}, '{{ org.name|escapejs }}')">
+                      <iconify-icon icon="iconamoon:sign-plus-circle-duotone" class="me-1 align-middle"></iconify-icon>
+                      Add member
+                    </button>
+                    {% endif %}
+                  </div>
+                  {% if org.memberships.all %}
+                  <div class="ua-member-grid">
+                    {% for m in org.memberships.all %}
+                    <div class="ua-member-card" id="membership-{{ m.pk }}">
+                      <div class="ua-avatar" style="background:{{ m.user.pk|ua_avatar_color }};color:#fff;width:32px;height:32px;font-size:0.74rem;flex-shrink:0;">
+                        {{ m.user|ua_initials }}
+                      </div>
+                      <div style="flex:1;min-width:0;">
+                        <div class="fw-semibold" style="font-size:0.84rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                          {% with p=m.user.doctor_profile %}{% if p %}{{ p.display_name }}{% else %}{{ m.user.username }}{% endif %}{% endwith %}
+                        </div>
+                        <div style="font-size:0.73rem;color:var(--bs-secondary-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                          {{ m.user.email|default:"—" }}
+                        </div>
+                      </div>
+                      {% if org.pk in managed_org_ids %}
+                      <select class="ua-role-select" style="font-size:0.78rem;padding:3px 6px;"
+                              onchange="changeMembershipRole({{ org.pk }}, {{ m.user.pk }}, this.value)">
+                        <option value="doctor"       {% if m.role == "doctor"       %}selected{% endif %}>Doctor</option>
+                        <option value="nurse"        {% if m.role == "nurse"        %}selected{% endif %}>Nurse</option>
+                        <option value="receptionist" {% if m.role == "receptionist" %}selected{% endif %}>Receptionist</option>
+                        <option value="admin"        {% if m.role == "admin"        %}selected{% endif %}>Org Admin</option>
+                        <option value="system_admin" {% if m.role == "system_admin" %}selected{% endif %}>Sys Admin</option>
+                      </select>
+                      <button class="btn btn-outline-danger btn-sm px-2"
+                              onclick="removeMember({{ org.pk }}, {{ m.user.pk }}, 'membership-{{ m.pk }}')"
+                              title="Remove from organization">
+                        <iconify-icon icon="iconamoon:trash-duotone" style="font-size:0.85rem;"></iconify-icon>
+                      </button>
+                      {% else %}
+                      <span class="ua-badge ua-badge-clinician" style="font-size:0.7rem;">{{ m.get_role_display }}</span>
+                      {% endif %}
+                    </div>
+                    {% endfor %}
+                  </div>
+                  {% else %}
+                  <p class="text-muted small mb-0 py-2">No members yet.{% if org.pk in managed_org_ids %} Use the button above to add someone.{% endif %}</p>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="ua-empty">
+        <iconify-icon icon="iconamoon:building-1-duotone" style="font-size:2.5rem;opacity:0.25;display:block;margin-bottom:8px;"></iconify-icon>
+        No organizations yet.
+        Create one in <a href="/admin/emr/organisation/add/" target="_blank">Django admin</a>.
+      </div>
+      {% endif %}
+    </div>
+
+  </div>{# /ua-card #}
+</div>{# /ua-page #}
+
+{# ── Create user modal (system admin only) ── #}
+{% if is_system_admin %}
+<div class="modal fade" id="createUserModal" tabindex="-1" aria-labelledby="createUserModalLabel">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:460px;">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-1">
+        <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="createUserModalLabel">
+          <iconify-icon icon="iconamoon:sign-plus-circle-duotone" class="text-primary" style="font-size:1.2rem;"></iconify-icon>
+          Create new user
+        </h5>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-1">
+        <div id="createUserError" class="alert alert-danger py-2 small d-none"></div>
+        <div class="row g-2">
+          <div class="col-12">
+            <label class="form-label small fw-semibold mb-1">Full name</label>
+            <input type="text" id="cu_full_name" class="form-control form-control-sm" placeholder="Dr. Jane Smith">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold mb-1">Username <span class="text-danger">*</span></label>
+            <input type="text" id="cu_username" class="form-control form-control-sm" placeholder="jsmith" autocomplete="off">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold mb-1">Password <span class="text-danger">*</span></label>
+            <input type="password" id="cu_password" class="form-control form-control-sm" placeholder="Min 8 chars" autocomplete="new-password">
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold mb-1">Email</label>
+            <input type="email" id="cu_email" class="form-control form-control-sm" placeholder="jane@clinic.com">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold mb-1">WellNest Role</label>
+            <select id="cu_role" class="form-select form-select-sm">
+              {% for val, label in role_choices %}
+              <option value="{{ val }}" {% if val == "clinician" %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold mb-1">Specialty</label>
+            <select id="cu_specialty" class="form-select form-select-sm">
+              {% for val, label in specialty_choices %}
+              <option value="{{ val }}" {% if val == "general" %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold mb-1">Facility / clinic</label>
+            <input type="text" id="cu_facility" class="form-control form-control-sm" placeholder="e.g. Kingston Public Hospital">
+          </div>
+        </div>
+        <p class="small text-muted mt-2 mb-0" style="font-size:0.76rem;">
+          <iconify-icon icon="iconamoon:information-circle-duotone" class="me-1 align-middle"></iconify-icon>
+          To grant /admin/ access, use <a href="/admin/auth/user/" target="_blank">Django admin → Users</a> after creating.
+        </p>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="createUserConfirmBtn">
+          <iconify-icon icon="iconamoon:sign-plus-circle-duotone" class="me-1 align-middle"></iconify-icon>
+          Create user
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── Add member modal ── #}
+<div class="modal fade" id="addMemberModal" tabindex="-1" aria-labelledby="addMemberModalLabel">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:380px;">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-1">
+        <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="addMemberModalLabel">
+          <iconify-icon icon="iconamoon:sign-plus-circle-duotone" class="text-primary" style="font-size:1.2rem;"></iconify-icon>
+          Add member — <span id="addMemberOrgName" class="ms-1 text-primary"></span>
+        </h5>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-0">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">User</label>
+          <select class="form-select form-select-sm" id="addMemberUser">
+            <option value="">— Select user —</option>
+            {% for u in users %}
+            <option value="{{ u.pk }}">
+              {% with p=u.doctor_profile %}{% if p %}{{ p.display_name }}{% else %}{{ u.username }}{% endif %}{% endwith %}
+              ({{ u.email }})
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label small fw-semibold">Role in this organization</label>
+          <select class="form-select form-select-sm" id="addMemberRole">
+            <option value="doctor">Doctor</option>
+            <option value="nurse">Nurse</option>
+            <option value="receptionist">Receptionist</option>
+            <option value="admin">Org Admin</option>
+            <option value="system_admin">System Admin</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="addMemberConfirmBtn">Add member</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Role permissions modal ── #}
+<div class="modal fade" id="rolePermsModal" tabindex="-1" aria-labelledby="rolePermsModalLabel">
+  <div class="modal-dialog modal-dialog-centered modal-lg" style="max-width:700px;">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-1">
+        <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="rolePermsModalLabel">
+          <iconify-icon icon="iconamoon:shield-duotone" class="text-primary" style="font-size:1.2rem;"></iconify-icon>
+          WellNest Role Guide
+        </h5>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-0" id="rolePermsBody" style="max-height:72vh;overflow-y:auto;">
+        {# filled by JS #}
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Change password modal (system admin only) ── #}
+{% if is_system_admin %}
+<div class="modal fade" id="changePassModal" tabindex="-1" aria-labelledby="changePassModalLabel">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:380px;">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-1">
+        <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="changePassModalLabel">
+          <iconify-icon icon="iconamoon:key-duotone" class="text-primary" style="font-size:1.2rem;"></iconify-icon>
+          Change Password
+        </h5>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-1">
+        <p class="small text-muted mb-3">
+          Setting a new password for <strong id="changePassUserName"></strong>.
+        </p>
+        <div id="changePassError" class="alert alert-danger py-2 small d-none"></div>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold mb-1">New password <span class="text-danger">*</span></label>
+          <input type="password" id="cp_new_password" class="form-control form-control-sm"
+                 placeholder="Min 6 characters" autocomplete="new-password">
+        </div>
+        <div>
+          <label class="form-label small fw-semibold mb-1">Confirm password <span class="text-danger">*</span></label>
+          <input type="password" id="cp_confirm_password" class="form-control form-control-sm"
+                 placeholder="Re-enter password" autocomplete="new-password">
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="changePassConfirmBtn">
+          <iconify-icon icon="iconamoon:key-duotone" class="me-1 align-middle"></iconify-icon>
+          Set password
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── Toast ── #}
+<div id="uaToast">
+  <iconify-icon id="uaToastIcon" style="font-size:1.1rem;flex-shrink:0;"></iconify-icon>
+  <span id="uaToastMsg"></span>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+var CSRF = '{{ csrf_token }}';
+var IS_SYSTEM_ADMIN = {{ is_system_admin|yesno:"true,false" }};
+
+/* ── Role permissions data ── */
+var ROLE_PERMS = {
+  admin: {
+    label: 'Administrator', color: '#1a6fd4', bg: '#e3f0ff',
+    desc: 'Full system access. Manages users, organizations, and global configuration.',
+    can: [
+      'Create and manage all user accounts & assign roles',
+      'Create and manage organizations & memberships',
+      'View all sessions and SOAP notes system-wide',
+      'Access system audit logs',
+      'Configure global system settings',
+    ],
+    cannot: []
+  },
+  lead: {
+    label: 'Lead Clinician', color: '#2e7d32', bg: '#e8f5e9',
+    desc: 'Clinical team lead within their organization — supervises clinicians and documentation.',
+    can: [
+      'Record sessions for any patient in their org',
+      'View and finalize any note within their org',
+      'Access team session history and overview',
+      'Manage custom medications and note templates',
+    ],
+    cannot: ['Cannot manage users or org settings']
+  },
+  clinician: {
+    label: 'Clinician', color: '#475569', bg: '#f1f5f9',
+    desc: 'Standard clinical user — records sessions and manages own notes.',
+    can: [
+      'Record sessions and dictate SOAP notes',
+      'Create, edit and finalize own notes',
+      'Manage own patient records',
+      'View own session and appointment history',
+    ],
+    cannot: ["Cannot view other clinicians' notes", 'No admin or team-lead functions']
+  },
+  nurse: {
+    label: 'Nurse', color: '#c62828', bg: '#fce4ec',
+    desc: 'Supports clinicians with patient documentation and care coordination.',
+    can: [
+      'Record sessions for assigned patients',
+      'View notes for assigned patients',
+      'Update patient vitals and clinical observations',
+    ],
+    cannot: ['Cannot finalize notes independently', "Cannot access other patients' records"]
+  },
+  ed_nurse: {
+    label: 'ED Nurse', color: '#e65100', bg: '#fff3e0',
+    desc: 'Emergency department nursing staff with ED-specific workflow access.',
+    can: [
+      'Emergency department session recording',
+      'Triage notes and rapid clinical assessments',
+      'View and update ED board and patient queue',
+    ],
+    cannot: ['Limited to ED workflow — no access to general clinic records']
+  },
+  scribe: {
+    label: 'Scribe', color: '#7b1fa2', bg: '#f3e5f5',
+    desc: 'Documentation assistant. Transcription support only — cannot finalize clinical notes.',
+    can: [
+      'Assist with session transcription',
+      'Draft SOAP note sections for clinician review',
+    ],
+    cannot: ['Cannot finalize or sign off notes', 'No access to patient medical history independently']
+  },
+  receptionist: {
+    label: 'Receptionist', color: '#3949ab', bg: '#e8eaf6',
+    desc: 'Front-desk staff — patient intake, scheduling, and administrative support.',
+    can: [
+      'Patient check-in and registration',
+      'View and manage appointment schedule',
+      'Basic patient demographic records',
+    ],
+    cannot: ['No access to clinical notes or SOAP records', 'No recording or transcription capabilities']
+  },
+  other: {
+    label: 'Other', color: '#6b7280', bg: '#f1f5f9',
+    desc: 'Custom or unclassified role. Permissions at administrator discretion.',
+    can: ['Permissions defined by the system administrator'],
+    cannot: []
+  }
+};
+
+var _roleOrder = ['admin','lead','clinician','nurse','ed_nurse','scribe','receptionist','other'];
+
+function showRolePerms(highlightRole) {
+  var body = document.getElementById('rolePermsBody');
+  var html = '<p class="small text-muted mb-3 pt-2">Each WellNest Role controls what a user can see and do in the app. This is separate from the Django System Type (Superuser/Staff).</p>';
+  _roleOrder.forEach(function (key) {
+    var r = ROLE_PERMS[key];
+    if (!r) return;
+    var hl = key === highlightRole;
+    html += '<div class="rp-card' + (hl ? ' rp-highlight' : '') + '" id="rp-' + key + '">';
+    html += '<div class="rp-title">';
+    html += '<span style="width:10px;height:10px;border-radius:50%;background:' + r.color + ';display:inline-block;flex-shrink:0;"></span>';
+    html += '<span class="ua-badge" style="background:' + r.bg + ';color:' + r.color + ';">' + r.label + '</span>';
+    if (hl) html += '<span class="ua-badge ua-badge-active ms-auto" style="font-size:0.65rem;">&#x2190; this user</span>';
+    html += '</div>';
+    html += '<div class="rp-desc">' + r.desc + '</div>';
+    html += '<ul class="rp-perms">';
+    r.can.forEach(function (p) {
+      html += '<li><iconify-icon icon="iconamoon:check-bold" style="color:#22c55e;font-size:0.85rem;"></iconify-icon>' + p + '</li>';
+    });
+    (r.cannot || []).forEach(function (p) {
+      html += '<li style="opacity:0.55;"><iconify-icon icon="iconamoon:close-bold" style="color:#ef4444;font-size:0.85rem;"></iconify-icon>' + p + '</li>';
+    });
+    html += '</ul></div>';
+  });
+  body.innerHTML = html;
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('rolePermsModal')).show();
+  if (highlightRole) {
+    setTimeout(function () {
+      var el = document.getElementById('rp-' + highlightRole);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 320);
+  }
+}
+
+/* ── Tab switching ── */
+function showTab(tab) {
+  document.getElementById('panelUsers').style.display = tab === 'users' ? '' : 'none';
+  document.getElementById('panelOrgs').style.display  = tab === 'orgs'  ? '' : 'none';
+  document.getElementById('tabUsers').classList.toggle('active', tab === 'users');
+  document.getElementById('tabOrgs').classList.toggle('active',  tab === 'orgs');
+}
+
+/* ── Toast ── */
+function uaToast(msg, type) {
+  var t = document.getElementById('uaToast');
+  t.className = 'show ' + (type || 'success');
+  document.getElementById('uaToastIcon').setAttribute('icon',
+    type === 'error' ? 'iconamoon:close-circle-1-duotone' : 'iconamoon:check-circle-1-duotone');
+  document.getElementById('uaToastMsg').textContent = msg;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(function () { t.className = ''; }, 3500);
+}
+
+/* ── Shared fetch helper ── */
+function apiPost(url, body) {
+  return fetch(url, {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+    body: JSON.stringify(body)
+  }).then(function (r) { return r.json(); });
+}
+
+/* ── Change WellNest role ── */
+function changeRole(userId, newRole) {
+  apiPost('/accounts/users/' + userId + '/role/', { role: newRole })
+    .then(function (d) {
+      if (d.ok) {
+        var badge = document.getElementById('role-badge-' + userId);
+        if (badge) { badge.textContent = d.role_label; badge.className = 'ua-badge ua-badge-' + d.role; }
+        uaToast('Role updated to ' + d.role_label);
+      } else { uaToast(d.error || 'Error', 'error'); }
+    }).catch(function () { uaToast('Network error', 'error'); });
+}
+
+/* ── Activate / deactivate user ── */
+function toggleActive(userId, isCurrentlyActive) {
+  if (!confirm((isCurrentlyActive ? 'Deactivate' : 'Activate') + ' this user?')) return;
+  apiPost('/accounts/users/' + userId + '/toggle-active/', {})
+    .then(function (d) {
+      if (!d.ok) { uaToast(d.error || 'Error', 'error'); return; }
+      var badge = document.getElementById('active-badge-' + userId);
+      var btn   = document.getElementById('active-btn-' + userId);
+      if (d.is_active) {
+        if (badge) { badge.textContent = 'Active'; badge.className = 'ua-badge ua-badge-active'; }
+        if (btn) {
+          btn.className = btn.className.replace('btn-outline-success', 'btn-outline-warning');
+          btn.title = 'Deactivate user';
+          btn.setAttribute('onclick', 'toggleActive(' + userId + ', true)');
+          btn.querySelector('iconify-icon').setAttribute('icon', 'iconamoon:pause-circle-duotone');
+        }
+      } else {
+        if (badge) { badge.textContent = 'Inactive'; badge.className = 'ua-badge ua-badge-inactive'; }
+        if (btn) {
+          btn.className = btn.className.replace('btn-outline-warning', 'btn-outline-success');
+          btn.title = 'Activate user';
+          btn.setAttribute('onclick', 'toggleActive(' + userId + ', false)');
+          btn.querySelector('iconify-icon').setAttribute('icon', 'iconamoon:play-circle-duotone');
+        }
+      }
+      uaToast('User ' + (d.is_active ? 'activated' : 'deactivated'));
+    }).catch(function () { uaToast('Network error', 'error'); });
+}
+
+/* ── Org expand / collapse ── */
+function toggleOrg(orgId) {
+  var row     = document.getElementById('org-members-' + orgId);
+  var chevron = document.getElementById('org-chevron-' + orgId);
+  var isOpen  = row.style.display === 'table-row';
+  row.style.display = isOpen ? 'none' : 'table-row';
+  if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+}
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('[id^="org-members-"]').forEach(function (row) {
+    row.style.display = 'table-row';
+    var id = row.id.replace('org-members-', '');
+    var ch = document.getElementById('org-chevron-' + id);
+    if (ch) ch.style.transform = 'rotate(180deg)';
+  });
+});
+
+/* ── Change org membership role ── */
+function changeMembershipRole(orgId, userId, newRole) {
+  apiPost('/accounts/users/membership/', { action: 'update_role', org_id: orgId, user_id: userId, role: newRole })
+    .then(function (d) { uaToast(d.ok ? 'Membership updated' : (d.error || 'Error'), d.ok ? 'success' : 'error'); })
+    .catch(function () { uaToast('Network error', 'error'); });
+}
+
+/* ── Remove org member ── */
+function removeMember(orgId, userId, rowId) {
+  if (!confirm('Remove this user from the organization?')) return;
+  apiPost('/accounts/users/membership/', { action: 'remove', org_id: orgId, user_id: userId })
+    .then(function (d) {
+      if (d.ok) { var el = document.getElementById(rowId); if (el) el.remove(); uaToast('Member removed'); }
+      else { uaToast(d.error || 'Error', 'error'); }
+    }).catch(function () { uaToast('Network error', 'error'); });
+}
+
+/* ── Add member modal ── */
+var _addMemberOrgId = null;
+function openAddMember(orgId, orgName) {
+  _addMemberOrgId = orgId;
+  document.getElementById('addMemberOrgName').textContent = orgName;
+  document.getElementById('addMemberUser').value  = '';
+  document.getElementById('addMemberRole').value  = 'doctor';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('addMemberModal')).show();
+}
+document.getElementById('addMemberConfirmBtn').addEventListener('click', function () {
+  var userId = document.getElementById('addMemberUser').value;
+  var role   = document.getElementById('addMemberRole').value;
+  if (!userId) { document.getElementById('addMemberUser').focus(); return; }
+  apiPost('/accounts/users/membership/', { action: 'add', org_id: _addMemberOrgId, user_id: userId, role: role })
+    .then(function (d) {
+      if (d.ok) {
+        bootstrap.Modal.getInstance(document.getElementById('addMemberModal')).hide();
+        uaToast('Member added — refreshing…');
+        setTimeout(function () { location.reload(); }, 900);
+      } else { uaToast(d.error || 'Error', 'error'); }
+    }).catch(function () { uaToast('Network error', 'error'); });
+});
+
+{% if is_system_admin %}
+/* ── Create user modal ── */
+document.getElementById('createUserConfirmBtn').addEventListener('click', function () {
+  var errEl = document.getElementById('createUserError');
+  errEl.classList.add('d-none');
+  var payload = {
+    username:  document.getElementById('cu_username').value.trim(),
+    email:     document.getElementById('cu_email').value.trim(),
+    full_name: document.getElementById('cu_full_name').value.trim(),
+    password:  document.getElementById('cu_password').value,
+    role:      document.getElementById('cu_role').value,
+    specialty: document.getElementById('cu_specialty').value,
+    facility:  document.getElementById('cu_facility').value.trim(),
+  };
+  if (!payload.username || !payload.password) {
+    errEl.textContent = 'Username and password are required.';
+    errEl.classList.remove('d-none'); return;
+  }
+  apiPost('/accounts/users/create/', payload)
+    .then(function (d) {
+      if (d.ok) {
+        bootstrap.Modal.getInstance(document.getElementById('createUserModal')).hide();
+        uaToast(d.display_name + ' created');
+        setTimeout(function () { location.reload(); }, 900);
+      } else {
+        errEl.textContent = d.error || 'Error creating user.';
+        errEl.classList.remove('d-none');
+      }
+    }).catch(function () { errEl.textContent = 'Network error — please try again.'; errEl.classList.remove('d-none'); });
+});
+
+/* ── Change password modal ── */
+var _changePassUserId = null;
+function openChangePass(userId, displayName) {
+  _changePassUserId = userId;
+  document.getElementById('changePassUserName').textContent = displayName;
+  document.getElementById('cp_new_password').value    = '';
+  document.getElementById('cp_confirm_password').value = '';
+  document.getElementById('changePassError').classList.add('d-none');
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('changePassModal')).show();
+}
+document.getElementById('changePassConfirmBtn').addEventListener('click', function () {
+  var errEl   = document.getElementById('changePassError');
+  var newPass = document.getElementById('cp_new_password').value;
+  var confirm = document.getElementById('cp_confirm_password').value;
+  errEl.classList.add('d-none');
+  if (newPass.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.classList.remove('d-none'); return; }
+  if (newPass !== confirm)  { errEl.textContent = 'Passwords do not match.'; errEl.classList.remove('d-none'); return; }
+  apiPost('/accounts/users/' + _changePassUserId + '/set-password/', { new_password: newPass })
+    .then(function (d) {
+      if (d.ok) {
+        bootstrap.Modal.getInstance(document.getElementById('changePassModal')).hide();
+        uaToast('Password changed successfully');
+      } else {
+        errEl.textContent = d.error || 'Error changing password.';
+        errEl.classList.remove('d-none');
+      }
+    }).catch(function () { errEl.textContent = 'Network error.'; errEl.classList.remove('d-none'); });
+});
+{% endif %}
+
+if (window.location.hash === '#orgs') showTab('orgs');
+</script>
+{% endblock %}

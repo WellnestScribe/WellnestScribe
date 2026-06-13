@@ -215,7 +215,7 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_HTTPONLY = True
-CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = False  # Must be False for AJAX — JS reads cookie to send X-CSRFToken header
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_AGE = 60 * 60 * 8  # 8h max session lifetime
@@ -244,7 +244,7 @@ SCRIBE_MAX_COMPLETION_TOKENS = config(
 SCRIBE_TRANSCRIPTION_BACKEND = config(
     "SCRIBE_TRANSCRIPTION_BACKEND",
     default="openai",
-)  # openai | lightning | lightning_mms
+)  # openai | lightning_mms
 SCRIBE_OPENAI_API_KEY = config("SCRIBE_OPENAI_API_KEY", default="")
 SCRIBE_OPENAI_TRANSCRIBE_MODEL = config(
     "SCRIBE_OPENAI_TRANSCRIBE_MODEL", default="gpt-4o-transcribe"
@@ -267,17 +267,9 @@ SCRIBE_LIGHTNING_TRANSCRIBE_URL = config(
     "SCRIBE_LIGHTNING_TRANSCRIBE_URL",
     default="",
 )
-SCRIBE_LIGHTNING_TRANSCRIBE_ENGINE = config(
-    "SCRIBE_LIGHTNING_TRANSCRIBE_ENGINE",
-    default="whisper",
-)
 SCRIBE_LIGHTNING_TRANSCRIBE_TOKEN = config(
     "SCRIBE_LIGHTNING_TRANSCRIBE_TOKEN",
     default="",
-)
-SCRIBE_LIGHTNING_TRANSCRIBE_LANGUAGE = config(
-    "SCRIBE_LIGHTNING_TRANSCRIBE_LANGUAGE",
-    default="en",
 )
 SCRIBE_LIGHTNING_TRANSCRIBE_TARGET_LANG = config(
     "SCRIBE_LIGHTNING_TRANSCRIBE_TARGET_LANG",
@@ -289,20 +281,7 @@ SCRIBE_LIGHTNING_TRANSCRIBE_DEVICE = config(
 )
 SCRIBE_LIGHTNING_TRANSCRIBE_MODEL_ID = config(
     "SCRIBE_LIGHTNING_TRANSCRIBE_MODEL_ID",
-    default="large-v3",
-)
-SCRIBE_LIGHTNING_TRANSCRIBE_TASK = config(
-    "SCRIBE_LIGHTNING_TRANSCRIBE_TASK",
-    default="transcribe",
-)
-SCRIBE_LIGHTNING_TRANSCRIBE_COMPUTE_TYPE = config(
-    "SCRIBE_LIGHTNING_TRANSCRIBE_COMPUTE_TYPE",
-    default="auto",
-)
-SCRIBE_LIGHTNING_TRANSCRIBE_BEAM_SIZE = config(
-    "SCRIBE_LIGHTNING_TRANSCRIBE_BEAM_SIZE",
-    default=5,
-    cast=int,
+    default="facebook/mms-1b-l1107",
 )
 SCRIBE_LIGHTNING_TRANSCRIBE_TIMEOUT = config(
     "SCRIBE_LIGHTNING_TRANSCRIBE_TIMEOUT",
@@ -312,11 +291,6 @@ SCRIBE_LIGHTNING_TRANSCRIBE_TIMEOUT = config(
 SCRIBE_LIGHTNING_TRANSCRIBE_CHUNK_SECONDS = config(
     "SCRIBE_LIGHTNING_TRANSCRIBE_CHUNK_SECONDS",
     default=25,
-    cast=int,
-)
-SCRIBE_LIGHTNING_TRANSCRIBE_MMS_BATCH_SIZE = config(
-    "SCRIBE_LIGHTNING_TRANSCRIBE_MMS_BATCH_SIZE",
-    default=4,
     cast=int,
 )
 
@@ -364,10 +338,7 @@ TRIAGE_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 # Set AMBIENT_BACKEND=local to fall back to on-device MMS (CPU).
 # Remove both lines after the testing phase.
 MODAL_MMS_URL = config("MODAL_MMS_URL", default="")
-MODAL_MMS_TOKEN = config(
-    "MODAL_MMS_TOKEN",
-    default=config("SCRIBE_LIGHTNING_TRANSCRIBE_TOKEN", default=""),
-)
+MODAL_MMS_API_KEY = config("MODAL_MMS_API_KEY", default="")
 AMBIENT_BACKEND = config("AMBIENT_BACKEND", default="local")  # modal | local
 
 # ---- Logging ----

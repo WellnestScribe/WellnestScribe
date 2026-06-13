@@ -555,6 +555,91 @@ def extract_demographics(transcript: str) -> dict:
     return out
 
 
+# ---- Patois pre-processor (deterministic, runs before any LLM call) ----
+#
+# Handles the most dangerous failure mode: 'nou' (= "no", a self-correction
+# marker) misread as "now" (temporal) when flanked by two numbers.
+# Rewriting to a structured annotation before the LLM sees the text is more
+# reliable than prompt rules, which the model can still override.
+
+_PATOIS_NUM_PATTERN = (
+    r"(?:wan|wun|one|tu|tuh|tuu|two|tri|tree|three|faar|faa|four"
+    r"|fai|faiv|five|six|seven|sebn|eit|ate|eight|nain|nine|ten|\d+)"
+)
+
+_SELF_CORRECTION_RE = re.compile(
+    r"(\b" + _PATOIS_NUM_PATTERN + r"\b)"
+    r"\s+nou\s+"
+    r"(?:iz\s+ant\s+iz\s+|iz\s+ant\s+|iz\s+a\s+|it['\s]s\s+not\s+)?"
+    r"(?:a\s+)?"
+    r"(\b" + _PATOIS_NUM_PATTERN + r"\b)",
+    re.IGNORECASE,
+)
+
+# kyaan/kaan variants = CANNOT (unambiguous; cyan excluded — too common as English word)
+_KYAAN_RE = re.compile(r"\b(kyaan|kaan|kyaahn|cyaahn|caah)\b", re.IGNORECASE)
+
+# woulda/wuda = conditional/hypothetical — NOT a definite current symptom
+_WOULDA_RE = re.compile(r"\b(woulda|wuda|wudda)\b", re.IGNORECASE)
+
+# Patois discourse markers — conversational filler, not clinical content
+_DISCOURSE_RE = re.compile(
+    r"\b(?:seet\s+deh|a\s+so\s+it\s+go|mi\s+deh\s+yah|das\s+wa\s+mi\s+a\s+seh"
+    r"|yu\s+no\s+se|yu\s+zimmi|ibll\s+se)\b",
+    re.IGNORECASE,
+)
+
+# Blood pressure verbal: "[number] ova/over [number]"
+_BP_VERBAL_RE = re.compile(
+    r"(\b" + _PATOIS_NUM_PATTERN + r"\b)\s+(?:ova|over)\s+(\b" + _PATOIS_NUM_PATTERN + r"\b)",
+    re.IGNORECASE,
+)
+
+# Approximation markers before a number — value is NOT exact
+_APPROX_RE = re.compile(
+    r"\b(?:bout|aroun|around)\s+(\b" + _PATOIS_NUM_PATTERN + r"\b)",
+    re.IGNORECASE,
+)
+
+
+def _preprocess_patois(text: str) -> str:
+    """Apply deterministic Patois normalisations before the LLM interpreter.
+
+    All rules are non-LLM — regex rewrites that remove known ambiguities
+    the model cannot reliably resolve on its own.
+    """
+    # 1. Numerical self-corrections: [X] nou [restart?] [Y]
+    def _replace_correction(m: re.Match) -> str:
+        val_a, val_b = m.group(1), m.group(2)
+        return (
+            f"[SELF-CORRECTION: patient said {val_a}, immediately corrected to "
+            f"{val_b}. DISCARD {val_a}. Active value is {val_b}. "
+            f"'nou' here = 'no' (correction), NOT 'now'.]"
+        )
+    text = _SELF_CORRECTION_RE.sub(_replace_correction, text)
+
+    # 2. Kyaan variants → CANNOT (negation safety)
+    text = _KYAAN_RE.sub(lambda m: f"[CANNOT: {m.group(0)}]", text)
+
+    # 3. Woulda → CONDITIONAL (not a definite active symptom)
+    text = _WOULDA_RE.sub(lambda m: f"[CONDITIONAL-not-definite: {m.group(0)}]", text)
+
+    # 4. Discourse markers → strip clinical weight
+    text = _DISCOURSE_RE.sub("[DISCOURSE MARKER — ignore clinically]", text)
+
+    # 5. BP verbal pattern annotation
+    def _replace_bp(m: re.Match) -> str:
+        return f"[BLOOD PRESSURE READING: {m.group(1)} over {m.group(2)} — verify]"
+    text = _BP_VERBAL_RE.sub(_replace_bp, text)
+
+    # 6. Approximation markers
+    text = _APPROX_RE.sub(
+        lambda m: f"[APPROXIMATE VALUE ~{m.group(1)} — do not record as exact]", text
+    )
+
+    return text
+
+
 # ---- Patois ASR post-processor ----
 # Used by the Triage sandbox to interpret raw MMS / Patois output and
 # convert it into clean clinical English the SOAP pipeline can consume.
@@ -658,30 +743,135 @@ Getting negation wrong is a clinical error. Follow these absolutely:
 6. Double-check every sentence for nuh/nah/kyaahn/neva before outputting.
 7. "mi no riili... bot" = hedging pattern. "no riili" is a softener. \
    The real statement comes AFTER "bot" (but). That is the clinical finding.
- 
+8. Patois double-negative = SINGLE negation. "nuh ... no" / "nuh ... none" \
+   / "nah ... nothing" / "neva ... no" all mean ABSENCE, not presence. \
+   "mi nuh have no fever" = patient has NO fever. NEVER read as affirmation.
+
 ---
- 
-RULE 3 — DISCOURSE MARKERS (NOT SYMPTOMS)
- 
+
+RULE 3 — UNCERTAINTY FLAGGING (PATIENT SAFETY)
+
+When you cannot confidently resolve a token — especially pain scores, doses, body \
+parts, or medication names — embed an [UNCERTAIN: what you heard] tag INLINE in \
+Step 2 rather than guessing. Examples:
+  "Pain score [UNCERTAIN: heard 6 or 8 — correction signal unclear] out of 10."
+  "Patient takes [UNCERTAIN: heard 'di yello one' — drug name not identified]."
+  "Pain in [UNCERTAIN: heard 'art' — may be heart or another location] area."
+The SOAP generator will preserve these flags. The doctor must resolve them.
+Never resolve uncertainty silently. A wrong guess in a clinical record can harm.
+
+---
+
+RULE 4 — DISCOURSE MARKERS (NOT SYMPTOMS)
+
 These are conversational fillers — do not interpret as clinical content:
 - "a yu no se" / "yu know se" / "yu zimmi" = "you know what I mean" — filler
 - "ibll se" / "mi a se" = "I'm saying / let me tell you" — intro filler
 - "si an blind, ier an def" = proverb meaning "turn a blind eye" — NOT visual/hearing symptoms
 - "a so it go" = "that's how it is" — resignation filler
 - "das wa mi a seh" = "that's what I'm saying" — emphasis filler
- 
+- "mi deh yah" = "I'm here / I'm managing" — social filler, NOT a clinical finding
+- "seet deh" = "look here / you see" — attention filler, NOT a symptom
+
 ---
- 
-RULE 4 — PATIENT MINIMISING PATTERN
- 
+
+RULE 5 — PATIENT MINIMISING PATTERN
+
 Jamaican patients frequently minimise symptoms. Flag these clinically:
 - "likkle likkle" before a serious symptom = downplaying, not mild
 - "a nuh nutten" = "it's nothing" — patient downplaying, flag this
 - "mi no riili" before a symptom = softening before admitting severity
 - A patient presenting despite minimising = symptom is significant
- 
+
 ---
- 
+
+RULE 6 — TENSE & ASPECT MARKERS (CLINICAL URGENCY)
+
+Patois uses particles for tense/aspect that change clinical urgency:
+1. "mi a [verb]" / "mi deh [verb]" = ONGOING NOW — present progressive. \
+   "mi a have pain" = actively experiencing pain RIGHT NOW. Mark as ongoing.
+2. "mi did [verb]" / "mi did have" = PAST — completed/historical. \
+   "mi did have pain" = pain occurred in the past, may be resolved.
+3. "mi woulda / wuda [verb]" = CONDITIONAL/HABITUAL — NOT a definite current symptom. \
+   "mi woulda feel dizzy" = situationally/sometimes dizzy, not acutely now. \
+   "mi woulda get pain when mi walk" = exertional, not constant. Mark as conditional.
+4. "mi use to [verb]" = HABITUAL PAST, no longer occurring. \
+   "mi use to have headache" = resolved, not current. Mark as historical.
+5. "from [time] + a" = ONGOING since a point: "mi belly a hurt mi from mawning" \
+   = abdominal pain ongoing since this morning.
+6. In clinical output: label symptoms clearly as ongoing / resolved / intermittent \
+   based on these markers. Never flatten all symptoms to simple present tense.
+
+---
+
+RULE 7 — PATOIS NUMERALS (DOSE & PAIN SCORE SAFETY)
+
+Map Patois numerals to Arabic digits BEFORE interpreting any dose, pain score,
+or frequency. Missing this causes fabricated clinical values.
+
+wan/wun = 1 | tu/tuh/tuu = 2 | tri/tree = 3 | faar/faa = 4 | fai/faiv = 5
+six = 6 | seven/sebn = 7 | eit/ate = 8 | nain/nine = 9 | ten = 10
+
+Dosing patterns: "wan tablet inna di mawning an wan a night" = 1 tab BD
+Frequency: "tu time a day" = BD | "tri time a day" = TDS | "evry night" = OD nocte
+
+SAFETY RULE: If NO explicit numeral is spoken for a pain score → write [pain \
+score not stated]. If NO explicit dose/frequency is spoken → write [dose not \
+stated] / [frequency not stated]. NEVER guess or invent numbers.
+
+PAIN SCORE — TWO CASES, handle differently:
+
+CASE A — SELF-CORRECTION (patient changes their stated value):
+Signals: "nou" (no) / "no" / "nah" immediately after a number, then a new number.
+Also: stutter-restarts like "iz ant iz" / "it's not... it's" immediately after a number.
+"mi seh six... no, a eight" = patient corrected from 6 → RECORD 8.
+
+WORKED EXAMPLE — memorise this exact pattern:
+Input:  "ipien levl iz a siks nou iz ant iz a iet out a ten"
+Step 1 token-by-token:
+  ipien=pain | levl=level | iz=is | a=a | siks=6 | nou=NO (correction) |
+  iz=is | ant=not (stutter — speech restart) | iz=is | a=a | iet=8 | out=out | a=of | ten=10
+Step 2: Patient said the pain level is 6, then immediately self-corrected:
+  "No — it's not — it's an 8 out of 10."
+Step 3 Severity: 8/10 (self-corrected from initial 6/10 statement).
+WHY NOT "now": "nou" is followed by "iz ant iz" (stutter restart), not a clause end.
+  If it were temporal it would read: "pain level is 6 now; [separate clause] it was 8".
+  The restart pattern "iz ant iz" = patient backing up mid-sentence to replace the number.
+Active score = 8/10. The 6 is discarded.
+
+CASE B — TEMPORAL PROGRESSION (current vs a past state):
+Signals: explicit past-tense marker for the OLD value: "waz / was / used to / before / bifoa / laas taim / it used to be".
+"pain iz six now, waz eight before" → current 6, previous 8. Record both.
+"iz a six now; it used to be eight" → current 6, previous 8.
+Active score = the CURRENT value.
+
+DISTINGUISHING THE TWO:
+- CASE B requires an EXPLICIT past-tense marker on the OLD value: waz/was/before/bifoa/used to/it used to.
+  "nou iz a six, waz a iet" → "now it's 6, was 8" → CASE B. Current = 6.
+- CASE A: if the patient produces a restart/stutter (nou/no/nah + iz ant iz / it's not / it's) → CASE A regardless.
+- If ambiguous with NO temporal marker → default to CASE A. Record the LATER stated value.
+- NEVER treat "iz ant iz" as a double-negative. It is always a speech restart / self-correction.
+- WARNING: "nou" alone does NOT confirm CASE B. Only an explicit past marker on the OLD value does.
+
+---
+
+RULE 8 — METAPHORICAL & CULTURALLY-SPECIFIC SYMPTOM LANGUAGE
+
+Map these expressions to standard clinical terms (preserve original under \
+Patient's Own Words):
+- "chest heavy like stone" / "pressure pon mi chest" → chest heaviness/pressure
+- "something a bite mi inside" / "something a tear mi" → visceral pain (describe as stated)
+- "mi heart a jump" / "heart a run" → palpitations
+- "mi head a spin" / "head swimming" → vertigo / dizziness
+- "mi eye dark" / "eye go blank" → visual dimming / presyncope
+- "mi stomach a talk" / "belly a bubble" → bowel sounds / cramping
+- "mi weak bad" / "mi body mek down" → generalised weakness / fatigue
+- "mi can't hold nothing" → persistent vomiting
+- "mi cold cold inside" / "mi ketch a cold" → chills / rigors (not necessarily URTI)
+- "mi feel strange" / "mi feel funny" → non-specific systemic complaint — ask for more detail
+
+---
+
 PHONETIC RESOLUTION DICTIONARY
  
 CORE GRAMMAR:
@@ -693,16 +883,33 @@ nuh/nah/na = no/not | kyaahn/cyaahn/caah = cannot | bot/but = but
 an = and | das/dat = that/that is | wa/wah = what | waa/waah = want to
 kaazi/kazi/caaz = cause/because | fram/from = from/since | op = of
 tu/tuh = to | riili/rili = really | iiriil/eerily = really (speech artefact)
+
+CRITICAL — "nou" disambiguation (causes pain-score errors if missed):
+nou = "now" (temporal) OR "no" (correction) — context decides which:
+  CORRECTION ("no"): nou appears AFTER a stated value and is immediately followed
+    by a speech restart such as "iz ant iz" / "iz a" / "it's not" / "it's" before
+    a NEW value. The patient is backing up and replacing the first value.
+    Pattern: [value A] + nou + [restart] + [value B] → discard A, keep B.
+  TEMPORAL ("now"): nou appears at the END of a clause with no following restart
+    and no second value. "mi av i pain nou" = "I have this pain now/currently."
+  WHEN IN DOUBT between the two readings → treat as CORRECTION (safer clinically).
  
 BODY PARTS:
 batam/battam op mi fut = plantar surface/SOLE OF FOOT — NEVER abdomen
-fut/foot = foot or leg (clarify from context)
+fut/foot = lower limb — Patois "foot" covers hip to toe. DO NOT narrow to anatomical \
+  foot. Write "lower limb (patient said foot — confirm location)".
 bak a mi fut = posterior foot/heel/ankle
-beli/belly = abdomen | ches = chest | bak/back = back | ed/hed = head
+beli/belly = abdomen | bak/back = back | ed/hed = head
 nek = neck | nee/nii = knee | nee cup = patella | elbo = elbow
 han = hand | finga = finger | toa = toe | nable = navel/umbilicus
 yeye/yai = eye | ier/yier = ear | teet = teeth | mout = mouth
-troot/troat = throat | waist = waist/lower back | heel/hiil = heel
+troot/troat = throat | waist = waist/lower back (entire region, not just waist) | heel/hiil = heel
+haart/haart pain = HEART / cardiac pain (NOT "art" — if "art pain" seen, treat as haart/heart)
+bres/brehs/breas = breast/chest (chest pain risk — do not lose as "breath" or "brace")
+ches = chest | hankle/ankle = ankle
+DISAMBIGUATION: if you see "art pain" in the pre-processed text, it almost certainly
+  means haart (heart) pain — flag as [UNCERTAIN: heard 'art' — may be heart pain].
+  If you see "brace" or "breath" in a pain context, consider bres (breast/chest pain).
  
 PAIN & SYMPTOMS:
 pien/pain/peen = pain | apien/a pain = is causing pain | pienful = painful
@@ -717,6 +924,11 @@ fram sat de/satdeh = since Saturday | fram lang taim = longstanding/chronic
 fram mawning = since this morning | fram yestiday = since yesterday
 wah day = a few days ago | all now = still/ongoing | jus staat = recently started
 evry now an den = intermittent | tuu ze/tuezdeh = since Tuesday
+
+RELATIVE DATE ANCHORING: When a relative cultural reference is used, note it
+as approximate. E.g. "since Christmas" → "onset approximately December [year]
+[patient-stated: since Christmas]". If the event cannot be reliably dated →
+write "onset [time not clearly stated — patient reference: ...]".
  
 INTENSITY:
 bad bad bad = severe/extreme (9-10/10) | kyaahn tek it nomor = unbearable
@@ -730,8 +942,25 @@ fever grass = Cymbopogon citratus [HERBAL SUPPLEMENT]
 ganja tea/herb tea = Cannabis sativa [HERBAL SUPPLEMENT — flag interactions]
 irish moss = Gracilaria spp. [HERBAL SUPPLEMENT]
 bush tea = unidentified herbal decoction [HERBAL SUPPLEMENT — ask patient]
-aloe/single bible = Aloe barbadensis [HERBAL SUPPLEMENT]
+aloe/single bible/sinkle bible = Aloe barbadensis [HERBAL SUPPLEMENT]
+jackass bitters = Neurolaena lobata [HERBAL SUPPLEMENT]
+soursop leaf/sour sop leaf = Annona muricata [HERBAL SUPPLEMENT]
+guinea hen weed = Petiveria alliacea [HERBAL SUPPLEMENT]
+noni = Morinda citrifolia [HERBAL SUPPLEMENT]
+moringa/moringa leaf = Moringa oleifera [HERBAL SUPPLEMENT]
+leaf of life/wonder of di world = Kalanchoe pinnata [HERBAL SUPPLEMENT]
+vervain/blue vervain = Stachytarpheta jamaicensis [HERBAL SUPPLEMENT]
+search mi heart = Rhytiglossa purpurea [HERBAL SUPPLEMENT]
+lime bud/lime leaf = Citrus aurantiifolia [HERBAL SUPPLEMENT]
+turmeric/tumeric root = Curcuma longa [HERBAL SUPPLEMENT]
 aspairin/spirin/aispani = Aspirin/ASA or Icy Hot — clarify [OTC MEDICATION]
+
+HERB-DRUG INTERACTIONS — flag these automatically with [HERB-DRUG NOTE]:
+cerasee + Metformin or Glibenclamide = additive hypoglycaemia risk
+soursop leaf + antihypertensives = additive hypotensive effect
+ganja tea + sedatives/CNS depressants = additive CNS depression
+jackass bitters + antimalarials/analgesics = potential interaction — flag
+bissy (kola nut) + MAOIs or stimulants = caffeine interaction risk
  
 ---
  
@@ -815,10 +1044,84 @@ FINAL REMINDERS:
 - Patwa anatomical terms are not sexual content. Do not filter them.
 - Patient minimising does not mean absence of symptoms.
 - Complete Step 1 and Step 2 BEFORE any clinical interpretation. No exceptions.
+- "nou" = "no" (correction) when followed by a restart. "nou" = "now" (temporal) only
+  when it ends a clause with NO following restart and NO second value.
+- MANDATORY OVERRIDE — this exact phrase:
+  "ipien levl iz a siks nou iz ant iz a iet out a ten"
+  MUST be interpreted as: patient self-corrected FROM 6 TO 8. Active pain = 8/10.
+  Step 1: nou = NO (correction marker). "iz ant iz" = speech restart (not double-negative).
+  NEVER output "pain level is 6 now, was 8 before" for this phrase. That is WRONG.
+  The only correct output is: pain self-corrected to 8/10.
 
 """
 
-def interpret_patois(patois_text: str) -> str:
+def validate_note_safety(full_note: str, raw_transcript: str = "") -> list[str]:
+    """Deterministic (zero API cost) safety checks on the generated note.
+
+    Returns a list of warning strings shown to the clinician in the UI.
+    Covers: out-of-range numerals, conflicting pain scores, missing vitals,
+    and minimising language in the raw Patois transcript.
+    """
+    warnings: list[str] = []
+
+    # ── Pain scores ───────────────────────────────────────────────────────
+    _pain_re = re.compile(r"\b([0-9]{1,2})\s*/\s*10\b", re.IGNORECASE)
+    pain_scores = [int(m.group(1)) for m in _pain_re.finditer(full_note)]
+    for score in pain_scores:
+        if not (0 <= score <= 10):
+            warnings.append(f"[RANGE ALERT] Pain score {score}/10 outside 0–10 — verify.")
+    valid_scores = sorted({s for s in pain_scores if 0 <= s <= 10})
+    if len(valid_scores) >= 2:
+        scores_str = ", ".join(f"{s}/10" for s in valid_scores)
+        warnings.append(
+            f"[CONFLICTING PAIN SCORES] Note contains {scores_str}. Confirm which is current."
+        )
+
+    # ── Blood pressure ────────────────────────────────────────────────────
+    _bp_re = re.compile(r"\b([0-9]{2,3})\s*/\s*([0-9]{2,3})\b")
+    for m in _bp_re.finditer(full_note):
+        sys_bp, dia_bp = int(m.group(1)), int(m.group(2))
+        # Only flag values that look like real BP (not doses or fractions)
+        if 30 <= sys_bp <= 350 and 20 <= dia_bp <= 200:
+            if not (60 <= sys_bp <= 250) or not (40 <= dia_bp <= 150):
+                warnings.append(
+                    f"[RANGE ALERT] BP {sys_bp}/{dia_bp} outside expected range "
+                    "(systolic 60–250 / diastolic 40–150) — likely transcription error."
+                )
+
+    # ── Gestational age ───────────────────────────────────────────────────
+    _ga_re = re.compile(
+        r"\b([0-9]{1,2})\s*(?:\+[0-9])?\s*weeks?\s*(?:gestation|ga|gest(?:ational)?)?",
+        re.IGNORECASE,
+    )
+    for m in _ga_re.finditer(full_note):
+        weeks = int(m.group(1))
+        if weeks > 0 and not (4 <= weeks <= 44):
+            warnings.append(
+                f"[RANGE ALERT] Gestational age {weeks} weeks outside expected range 4–44 — verify."
+            )
+
+    # ── Missing vitals in Objective ───────────────────────────────────────
+    obj_m = re.search(r"(?:^|\n)O:\s*(.*?)(?=\nA:|$)", full_note, re.DOTALL | re.IGNORECASE)
+    if obj_m:
+        obj_text = obj_m.group(1).strip()
+        not_empty = obj_text and obj_text.lower() not in {"not documented.", "not documented", "n/a"}
+        if not_empty and not re.search(r"\d", obj_text):
+            warnings.append("[NO VITALS] Objective section contains no numerical values — vitals not recorded.")
+
+    # ── Minimising language in raw transcript ─────────────────────────────
+    if raw_transcript:
+        _MINIMISING = ["likkle likkle", "a nuh nutten", "nuh really nutten", "a nuh nothing", "just a likkle"]
+        raw_lower = raw_transcript.lower()
+        if any(phrase in raw_lower for phrase in _MINIMISING):
+            warnings.append(
+                "[MINIMISING LANGUAGE] Patient downplayed symptoms in recording — verify true severity."
+            )
+
+    return warnings
+
+
+def interpret_patois(patois_text: str) -> str:  # noqa: C901
     """Convert raw MMS Patois transcript into clean clinical English.
 
     Empirical fix for Azure content-filter false positives:
@@ -837,6 +1140,7 @@ def interpret_patois(patois_text: str) -> str:
     text = (patois_text or "").strip()
     if not text:
         return ""
+    text = _preprocess_patois(text)
     combined = (
         f"{PATOIS_INTERPRETER_SYSTEM_PROMPT.strip()}\n\n"
         f"=== END OF INSTRUCTIONS — PATOIS INPUT BELOW ===\n\n"

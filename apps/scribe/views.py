@@ -452,11 +452,13 @@ def drug_search_api(request):
 # drug-check screen autocomplete. Free text is still allowed; this is just
 # a suggestion list so doctors don't have to spell unfamiliar names.
 COMMON_HERBS = [
-    "cerasee", "leaf of life", "fever grass (lemongrass)", "soursop leaf",
-    "ginger root", "moringa", "bissy (kola nut)", "lime bud", "guinea hen weed",
-    "aloe vera (sinkle bible)", "noni", "neem", "comfrey", "annatto",
-    "rosemary tea", "mint tea", "search me heart", "vervain", "cannabis (ganja) tea",
-    "blue vervain", "dandelion", "sage tea", "thyme tea",
+    "cerasee", "leaf of life (wonder of the world)", "fever grass (lemongrass)",
+    "soursop leaf", "soursop bark", "ginger root", "moringa", "moringa leaf",
+    "bissy (kola nut)", "lime bud", "guinea hen weed", "aloe vera (sinkle bible)",
+    "noni", "neem", "comfrey", "annatto", "rosemary tea", "mint tea",
+    "search me heart", "vervain", "blue vervain", "cannabis (ganja) tea",
+    "dandelion", "sage tea", "thyme tea", "jackass bitters", "irish moss",
+    "turmeric root", "peppermint tea", "christmas bush", "wild sage",
 ]
 
 
@@ -996,8 +998,11 @@ def transcribe_session_api(request, pk):
         return JsonResponse({"ok": False, "error": str(exc)}, status=500)
 
     session.transcript = transcript
+    # Preserve original ASR output so regeneration can re-run the interpreter.
+    if not session.raw_transcript:
+        session.raw_transcript = transcript
     session.status = "review"
-    session.save(update_fields=["transcript", "status", "updated_at"])
+    session.save(update_fields=["transcript", "raw_transcript", "status", "updated_at"])
     _log(session, "transcribed", f"chars={len(transcript)}")
     return JsonResponse({"ok": True, "transcript": transcript})
 
@@ -1008,15 +1013,64 @@ def transcribe_session_api(request, pk):
 def generate_note_api(request, pk):
     session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)
     payload = _json_body(request)
-    transcript = (payload.get("transcript") or session.transcript or "").strip()
     note_format = payload.get("note_format", session.note_format)
     length_mode = payload.get("length_mode", session.length_mode)
+    force_reinterpret = _coerce_bool(payload.get("force_reinterpret", False))
 
-    if not transcript or len(transcript) < 20:
+    def _reconstruct_raw_from_step1(stored: str) -> str:
+        m = re.search(
+            r"STEP\s+1[^:]*:\s*\n+(.*?)(?=\n---|\nSTEP\s+2\b|\Z)",
+            stored, re.DOTALL | re.IGNORECASE,
+        )
+        if not m:
+            return ""
+        tokens = []
+        for line in m.group(1).splitlines():
+            line = line.strip().lstrip("*- ")
+            if " = " in line:
+                tokens.append(line.split(" = ", 1)[0].strip())
+        return " ".join(t for t in tokens if t)
+
+    def _extract_step2(stored: str) -> str:
+        m = re.search(
+            r"STEP\s+2[^:]*:\s*\n+(.*?)(?=\n---|\nSTEP\s+3\b|\Z)",
+            stored, re.DOTALL | re.IGNORECASE,
+        )
+        return m.group(1).strip() if m else ""
+
+    raw_source = session.raw_transcript
+    if not raw_source and session.transcript:
+        raw_source = _reconstruct_raw_from_step1(session.transcript)
+        if raw_source:
+            session.raw_transcript = raw_source
+
+    is_first_generation = not SOAPNote.objects.filter(session=session).exists()
+
+    if (is_first_generation or force_reinterpret) and raw_source:
+        # First generation: always interpret raw Patois → Step 2 English.
+        # Explicit re-interpret: re-runs so prompt improvements take effect.
+        try:
+            fresh = run_interpret_patois(raw_source)
+            step2 = _extract_step2(fresh) or fresh.strip()
+            session.transcript = step2
+            transcript = step2
+        except Exception:  # noqa: BLE001
+            transcript = (session.transcript or "").strip()
+    else:
+        # Regeneration default: use cached Step 2 English — no extra LLM call.
+        transcript = (session.transcript or "").strip()
+        # If an old session still has full Step 1/2/3 block, strip to Step 2.
+        if transcript and "STEP 2" in transcript.upper():
+            step2 = _extract_step2(transcript)
+            if step2:
+                transcript = step2
+                session.transcript = step2
+
+    if not transcript or len(transcript) < 50:
         return JsonResponse(
             {
                 "ok": False,
-                "error": "Transcript is too short. Record at least 30 seconds or paste more text.",
+                "error": "Transcript is too short. Record at least 30 seconds of speech or paste more text.",
             },
             status=400,
         )
@@ -1072,6 +1126,13 @@ def generate_note_api(request, pk):
         _log(session, "error", "generate: empty output")
         return JsonResponse({"ok": False, "error": msg}, status=502)
 
+    from .services.soap_generator import validate_note_safety  # local import
+    safety_warnings = validate_note_safety(
+        result.full_note,
+        raw_transcript=session.raw_transcript or "",
+    )
+    all_flags = result.flags + safety_warnings
+
     note, _ = SOAPNote.objects.update_or_create(
         session=session,
         defaults={
@@ -1083,27 +1144,11 @@ def generate_note_api(request, pk):
             "narrative": result.narrative,
             "full_note": result.full_note,
             "edited_note": result.full_note,
-            "flags": result.flags,
+            "flags": all_flags,
         },
     )
     session.status = "review"
-    # After a successful generation, replace the raw phonetic transcript with a
-    # clean English interpretation so the Transcript tab is readable by doctors.
-    # Failures here are non-fatal — the note is already saved.
-    if session.transcript:
-        try:
-            clean_transcript = run_interpret_patois(session.transcript)
-            if clean_transcript and clean_transcript.strip():
-                # Extract only the Step 2 assembled English — hide phonetic workings
-                m = re.search(
-                    r"STEP\s+2[^:]*:\s*\n+(.*?)(?=\nSTEP\s+3\b|\Z)",
-                    clean_transcript,
-                    re.DOTALL | re.IGNORECASE,
-                )
-                session.transcript = m.group(1).strip() if m else clean_transcript.strip()
-        except Exception:  # noqa: BLE001
-            pass
-    session.save(update_fields=["status", "transcript", "updated_at"])
+    session.save(update_fields=["status", "transcript", "raw_transcript", "updated_at"])
     _log(session, "generated", f"format={result.note_format} flags={result.flags}")
 
     return JsonResponse(

@@ -27,8 +27,6 @@ from typing import Any
 
 from django.conf import settings
 
-from .mms_asr import MMSDependencyError, transcribe_mms_file
-
 
 logger = logging.getLogger(__name__)
 
@@ -221,17 +219,6 @@ def transcribe_mms(audio_path: str | Path, *, device: str = "cpu", target_lang: 
         ids = torch.argmax(logits, dim=-1)
         out.append(processor.batch_decode(ids)[0])
     return " ".join(out).strip()
-
-
-# Prefer the shared helper so the Lightning GPU service and the local triage
-# sandbox run the same MMS implementation. Keeping this wrapper preserves the
-# existing public import path used elsewhere in the app.
-def transcribe_mms(audio_path: str | Path, *, device: str = "cpu", target_lang: str = "jam") -> str:
-    try:
-        result = transcribe_mms_file(audio_path, device=device, target_lang=target_lang)
-        return result.text
-    except MMSDependencyError as exc:  # noqa: BLE001
-        raise TriageDependencyError(str(exc)) from exc
 
 
 # ---- T5 paraphrase / translate (text-side helper) ---------------------------
@@ -601,6 +588,27 @@ def transcribe_parakeet(audio_path: str | Path, *, device: str = "cpu") -> str:
 
 # TEMPORARY — Modal L4 GPU endpoint for ambient-mode latency testing.
 # Remove this function once the testing phase is complete.
+def _convert_webm_to_wav(src: Path) -> "Path | None":
+    """Best-effort webm→WAV via ffmpeg. Returns temp WAV path or None."""
+    import subprocess
+    import tempfile
+
+    try:
+        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        tmp.close()
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-i", str(src), "-ar", "16000", "-ac", "1", tmp.name],
+            capture_output=True,
+            timeout=60,
+        )
+        if result.returncode == 0 and Path(tmp.name).stat().st_size > 100:
+            return Path(tmp.name)
+        Path(tmp.name).unlink(missing_ok=True)
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def transcribe_modal_mms(
     audio_path: str | Path,
     *,
@@ -626,22 +634,39 @@ def transcribe_modal_mms(
         )
 
     headers = {}
-    token = (getattr(settings, "MODAL_MMS_TOKEN", "") or "").strip()
-    if token:
-        # Mirror the speech API's simple auth mode so ambient voice can use the
-        # same protected Modal deployment as the rest of the app.
-        headers["X-API-Key"] = token
+    if settings.MODAL_MMS_API_KEY:
+        headers["X-API-Key"] = settings.MODAL_MMS_API_KEY
 
-    with open(audio_path, "rb") as f:
-        resp = requests.post(
-            url,
-            headers=headers,
-            files={"file": (Path(audio_path).name, f)},
-            data={"backend": "mms", "target_lang": target_lang},
-            timeout=300,
-        )
-    resp.raise_for_status()
+    src = Path(audio_path)
+    tmp_wav: "Path | None" = None
+    # Browser webm files lack duration metadata; convert to WAV so Modal's
+    # duration pre-check doesn't read 0 s and reject valid recordings.
+    if src.suffix.lower() in {".webm", ".ogg", ".opus"}:
+        tmp_wav = _convert_webm_to_wav(src)
+
+    send_path = tmp_wav if tmp_wav else src
+    try:
+        with open(send_path, "rb") as f:
+            resp = requests.post(
+                url,
+                headers=headers,
+                files={"file": (send_path.name, f, "audio/wav" if tmp_wav else "audio/webm")},
+                data={"backend": "mms", "target_lang": target_lang},
+                timeout=300,
+            )
+    finally:
+        if tmp_wav:
+            tmp_wav.unlink(missing_ok=True)
+
+    if not resp.ok:
+        body = ""
+        try:
+            body = resp.json().get("detail") or resp.json().get("error") or resp.text[:300]
+        except Exception:  # noqa: BLE001
+            body = resp.text[:300]
+        raise RuntimeError(f"Modal MMS HTTP {resp.status_code}: {body}")
+
     data = resp.json()
     if not data.get("ok"):
-        raise RuntimeError(f"Modal MMS returned error: {data}")
+        raise RuntimeError(f"Modal MMS error: {data.get('error') or data}")
     return data

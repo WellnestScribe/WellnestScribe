@@ -38,6 +38,16 @@ def ui_preferences(request):
         is_admin = bool(profile and profile.is_admin) or user.is_staff or user.is_superuser
         triage_visible = bool(profile and profile.can_access_triage()) or is_admin
 
+    is_org_admin = False
+    if not is_admin and user and user.is_authenticated:
+        try:
+            from emr.models import OrganisationMembership
+            is_org_admin = OrganisationMembership.objects.filter(
+                user=user, role__in=["admin", "system_admin"]
+            ).exists()
+        except Exception:
+            pass
+
     return {
         "doctor_profile": profile,
         "ui_font_scale": profile.font_scale if profile else 100,
@@ -45,4 +55,5 @@ def ui_preferences(request):
         "ui_asset_version": _ui_asset_version(),
         "triage_visible": triage_visible,
         "is_admin": is_admin,
+        "is_org_admin": is_org_admin,
     }

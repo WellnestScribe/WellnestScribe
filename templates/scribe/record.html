@@ -554,47 +554,86 @@
                     <iconify-icon icon="iconamoon:profile-circle-duotone" class="text-primary" style="font-size:1.3rem;"></iconify-icon>
                     Who is this session for?
                 </h5>
-                <button type="button" id="patientModalSkipBtn" aria-label="Skip"
-                        style="background:none;border:none;padding:4px 6px;cursor:pointer;line-height:1;opacity:0.6;color:var(--bs-body-color,#212529);">
-                    <iconify-icon icon="iconamoon:close-circle-1-duotone" style="font-size:1.2rem;"></iconify-icon>
+                <button type="button" id="patientModalCancelBtn" aria-label="Cancel"
+                        class="ms-auto btn btn-sm btn-outline-danger border-0 rounded-circle d-flex align-items-center justify-content-center"
+                        style="width:2rem;height:2rem;padding:0;flex-shrink:0;">
+                    <iconify-icon icon="iconamoon:close-bold" style="font-size:1.1rem;"></iconify-icon>
                 </button>
             </div>
             <div class="modal-body pt-1 pb-2">
-                <div class="input-group mb-2">
-                    <span class="input-group-text border-end-0 bg-transparent">
-                        <iconify-icon icon="iconamoon:search-duotone" class="text-muted"></iconify-icon>
-                    </span>
-                    <input type="text"
-                           id="patientSearch"
-                           class="form-control border-start-0 ps-0"
-                           placeholder="Search patients or type a new name…"
-                           autocomplete="off"
-                           spellcheck="false">
+                {# Step 1: search / select patient #}
+                <div id="patientSearchStep">
+                    <div class="input-group mb-2">
+                        <span class="input-group-text border-end-0 bg-transparent">
+                            <iconify-icon icon="iconamoon:search-duotone" class="text-muted"></iconify-icon>
+                        </span>
+                        <input type="text"
+                               id="patientSearch"
+                               class="form-control border-start-0 ps-0"
+                               placeholder="Search patients or type a new name…"
+                               autocomplete="off"
+                               spellcheck="false">
+                    </div>
+                    <ul class="patient-modal-list" id="patientList" style="max-height:280px;overflow-y:auto;">
+                        <li class="text-muted small text-center py-3">
+                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                            Loading recent patients…
+                        </li>
+                    </ul>
+                    {# Gender row — visible when a patient is selected or a new name typed #}
+                    <div id="patientGenderRow" class="d-none mt-2 d-flex align-items-center gap-2">
+                        <span class="small text-muted fw-semibold" style="white-space:nowrap;">Patient sex:</span>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <input type="radio" class="btn-check" name="modalGender" id="mgM" value="M" autocomplete="off">
+                            <label class="btn btn-outline-primary" for="mgM">Male</label>
+                            <input type="radio" class="btn-check" name="modalGender" id="mgF" value="F" autocomplete="off">
+                            <label class="btn btn-outline-primary" for="mgF">Female</label>
+                            <input type="radio" class="btn-check" name="modalGender" id="mgO" value="O" autocomplete="off">
+                            <label class="btn btn-outline-secondary" for="mgO">Other</label>
+                        </div>
+                    </div>
+                    {# Disambiguation row — shown when a new patient shares a name with an existing one #}
+                    <div id="patientDisambigRow" class="d-none mt-2">
+                        <label class="small fw-semibold text-warning-emphasis mb-1 d-block" style="font-size:0.78rem;">
+                            <iconify-icon icon="iconamoon:information-circle-duotone" class="me-1 align-middle"></iconify-icon>
+                            Same name already exists — add a note to tell them apart:
+                        </label>
+                        <input type="text" id="patientDisambigInput" class="form-control form-control-sm"
+                               placeholder="e.g. DOB: 1985 · infant · mother · Room 3"
+                               autocomplete="off" spellcheck="false">
+                    </div>
+                    <p class="small text-muted mt-2 mb-0" style="font-size:0.76rem;">
+                        <iconify-icon icon="iconamoon:information-circle-duotone" class="me-1 align-middle"></iconify-icon>
+                        Patient name is saved to the session. Press <kbd>×</kbd> to skip.
+                    </p>
                 </div>
-                <ul class="patient-modal-list" id="patientList" style="max-height:280px;overflow-y:auto;">
-                    <li class="text-muted small text-center py-3">
-                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                        Loading recent patients…
-                    </li>
-                </ul>
-                {# Gender row — visible when a patient is selected or a new name typed #}
-                <div id="patientGenderRow" class="d-none mt-2 d-flex align-items-center gap-2">
-                    <span class="small text-muted fw-semibold" style="white-space:nowrap;">Patient sex:</span>
-                    <div class="btn-group btn-group-sm" role="group">
-                        <input type="radio" class="btn-check" name="modalGender" id="mgM" value="M" autocomplete="off">
-                        <label class="btn btn-outline-primary" for="mgM">Male</label>
-                        <input type="radio" class="btn-check" name="modalGender" id="mgF" value="F" autocomplete="off">
-                        <label class="btn btn-outline-primary" for="mgF">Female</label>
-                        <input type="radio" class="btn-check" name="modalGender" id="mgO" value="O" autocomplete="off">
-                        <label class="btn btn-outline-secondary" for="mgO">Other</label>
+
+                {# Step 2: returning patient — skip redirect, let doctor choose inline #}
+                <div id="patientReturnStep" class="d-none">
+                    <div class="d-flex align-items-center gap-3 mb-3 p-2 rounded-2 border">
+                        <iconify-icon icon="iconamoon:profile-circle-duotone" class="text-primary flex-shrink-0" style="font-size:2.4rem;"></iconify-icon>
+                        <div class="lh-sm overflow-hidden">
+                            <div class="fw-semibold" id="patientReturnName"></div>
+                            <div class="small text-muted" id="patientReturnMeta"></div>
+                            <a id="patientAllVisitsLink" href="#" class="small text-decoration-none d-none" style="font-size:0.76rem;">
+                                <iconify-icon icon="iconamoon:history-duotone" class="me-1 align-middle"></iconify-icon>
+                                <span id="patientAllVisitsLabel"></span>
+                            </a>
+                        </div>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="button" class="btn btn-primary" id="patientRecordNewDirectBtn">
+                            <iconify-icon icon="iconamoon:microphone-duotone" class="me-1 align-middle"></iconify-icon>
+                            Record new session
+                        </button>
+                        <a id="patientViewPrevBtn" href="#" class="btn btn-outline-secondary">
+                            <iconify-icon icon="iconamoon:eye-duotone" class="me-1 align-middle"></iconify-icon>
+                            View previous visit first
+                        </a>
                     </div>
                 </div>
-                <p class="small text-muted mt-2 mb-0" style="font-size:0.76rem;">
-                    <iconify-icon icon="iconamoon:information-circle-duotone" class="me-1 align-middle"></iconify-icon>
-                    Patient name is saved to the session. Press <kbd>×</kbd> to skip.
-                </p>
             </div>
-            <div class="modal-footer border-0 pt-0 gap-2">
+            <div class="modal-footer border-0 pt-0 gap-2" id="patientModalFooter">
                 <button type="button" class="btn btn-link btn-sm text-decoration-none text-muted px-0" id="patientModalSkipFooterBtn">
                     Skip
                 </button>
@@ -942,6 +981,7 @@
 (function () {
   /* ---- Patient selection modal ---- */
   var _patientProceed = null;
+  var _skipLastSessionRedirect = false; /* true when arriving via ?patient= — user already saw last session */
   var _patientsCache = null;
   var _generateBtnHandled = false;
   var _selectedPatientItem = null;
@@ -950,7 +990,7 @@
   var patientSearch  = document.getElementById('patientSearch');
   var patientList    = document.getElementById('patientList');
   var continueBtn    = document.getElementById('patientContinueBtn');
-  var skipBtn        = document.getElementById('patientModalSkipBtn');
+  var cancelBtn      = document.getElementById('patientModalCancelBtn');
   var skipFooterBtn  = document.getElementById('patientModalSkipFooterBtn');
 
   function _esc(s) {
@@ -977,7 +1017,15 @@
     filtered.forEach(function (p) {
       var disambig = (p.ambiguous && p.identifier) ? ' <span style="font-size:0.7rem;opacity:0.65;">(' + _esc(p.identifier) + ')</span>' : '';
       var visits = p.session_count > 1 ? p.session_count + ' visits' : '1 visit';
-      html += '<li class="patient-item" data-name="' + _esc(p.name) + '" data-last-pk="' + (p.last_pk || '') + '" data-identifier="' + _esc(p.identifier || '') + '" data-gender="' + _esc(p.gender || '') + '">' +
+      html += '<li class="patient-item"' +
+        ' data-name="' + _esc(p.name) + '"' +
+        ' data-last-pk="' + (p.last_pk || '') + '"' +
+        ' data-identifier="' + _esc(p.identifier || '') + '"' +
+        ' data-gender="' + _esc(p.gender || '') + '"' +
+        ' data-last-visit="' + _esc(p.last_visit || '') + '"' +
+        ' data-last-cc="' + _esc((p.last_cc || '').substring(0, 60)) + '"' +
+        ' data-session-count="' + (p.session_count || 1) + '"' +
+        ' data-ambiguous="' + (p.ambiguous ? '1' : '0') + '">' +
         '<div class="patient-icon"><iconify-icon icon="iconamoon:profile-duotone"></iconify-icon></div>' +
         '<div class="patient-info">' +
           '<strong class="d-block" style="font-size:0.9rem;">' + _esc(p.name) + disambig + '</strong>' +
@@ -995,14 +1043,15 @@
       var alreadyExact = filtered.some(function (p) {
         return p.name.toLowerCase() === nameQ.toLowerCase();
       });
-      if (!alreadyExact) {
-        html += '<li class="patient-item new-patient-item" data-name="' + _esc(nameQ) + '">' +
-          '<div class="patient-icon"><iconify-icon icon="iconamoon:sign-plus-circle-duotone"></iconify-icon></div>' +
-          '<div class="patient-info">' +
-            '<strong style="font-size:0.9rem;">' + _esc(nameQ) + '</strong>' +
-            '<span class="text-muted d-block" style="font-size:0.76rem;">New patient</span>' +
-          '</div></li>';
-      }
+      var conflictLabel = alreadyExact
+        ? '<span class="d-block text-warning-emphasis" style="font-size:0.73rem;margin-top:2px;">Same name exists — identifier required</span>'
+        : '<span class="d-block text-muted" style="font-size:0.76rem;">New patient</span>';
+      html += '<li class="patient-item new-patient-item" data-name="' + _esc(nameQ) + '" data-conflict="' + (alreadyExact ? '1' : '0') + '">' +
+        '<div class="patient-icon' + (alreadyExact ? ' text-warning' : '') + '"><iconify-icon icon="iconamoon:sign-plus-circle-duotone"></iconify-icon></div>' +
+        '<div class="patient-info">' +
+          '<strong style="font-size:0.9rem;">' + _esc(nameQ) + '</strong>' +
+          conflictLabel +
+        '</div></li>';
     }
 
     if (!html) {
@@ -1042,12 +1091,35 @@
             if (gCheck) gCheck.checked = true;
           }
         }
+        /* Show disambiguation input when new patient has same name as existing */
+        var disambigRow = document.getElementById('patientDisambigRow');
+        var disambigInput = document.getElementById('patientDisambigInput');
+        if (disambigRow) {
+          if (item.dataset.conflict === '1') {
+            disambigRow.classList.remove('d-none');
+            if (disambigInput) { disambigInput.value = ''; setTimeout(function () { disambigInput.focus(); }, 50); }
+          } else {
+            disambigRow.classList.add('d-none');
+          }
+        }
       });
     });
   }
 
+  function _resetModalToStep1() {
+    var searchStep = document.getElementById('patientSearchStep');
+    var returnStep = document.getElementById('patientReturnStep');
+    var footer     = document.getElementById('patientModalFooter');
+    if (searchStep) searchStep.classList.remove('d-none');
+    if (returnStep) returnStep.classList.add('d-none');
+    if (footer)     footer.classList.remove('d-none');
+    var disambigRow = document.getElementById('patientDisambigRow');
+    if (disambigRow) disambigRow.classList.add('d-none');
+  }
+
   function showPatientModal(onProceed) {
     _patientProceed = onProceed;
+    _resetModalToStep1();
     var nameEl = document.getElementById('patientName');
     var current = nameEl ? nameEl.value.trim() : '';
     if (patientSearch) patientSearch.value = current;
@@ -1071,18 +1143,80 @@
     var genderChecked = document.querySelector('input[name="modalGender"]:checked');
     var genderVal = genderChecked ? genderChecked.value : '';
 
-    /* Existing patient selected → redirect to their last note so doctor can review, then record new */
-    if (_selectedPatientItem && !_selectedPatientItem.classList.contains('new-patient-item')) {
+    /* Existing patient selected → show inline choice instead of forcing a page redirect.
+       Skip even the inline choice if _skipLastSessionRedirect is set (doctor already saw
+       last session via the review page and just wants to record). */
+    if (_selectedPatientItem && !_selectedPatientItem.classList.contains('new-patient-item') && !_skipLastSessionRedirect) {
       var lastPk = _selectedPatientItem.dataset.lastPk;
       if (lastPk) {
-        if (patientModal && typeof bootstrap !== 'undefined') {
-          bootstrap.Modal.getInstance(patientModal).hide();
+        var lastVisit    = _selectedPatientItem.dataset.lastVisit  || '';
+        var lastCc       = _selectedPatientItem.dataset.lastCc     || '';
+        var sessionCount = parseInt(_selectedPatientItem.dataset.sessionCount || '1', 10);
+        var identifier   = _selectedPatientItem.dataset.identifier || '';
+        var isAmbiguous  = _selectedPatientItem.dataset.ambiguous === '1';
+        /* Build "View previous" URL */
+        var prevUrl = '/scribe/sessions/' + lastPk + '/review/?new_for=' + encodeURIComponent(name);
+        if (genderVal) prevUrl += '&new_gender=' + encodeURIComponent(genderVal);
+        /* Build "See all visits" URL */
+        var historyUrl = '/scribe/sessions/?patient_name=' + encodeURIComponent(name);
+        if (identifier) historyUrl += '&patient_id=' + encodeURIComponent(identifier);
+        /* Populate return step */
+        var retName          = document.getElementById('patientReturnName');
+        var retMeta          = document.getElementById('patientReturnMeta');
+        var retViewBtn       = document.getElementById('patientViewPrevBtn');
+        var retRecordBtn     = document.getElementById('patientRecordNewDirectBtn');
+        var allVisitsLink    = document.getElementById('patientAllVisitsLink');
+        var allVisitsLabel   = document.getElementById('patientAllVisitsLabel');
+        /* Name — append identifier if ambiguous so doctor knows which Mary Jane */
+        if (retName) retName.textContent = name + (isAmbiguous && identifier ? '  (' + identifier + ')' : '');
+        if (retMeta) retMeta.textContent = lastVisit ? 'Last visit: ' + lastVisit + (lastCc ? '  ·  ' + lastCc : '') : (lastCc || '');
+        /* "See all X visits" link — only show if more than 1 session */
+        if (allVisitsLink && allVisitsLabel) {
+          if (sessionCount > 1) {
+            allVisitsLabel.textContent = 'See all ' + sessionCount + ' visits →';
+            allVisitsLink.href = historyUrl;
+            allVisitsLink.classList.remove('d-none');
+          } else {
+            allVisitsLink.classList.add('d-none');
+          }
         }
-        var url = '/scribe/sessions/' + lastPk + '/review/?new_for=' + encodeURIComponent(name);
-        if (genderVal) url += '&new_gender=' + encodeURIComponent(genderVal);
-        window.location.href = url;
+        if (retViewBtn) retViewBtn.href = prevUrl;
+        /* "Record new session" button — just close modal and proceed directly */
+        if (retRecordBtn) {
+          retRecordBtn.onclick = function () {
+            _skipLastSessionRedirect = true;
+            proceedFromModal();
+          };
+        }
+        /* Swap to step 2 */
+        var searchStep  = document.getElementById('patientSearchStep');
+        var returnStep  = document.getElementById('patientReturnStep');
+        var footer      = document.getElementById('patientModalFooter');
+        if (searchStep)  searchStep.classList.add('d-none');
+        if (returnStep)  returnStep.classList.remove('d-none');
+        if (footer)      footer.classList.add('d-none');
         return;
       }
+    }
+    _skipLastSessionRedirect = false; /* consume the flag */
+
+    /* For new patients with a name conflict, capture the disambiguation identifier */
+    if (_selectedPatientItem && _selectedPatientItem.dataset.conflict === '1') {
+      var disambigInput = document.getElementById('patientDisambigInput');
+      var disambigVal = disambigInput ? disambigInput.value.trim() : '';
+      if (!disambigVal) {
+        /* Require identifier before proceeding */
+        if (disambigInput) { disambigInput.focus(); disambigInput.classList.add('is-invalid'); }
+        return;
+      }
+      var identEl = document.getElementById('patientIdentifier');
+      if (!identEl) {
+        identEl = document.createElement('input');
+        identEl.type = 'hidden'; identEl.id = 'patientIdentifier';
+        document.body.appendChild(identEl);
+      }
+      identEl.value = disambigVal;
+      if (disambigInput) disambigInput.classList.remove('is-invalid');
     }
 
     /* New patient or no last session — proceed to recording as before */
@@ -1109,6 +1243,14 @@
     if (fn) fn();
   }
 
+  /* X button = cancel everything — do not proceed, do not open consent */
+  function cancelModal() {
+    _patientProceed = null;
+    if (patientModal && typeof bootstrap !== 'undefined') {
+      bootstrap.Modal.getInstance(patientModal).hide();
+    }
+  }
+
   if (patientSearch) {
     patientSearch.addEventListener('input', function () {
       var q = this.value;
@@ -1129,7 +1271,7 @@
   }
 
   if (continueBtn) continueBtn.addEventListener('click', proceedFromModal);
-  if (skipBtn) skipBtn.addEventListener('click', skipModal);
+  if (cancelBtn) cancelBtn.addEventListener('click', cancelModal);
   if (skipFooterBtn) skipFooterBtn.addEventListener('click', skipModal);
 
   /* Intercept generateBtn — show patient modal before wellnest.js handles it */
@@ -1147,7 +1289,9 @@
 
   window.WELLNEST_showPatientModal = showPatientModal;
 
-  /* Pre-fill patient name from ?patient= query param (arriving from review page "Record new session") */
+  /* Pre-fill patient name from ?patient= query param (arriving from review page "Record new session").
+     Also set _skipLastSessionRedirect so the modal Continue button creates a new session directly
+     instead of looping back to the last session review. */
   (function () {
     var params = new URLSearchParams(window.location.search);
     var preName = params.get('patient');
@@ -1166,6 +1310,8 @@
       }
       genderEl.value = preGender;
     }
+    /* Doctor already reviewed last session — skip the redirect-to-last-session behaviour */
+    _skipLastSessionRedirect = true;
     /* Clean URL without reload */
     history.replaceState(null, '', window.location.pathname);
   }());
@@ -1248,7 +1394,7 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   /* ---- Ambient recording + MMS pipeline ---- */
-  var CSRF = '{{ csrf_token }}';
+  var CSRF = window.WELLNEST && window.WELLNEST.getCsrf ? window.WELLNEST.getCsrf() : '{{ csrf_token }}';
   var ambientRecordBtn = document.getElementById('ambientRecordBtn');
   var ambientCancelBtn = document.getElementById('ambientCancelBtn');
   var ambientTimer     = document.getElementById('ambientTimer');
@@ -1263,7 +1409,8 @@ document.addEventListener('DOMContentLoaded', function () {
   var ambientElapsed = 0;
   var ambientRunning = false;
   var ambientCancelled = false;
-  var _lastAmbientBlob = null; /* kept so Retry can resubmit without re-recording */
+  var _lastAmbientBlob = null;   /* kept so Retry can resubmit without re-recording */
+  var _lastAmbientSessionId = null; /* if session was created before error, reuse it on retry */
   var ambientRetryBtn = document.getElementById('ambientRetryBtn');
 
   /* ---- Ambient waveform ---- */
@@ -1355,6 +1502,12 @@ document.addEventListener('DOMContentLoaded', function () {
       ambientMediaRecorder.onstop = function () {
         stream.getTracks().forEach(function (t) { t.stop(); });
         if (ambientCancelled) { ambientCancelled = false; ambientChunks = []; return; }
+        if (ambientElapsed < 3) {
+          ambientStatus.textContent = 'Recording too short — record at least a few seconds of speech.';
+          ambientRecordBtn.disabled = false;
+          ambientChunks = [];
+          return;
+        }
         var blob = new Blob(ambientChunks, { type: 'audio/webm' });
         runAmbientPipeline(blob);
       };
@@ -1467,28 +1620,36 @@ document.addEventListener('DOMContentLoaded', function () {
     ambientRecordBtn.disabled = true;
     var backend = getAmbientBackend();
     var backendLabel = backend === 'modal' ? 'Cloud' : 'Local';
-    ambientStatus.textContent = 'Uploading audio...';
 
     try {
-      // 1. Create session with audio
       var activeStyleBtn = document.querySelector('.note-style-pill.is-active');
       var noteStyle = activeStyleBtn ? activeStyleBtn.dataset.noteStyle : 'soap';
-      var formData = new FormData();
-      formData.append('note_format', noteStyle);
-      formData.append('audio', blob, 'ambient-' + Date.now() + '.webm');
-      formData.append('csrfmiddlewaretoken', CSRF);
-      if (window.WELLNEST_consentGiven) formData.append('consent_acknowledged', '1');
-      var _pnEl = document.getElementById('patientName');
-      var _piEl = document.getElementById('patientIdentifier');
-      var _pgEl = document.getElementById('patientGender');
-      if (_pnEl && _pnEl.value.trim()) formData.append('patient_name', _pnEl.value.trim());
-      if (_piEl && _piEl.value.trim()) formData.append('patient_identifier', _piEl.value.trim());
-      if (_pgEl && _pgEl.value) formData.append('patient_gender', _pgEl.value);
+      var sessionId;
 
-      var createResp = await fetch('/scribe/api/sessions/', { method: 'POST', credentials: 'same-origin', body: formData });
-      var createData = await safeJson(createResp, 'create-session');
-      if (!createData.ok) throw new Error(createData.error || 'Could not create session.');
-      var sessionId = createData.session_id;
+      // 1. Create session (skip if already created on a previous attempt)
+      if (_lastAmbientSessionId) {
+        sessionId = _lastAmbientSessionId;
+        ambientStatus.textContent = 'Retrying transcription...';
+      } else {
+        ambientStatus.textContent = 'Uploading audio...';
+        var formData = new FormData();
+        formData.append('note_format', noteStyle);
+        formData.append('audio', blob, 'ambient-' + Date.now() + '.webm');
+        formData.append('csrfmiddlewaretoken', window.WELLNEST && window.WELLNEST.getCsrf ? window.WELLNEST.getCsrf() : CSRF);
+        if (window.WELLNEST_consentGiven) formData.append('consent_acknowledged', '1');
+        var _pnEl = document.getElementById('patientName');
+        var _piEl = document.getElementById('patientIdentifier');
+        var _pgEl = document.getElementById('patientGender');
+        if (_pnEl && _pnEl.value.trim()) formData.append('patient_name', _pnEl.value.trim());
+        if (_piEl && _piEl.value.trim()) formData.append('patient_identifier', _piEl.value.trim());
+        if (_pgEl && _pgEl.value) formData.append('patient_gender', _pgEl.value);
+
+        var createResp = await fetch('/scribe/api/sessions/', { method: 'POST', credentials: 'same-origin', body: formData });
+        var createData = await safeJson(createResp, 'create-session');
+        if (!createData.ok) throw new Error(createData.error || 'Could not create session.');
+        sessionId = createData.session_id;
+        _lastAmbientSessionId = sessionId; /* remember so retry skips the upload */
+      }
 
       // 2. Submit ambient job with selected backend
       ambientStatus.textContent = 'Sending to ' + backendLabel + '...';
@@ -1558,12 +1719,17 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!genData.ok) throw new Error(genData.error || 'Note generation failed.');
 
       // 5. Redirect to review
+      _lastAmbientSessionId = null; /* clear on success */
       window.location.href = '/scribe/sessions/' + sessionId + '/review/';
 
     } catch (err) {
-      ambientStatus.textContent = 'Error: ' + err.message;
+      var msg = err.message || '';
+      /* "Failed to fetch" = connection dropped before any response */
+      if (err instanceof TypeError && msg.toLowerCase().includes('fetch')) {
+        msg = 'Server unreachable — audio is saved. Tap Retry, or reload the page if the problem persists.';
+      }
+      ambientStatus.textContent = 'Error: ' + msg;
       ambientRecordBtn.disabled = false;
-      /* Show retry button — audio blob is still in memory */
       if (ambientRetryBtn && _lastAmbientBlob) ambientRetryBtn.style.display = '';
     }
   }

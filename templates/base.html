@@ -26,6 +26,10 @@
     <link href="{% static 'css/wellnest.css' %}?v={{ ui_asset_version }}" rel="stylesheet">
 
     <script src="{% static 'js/config.js' %}"></script>
+    <style>
+    .bp-custom-tag{display:inline-flex;align-items:center;gap:4px;font-size:.76rem;background:rgba(13,110,253,.08);border:1px solid rgba(13,110,253,.2);border-radius:20px;padding:2px 8px;margin:2px}
+    .bp-custom-tag button{background:none;border:none;padding:0;cursor:pointer;line-height:1;color:var(--bs-secondary-color);font-size:.9rem}
+    </style>
     {% block extra_head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -60,9 +64,44 @@
         </div>
     </div>
 
+    {% if user.is_authenticated %}
+    <div class="modal fade" id="customMedsModal" tabindex="-1" aria-labelledby="customMedsModalLabel">
+        <div class="modal-dialog modal-dialog-centered" style="max-width:420px;">
+            <div class="modal-content">
+                <div class="modal-header border-0 pb-1">
+                    <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="customMedsModalLabel">
+                        <iconify-icon icon="mdi:pill" class="text-primary" style="font-size:1.3rem;"></iconify-icon>
+                        Custom medications
+                    </h5>
+                    <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body pt-0">
+                    <p class="small text-muted mb-2">Drugs you add here appear at the top of the medication picker.</p>
+                    <div class="input-group mb-2">
+                        <input type="text" id="customMedInput" class="form-control form-control-sm"
+                               placeholder="Type drug name…" autocomplete="off">
+                        <button class="btn btn-primary btn-sm" type="button" id="customMedAddBtn">Add</button>
+                    </div>
+                    <div id="customMedList" class="d-flex flex-wrap gap-1 py-1"></div>
+                    <p class="small text-muted mt-2 mb-0" id="customMedEmpty" style="font-size:0.76rem;display:none;">
+                        No custom medications yet.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <script>
       window.WELLNEST = {
         csrfToken: "{{ csrf_token }}",
+        /* Read fresh from cookie on every call — CSRF_COOKIE_HTTPONLY=False lets JS access it.
+           Falls back to the page-baked value so old cached pages still work. */
+        getCsrf: function() {
+          var m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+          if (m) return decodeURIComponent(m[1]);
+          return window.WELLNEST.csrfToken || '';
+        },
         endpoints: {
           createSession: "{% url 'scribe:api_create' %}",
           updatePreferences: "{% url 'scribe:api_preferences' %}",
@@ -90,5 +129,56 @@
       }
     </script>
     {% block extra_scripts %}{% endblock %}
+    {% if user.is_authenticated %}
+    <script>
+    /* ── Custom medications modal (global) ── */
+    (function () {
+      'use strict';
+      function cmApiFetch(method, body) {
+        var csrf = window.WELLNEST && window.WELLNEST.getCsrf ? window.WELLNEST.getCsrf() : '';
+        return fetch('/accounts/api/custom-drugs/', {
+          method: method, credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+          body: body ? JSON.stringify(body) : undefined
+        }).then(function (r) { return r.json(); });
+      }
+      function cmRenderList(drugs) {
+        var list = document.getElementById('customMedList');
+        var empty = document.getElementById('customMedEmpty');
+        if (!list) return;
+        empty.style.display = drugs.length ? 'none' : '';
+        list.innerHTML = drugs.map(function (n) {
+          return '<span class="bp-custom-tag">' + n.replace(/&/g,'&amp;').replace(/</g,'&lt;') +
+            '<button type="button" data-name="' + n.replace(/"/g,'&quot;') + '" aria-label="Remove">&times;</button></span>';
+        }).join('');
+        list.querySelectorAll('.bp-custom-tag button').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            cmApiFetch('DELETE', { name: btn.dataset.name })
+              .then(function (d) { if (d.drugs !== undefined) cmRenderList(d.drugs); })
+              .catch(function () {});
+          });
+        });
+      }
+      document.addEventListener('DOMContentLoaded', function () {
+        var modal  = document.getElementById('customMedsModal');
+        var addBtn = document.getElementById('customMedAddBtn');
+        var input  = document.getElementById('customMedInput');
+        if (!modal) return;
+        modal.addEventListener('show.bs.modal', function () {
+          cmApiFetch('GET').then(function (d) { cmRenderList(d.drugs || []); }).catch(function () { cmRenderList([]); });
+        });
+        function addDrug() {
+          var name = (input.value || '').trim();
+          if (!name) { input.focus(); return; }
+          cmApiFetch('POST', { name: name })
+            .then(function (d) { if (d.drugs !== undefined) { cmRenderList(d.drugs); input.value = ''; } })
+            .catch(function () {});
+        }
+        if (addBtn) addBtn.addEventListener('click', addDrug);
+        if (input)  input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addDrug(); } });
+      });
+    })();
+    </script>
+    {% endif %}
 </body>
 </html>

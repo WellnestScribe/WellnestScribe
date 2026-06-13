@@ -33,6 +33,16 @@
                     </button>
                 </div>
 
+                {% if user.is_authenticated %}
+                <div class="topbar-item">
+                    <button type="button" class="topbar-button"
+                            onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('customMedsModal')).show()"
+                            aria-label="Custom medications" title="Custom medications">
+                        <iconify-icon icon="mdi:pill" class="fs-22 align-middle"></iconify-icon>
+                    </button>
+                </div>
+                {% endif %}
+
                 <div class="dropdown topbar-item">
                     <button type="button"
                             class="topbar-button dropdown-toggle dropdown-toggle-nocaret"

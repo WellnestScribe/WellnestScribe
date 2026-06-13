@@ -3,7 +3,8 @@
   "use strict";
 
   const W = window.WELLNEST || {};
-  const csrf = W.csrfToken || "";
+  /* Read fresh from cookie at each call — avoids 403 when token rotates after login/session change */
+  function csrf() { return W.getCsrf ? W.getCsrf() : (W.csrfToken || ""); }
 
   function $(sel, root) { return (root || document).querySelector(sel); }
   function $$(sel, root) { return Array.from((root || document).querySelectorAll(sel)); }
@@ -26,7 +27,7 @@
     return fetch(url, {
       method: "POST",
       credentials: "same-origin",
-      headers: { "Content-Type": "application/json", "X-CSRFToken": csrf },
+      headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
       body: JSON.stringify(payload || {}),
     }).then(async function (r) {
       const text = await r.text();
@@ -43,7 +44,7 @@
     return fetch(url, {
       method: "POST",
       credentials: "same-origin",
-      headers: { "X-CSRFToken": csrf },
+      headers: { "X-CSRFToken": csrf() },
       body: formData,
     }).then(async function (r) {
       const text = await r.text();
@@ -249,7 +250,7 @@
       form.method = "POST";
       form.action = W.endpoints.signout;
       const t = document.createElement("input");
-      t.name = "csrfmiddlewaretoken"; t.value = csrf;
+      t.name = "csrfmiddlewaretoken"; t.value = csrf();
       form.appendChild(t);
       document.body.appendChild(form);
       form.submit();
@@ -1975,16 +1976,7 @@
         syncFromNarrativeToFields();
       });
     }
-    if (transcriptArea) {
-      transcriptArea.addEventListener("input", function () {
-        clearTimeout(dirtyTimer);
-        dirtyTimer = setTimeout(function () {
-          // Save transcript via the save endpoint as part of the payload (fields-only).
-          // We don't include transcript in the regular save, so add a manual call:
-          postJSON("/scribe/api/sessions/" + sessionId + "/save/", { transcript: transcriptArea.value });
-        }, 800);
-      });
-    }
+    // transcriptArea is read-only — no save listener needed.
 
     // Editable title
     if (titleEl) {
@@ -2151,10 +2143,9 @@
     applyCollapseState();
     if (printBtn) printBtn.addEventListener("click", function () { window.print(); });
     if (regenAllBtn) regenAllBtn.addEventListener("click", async function () {
-      if (!confirm("Regenerate the note from the current transcript? Your edits to the structured note will be replaced.")) return;
+      if (!confirm("Regenerate the note? Your edits to the structured note will be replaced.")) return;
       setStatus(statusEl, "Regenerating note…");
-      const r = await postJSON("/scribe/api/sessions/" + sessionId + "/generate/",
-                                { transcript: transcriptArea ? transcriptArea.value : "" });
+      const r = await postJSON("/scribe/api/sessions/" + sessionId + "/generate/", {});
       if (r.ok && r.body.ok) window.location.reload();
       else setStatus(statusEl, (r.body && r.body.error) || "Regeneration failed.", "error");
     });

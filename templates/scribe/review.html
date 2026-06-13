@@ -55,6 +55,7 @@
     -webkit-box-decoration-break: clone; box-decoration-break: clone;
   }
   .bracket-mirror .bk-hl.drug-hl { background: rgba(220,120,0,0.15); }
+  .bracket-mirror .bk-hl.test-hl { background: rgba(16,185,129,0.15); }
   .note-textarea[data-note-field] { position: relative; z-index: 1; background: transparent !important; }
   /* Inside SOAP sections the textarea has padding: 2px 0 and no border — mirror must match */
   .note-section-body .bracket-mirror { padding: 2px 0; border: none; border-radius: 0; }
@@ -110,6 +111,21 @@
   background: transparent; border: 1px solid var(--bs-border-color);
   border-radius: 6px; padding: 6px 10px; font-size: 0.85rem;
   cursor: pointer; color: var(--bs-secondary-color);
+}
+.bp-add-custom {
+  width: 100%; margin-top: 6px; padding: 4px 0; font-size: 0.78rem;
+  background: transparent; border: 1px dashed var(--bs-border-color); border-radius: 6px;
+  cursor: pointer; color: var(--bs-secondary-color); text-align: center;
+}
+.bp-add-custom:hover { border-color: #0d6efd; color: #0d6efd; }
+.bp-custom-tag {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 0.76rem;
+  background: rgba(13,110,253,0.08); border: 1px solid rgba(13,110,253,0.2);
+  border-radius: 20px; padding: 2px 8px; margin: 2px;
+}
+.bp-custom-tag button {
+  background: none; border: none; padding: 0; cursor: pointer; line-height: 1;
+  color: var(--bs-secondary-color); font-size: 0.9rem;
 }
 /* ── Narrative paragraph view ── */
 .narrative-view { padding: 2px 0; }
@@ -289,7 +305,7 @@
         <div class="col-12">
             <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
                 <div class="d-flex flex-column gap-2 flex-grow-1" style="min-width: 0;">
-                    <a href="{% url 'scribe:history' %}" class="page-back-btn align-self-start">
+                    <a href="{% url 'scribe:record' %}" class="page-back-btn align-self-start">
                         <iconify-icon icon="iconamoon:arrow-left-2-light"></iconify-icon>
                         Back to sessions
                     </a>
@@ -399,7 +415,7 @@
                                     <option value="chart" {% if session.note_format == 'chart' %}selected{% endif %}>Chart</option>
                                 </select>
                             </div>
-                            <button type="button" class="btn btn-outline-primary btn-sm flex-shrink-0" id="regenerateAllBtn">
+                            <button type="button" class="btn btn-outline-primary flex-shrink-0" id="regenerateAllBtn">
                                 <iconify-icon icon="iconamoon:restart-duotone" class="me-1 align-middle"></iconify-icon>
                                 <span id="regenerateBtnLabel">Regenerate</span>
                             </button>
@@ -493,11 +509,11 @@
 
                         <div class="tab-pane fade" id="tab-transcript">
                             <p class="text-muted small mb-2">
-                                Interpreted transcript — processed from the recorded audio into English.
-                                Editable; regenerate the note after changes.
+                                Interpreted transcript — the AI's English reading of what was recorded.
+                                Read-only. Edit the SOAP note directly if corrections are needed.
                             </p>
-                            <textarea class="note-textarea" id="transcriptArea"
-                                      style="min-height:160px;resize:vertical;overflow-y:hidden;white-space:pre-wrap;">{{ session.transcript }}</textarea>
+                            <textarea class="note-textarea" id="transcriptArea" readonly
+                                      style="min-height:160px;resize:vertical;overflow-y:hidden;white-space:pre-wrap;cursor:default;opacity:0.85;">{{ session.transcript }}</textarea>
                         </div>
 
                         <div class="tab-pane fade" id="tab-bodydiagram">
@@ -572,23 +588,21 @@
         <div class="col-12 col-xl-4 review-sticky-col">
             <div class="card">
                 <div class="card-body p-3">
-                    {# Resume session button #}
+                    <div id="recordNewBanner" class="d-none mb-2">
+                        <button type="button" id="recordNewBtn" class="btn w-100"
+                                style="background:#0891b2;border-color:#0891b2;color:#fff;">
+                            <iconify-icon icon="iconamoon:microphone-duotone" class="me-1 align-middle"></iconify-icon>
+                            New recording
+                        </button>
+                        <p class="small text-muted text-center mt-1 mb-0" id="recordNewSubtext" style="font-size:0.76rem;">
+                            Reviewing previous visit — tap above to start new session
+                        </p>
+                    </div>
+
                     <button type="button" class="btn btn-outline-primary w-100 mb-2" id="resumeSessionBtn">
                         <iconify-icon icon="iconamoon:microphone-duotone" class="me-1 align-middle"></iconify-icon>
                         Resume session
                     </button>
-
-                    {# Record new session banner — shown when arriving from patient modal (existing patient) #}
-                    <div id="recordNewBanner" class="d-none mb-3">
-                        <a id="recordNewBtn" href="{% url 'scribe:record' %}"
-                           class="btn btn-primary w-100">
-                            <iconify-icon icon="iconamoon:microphone-duotone" class="me-1 align-middle"></iconify-icon>
-                            Record new session
-                        </a>
-                        <p class="small text-muted text-center mt-1 mb-0" id="recordNewSubtext" style="font-size:0.76rem;">
-                            Reviewing last visit — tap above to start a new session
-                        </p>
-                    </div>
 
                     {# Primary actions #}
                     <div class="d-grid gap-2 mb-3">
@@ -665,6 +679,12 @@
                                 <iconify-icon icon="iconamoon:save-duotone" class="me-1 align-middle"></iconify-icon>
                                 Save edits now
                             </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="customMedsBtn"
+                                    data-bs-toggle="modal" data-bs-target="#customMedsModal"
+                                    title="View and manage your custom medication list">
+                                <iconify-icon icon="mdi:pill" class="me-1 align-middle"></iconify-icon>
+                                Custom medications
+                            </button>
                         </div>
                     </div>
 
@@ -728,8 +748,9 @@
                 <iconify-icon icon="iconamoon:lightning-1-duotone" class="me-1 align-middle"></iconify-icon>
                 <span id="magicEditApplyLabel">Apply</span>
             </button>
-            <button type="button" class="note-section-btn" id="magicEditMicBtn" title="Dictate instruction">
-                <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
+            <button type="button" class="btn btn-outline-secondary" id="magicEditMicBtn"
+                    title="Dictate instruction" style="min-width:42px;padding:5px 10px;">
+                <iconify-icon icon="iconamoon:microphone-duotone" style="font-size:1.1rem;"></iconify-icon>
             </button>
         </div>
         <p id="magicEditStatus" class="small text-muted mt-1 mb-0"></p>
@@ -860,7 +881,7 @@ function _suiteConfirm(title, text) {
 (function () {
   var _root = document.querySelector('[data-session-id]');
   var SESSION_ID = _root.dataset.sessionId;
-  var CSRF = '{{ csrf_token }}';
+  var CSRF = window.WELLNEST && window.WELLNEST.getCsrf ? window.WELLNEST.getCsrf() : '{{ csrf_token }}';
   var SAVE_URL = '/scribe/api/sessions/' + SESSION_ID + '/save/';
   var finalized = _root.dataset.finalized === '1';
   var CREATED_TS = _root.dataset.created || '';
@@ -1372,26 +1393,182 @@ function _suiteConfirm(title, text) {
   var isFinalized = (document.querySelector('[data-finalized]') || {dataset:{}}).dataset.finalized === '1';
 
   /* Drug list — common Jamaican primary/secondary care formulary */
-  var DRUGS = [
-    'Amlodipine','Atenolol','Bisoprolol','Lisinopril','Ramipril','Enalapril',
-    'Losartan','Valsartan','Hydrochlorothiazide','Furosemide','Spironolactone',
+  var DRUGS_BASE = [
+    /* Antihypertensives */
+    'Amlodipine','Nifedipine','Atenolol','Bisoprolol','Carvedilol','Metoprolol',
+    'Lisinopril','Ramipril','Enalapril','Perindopril',
+    'Losartan','Valsartan','Irbesartan','Telmisartan',
+    'Hydrochlorothiazide','Furosemide','Spironolactone','Indapamide',
+    'Methyldopa',
+    /* Lipid-lowering */
     'Atorvastatin','Rosuvastatin','Simvastatin',
-    'Metformin','Glibenclamide','Glipizide','Insulin Mixtard','Insulin Actrapid',
-    'Aspirin','Clopidogrel','Warfarin',
-    'Amoxicillin','Co-amoxiclav (Augmentin)','Azithromycin','Erythromycin',
-    'Metronidazole','Ciprofloxacin','Trimethoprim','Co-trimoxazole',
-    'Prednisone','Dexamethasone',
-    'Salbutamol (Ventolin)','Beclomethasone inhaler','Ipratropium',
-    'Omeprazole','Domperidone','Metoclopramide',
+    /* Diabetes */
+    'Metformin','Glibenclamide','Glipizide','Gliclazide',
+    'Insulin Mixtard 30/70','Insulin Actrapid','Insulin Protaphane',
+    'Empagliflozin','Sitagliptin',
+    /* Anticoagulants / antiplatelets */
+    'Aspirin','Clopidogrel','Warfarin','Rivaroxaban','Apixaban',
+    /* Antibiotics */
+    'Amoxicillin','Co-amoxiclav (Augmentin)','Azithromycin','Erythromycin','Clarithromycin',
+    'Metronidazole','Ciprofloxacin','Trimethoprim','Co-trimoxazole','Doxycycline',
+    'Cephalexin','Ceftriaxone','Clindamycin',
+    /* Steroids */
+    'Prednisone','Prednisolone','Dexamethasone','Hydrocortisone',
+    /* Respiratory */
+    'Salbutamol (Ventolin)','Beclomethasone inhaler','Budesonide inhaler',
+    'Formoterol/Budesonide (Symbicort)','Ipratropium','Theophylline',
+    /* GI */
+    'Omeprazole','Pantoprazole','Ranitidine','Domperidone','Metoclopramide',
+    'Loperamide','Oral rehydration salts',
+    /* Analgesics */
     'Paracetamol','Ibuprofen','Diclofenac','Naproxen',
-    'Tramadol','Codeine','Morphine',
-    'Amitriptyline','Sertraline',
-    'Vitamin D3','Ferrous sulphate','Calcium carbonate','Folic acid',
+    'Tramadol','Codeine phosphate','Morphine sulphate',
+    /* Neuro / psych */
+    'Amitriptyline','Sertraline','Fluoxetine','Escitalopram',
+    'Carbamazepine','Sodium valproate','Phenytoin',
+    'Diazepam','Lorazepam',
+    /* Supplements */
+    'Vitamin D3 (Cholecalciferol)','Ferrous sulphate','Calcium carbonate',
+    'Folic acid','Zinc sulphate','B-complex vitamins',
+    /* Topical / other */
+    'Clotrimazole cream','Hydrocortisone cream 1%','Gentamicin eye drops',
+    'Chloramphenicol eye drops','Prednisolone eye drops',
+  ];
+
+  /* Custom drugs — DB-backed (per-doctor) with localStorage cache/fallback */
+  var CUSTOM_DRUGS_KEY = 'wellnest_custom_drugs_v2';
+  var _customDrugsCache = (function () {
+    try { return JSON.parse(localStorage.getItem(CUSTOM_DRUGS_KEY) || '[]'); } catch (e) { return []; }
+  }());
+
+  function _syncCacheToStorage() {
+    try { localStorage.setItem(CUSTOM_DRUGS_KEY, JSON.stringify(_customDrugsCache)); } catch (e) {}
+  }
+
+  /* Load from server and update cache */
+  (function () {
+    fetch('/accounts/api/custom-drugs/', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.drugs) { _customDrugsCache = d.drugs; _syncCacheToStorage(); }
+      })
+      .catch(function () { /* keep localStorage cache on network failure */ });
+  }());
+
+  function loadCustomDrugs() { return _customDrugsCache.slice(); }
+
+  function addCustomDrug(name) {
+    var n = (name || '').trim();
+    if (!n || _customDrugsCache.some(function (d) { return d.toLowerCase() === n.toLowerCase(); })) return false;
+    _customDrugsCache.push(n);
+    _syncCacheToStorage();
+    var csrf = window.WELLNEST && window.WELLNEST.getCsrf ? window.WELLNEST.getCsrf() : '';
+    fetch('/accounts/api/custom-drugs/', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+      body: JSON.stringify({ name: n })
+    }).then(function (r) { return r.json(); })
+      .then(function (d) { if (d.drugs) { _customDrugsCache = d.drugs; _syncCacheToStorage(); } })
+      .catch(function () {});
+    return true;
+  }
+
+  function removeCustomDrug(name) {
+    _customDrugsCache = _customDrugsCache.filter(function (d) { return d !== name; });
+    _syncCacheToStorage();
+    var csrf = window.WELLNEST && window.WELLNEST.getCsrf ? window.WELLNEST.getCsrf() : '';
+    fetch('/accounts/api/custom-drugs/', {
+      method: 'DELETE', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+      body: JSON.stringify({ name: name })
+    }).catch(function () {});
+  }
+
+  function getDrugs() { return DRUGS_BASE.concat(_customDrugsCache); }
+  var DRUGS = getDrugs(); /* kept for legacy callers */
+
+  /* Common investigations list */
+  var TESTS = [
+    /* Haematology */
+    'CBC (Complete Blood Count)',
+    'Haemoglobin (Hb)',
+    'Haematocrit (PCV)',
+    'White cell differential',
+    'Platelet count',
+    'ESR (Erythrocyte Sedimentation Rate)',
+    'Peripheral blood film',
+    'Sickle cell screen',
+    'Coagulation screen (PT / APTT)',
+    /* Biochemistry */
+    'Fasting blood glucose',
+    'Random blood glucose',
+    'HbA1c',
+    'Urea & Creatinine',
+    'Serum electrolytes (Na / K / Cl)',
+    'eGFR',
+    'Liver function tests (LFTs)',
+    'Serum uric acid',
+    'Lipid profile',
+    'Serum calcium',
+    'Serum phosphate',
+    'Serum ferritin',
+    'Serum iron & TIBC',
+    'TSH',
+    'Free T4',
+    'PSA (Prostate-Specific Antigen)',
+    'Beta-hCG (pregnancy test)',
+    'Serum amylase',
+    'Serum lipase',
+    'CRP (C-Reactive Protein)',
+    /* Microbiology / Serology */
+    'Urinalysis (dipstick)',
+    'Urine M/C/S',
+    'Blood culture x2',
+    'Wound swab C&S',
+    'Throat swab C&S',
+    'Cervical / vaginal swab',
+    'Stool M/C/S',
+    'Stool for ova & parasites',
+    'Dengue NS1 Ag / IgM / IgG',
+    'HIV test (rapid)',
+    'Sputum AFB ×3',
+    'Sputum C&S',
+    /* Imaging */
+    'X-ray — Chest (PA)',
+    'X-ray — Hands / Wrists',
+    'X-ray — Foot / Ankle',
+    'X-ray — Lumbar spine',
+    'X-ray — Cervical spine',
+    'X-ray — Abdomen (erect & supine)',
+    'Ultrasound — Abdomen',
+    'Ultrasound — Pelvis',
+    'Ultrasound — Thyroid',
+    'Ultrasound — Renal tract',
+    'CT scan — Brain (non-contrast)',
+    'CT scan — Chest',
+    'CT scan — Abdomen & Pelvis',
+    'MRI — Brain',
+    'MRI — Spine',
+    'Echocardiogram',
+    'Mammogram',
+    'DEXA bone density scan',
+    /* Cardiology / Respiratory */
+    'ECG (12-lead)',
+    'Spirometry (PFTs)',
+    'Peak flow measurement',
+    'Holter monitor (24 h)',
+    /* Other */
+    'Pap smear',
+    '24-hour urine collection',
+    'Fasting lipid profile',
   ];
 
   function esc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
+
+  var RX_DRUG = /drug|medic|dose|\bmg\b|\bml\b/i;
+  var RX_TEST = /invest|x[- ]?ray|mri\b|ct\s|ct-|\bscan\b|\blab\b|urin|cbc\b|\bhb\b|ecg\b|ekg\b|echo\b|biopsy|culture|imaging|blood\s+test|lft\b|thyroid|ultrasound|spirom|colonosc/i;
 
   /* ── Mirror build ── */
   function buildMirrorHtml(text) {
@@ -1399,8 +1576,8 @@ function _suiteConfirm(title, text) {
     var rx = /\[([^\]]*)\]/g;
     while ((m = rx.exec(text)) !== null) {
       html += esc(text.slice(last, m.index));
-      var isDrug = /drug|medic|dose|\bmg\b|\bml\b/i.test(m[1]);
-      html += '<span class="bk-hl' + (isDrug ? ' drug-hl' : '') + '">' + esc(m[0]) + '</span>';
+      var cls = RX_DRUG.test(m[1]) ? ' drug-hl' : RX_TEST.test(m[1]) ? ' test-hl' : '';
+      html += '<span class="bk-hl' + cls + '">' + esc(m[0]) + '</span>';
       last = m.index + m[0].length;
     }
     return html + esc(text.slice(last));
@@ -1457,17 +1634,22 @@ function _suiteConfirm(title, text) {
 
   function hidePop() { if (pop) pop.style.display = 'none'; popCtx = null; }
 
-  function applyValue(isDrug) {
+  /* mode: 'drug' | 'test' | 'generic' */
+  function applyValue(mode) {
     if (!popCtx) return;
     var value;
-    if (isDrug) {
+    if (mode === 'drug') {
       var sel = pop.querySelector('.bp-drug-list li.is-sel');
-      var name = sel ? sel.textContent.trim() : pop.querySelector('.bp-drug-search').value.trim();
+      var name = sel ? sel.dataset.drug || sel.textContent.trim() : pop.querySelector('.bp-drug-search').value.trim();
       if (!name) return;
       var dose = pop.querySelector('.bp-dose-in').value.trim();
       var unit = pop.querySelector('.bp-unit-sel').value;
       var freq = pop.querySelector('.bp-freq-in').value.trim();
       value = name + (dose ? ' ' + dose + unit : '') + (freq ? ' ' + freq : '');
+    } else if (mode === 'test') {
+      var sel2 = pop.querySelector('.bp-drug-list li.is-sel');
+      value = sel2 ? sel2.dataset.test || sel2.textContent.trim() : pop.querySelector('.bp-drug-search').value.trim();
+      if (!value) return;
     } else {
       value = (pop.querySelector('.bp-input').value || '').trim();
       if (!value) return;
@@ -1482,21 +1664,49 @@ function _suiteConfirm(title, text) {
     ta.style.height = Math.min(1200, Math.max(ta.scrollHeight + 2, 48)) + 'px';
     ta.dispatchEvent(new Event('input', { bubbles: true }));
     hidePop();
-    /* Switch back to rich display immediately so the applied value is visible */
     if (ta._refreshRichView) ta._refreshRichView();
   }
 
+  function buildPickerList(items, dataAttr, searchClass) {
+    return items.map(function (d) {
+      return '<li data-' + dataAttr + '="' + esc(d) + '">' + esc(d) + '</li>';
+    }).join('');
+  }
+
+  function wireListSearch(p, searchSel, dataAttr, applyMode) {
+    p.querySelectorAll('.bp-drug-list li').forEach(function (li) {
+      li.addEventListener('click', function () {
+        p.querySelectorAll('.bp-drug-list li').forEach(function (x) { x.classList.remove('is-sel'); });
+        li.classList.add('is-sel');
+        if (applyMode === 'drug') {
+          var di = p.querySelector('.bp-dose-in');
+          if (di) setTimeout(function () { di.focus(); }, 10);
+        }
+      });
+    });
+    p.querySelector(searchSel).addEventListener('input', function () {
+      var q = this.value.toLowerCase();
+      p.querySelectorAll('.bp-drug-list li').forEach(function (li) {
+        var txt = (li.dataset[dataAttr] || li.textContent || '').toLowerCase();
+        li.style.display = txt.includes(q) ? '' : 'none';
+      });
+    });
+  }
+
   function showPop(ev, ta, s, e, content) {
-    hideEraseBtn();  /* prevent overlap between erase btn and bracket popover */
+    hideEraseBtn();
     var p = getPopover();
     popCtx = { ta: ta, s: s, e: e };
-    var isDrug = /drug|medic|dose|\bmg\b|\bml\b/i.test(content);
+    var isDrug = RX_DRUG.test(content);
+    var isTest = !isDrug && RX_TEST.test(content);
+    var mode   = isDrug ? 'drug' : isTest ? 'test' : 'generic';
 
-    if (isDrug) {
-      var items = DRUGS.map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('');
+    if (mode === 'drug') {
+      var allDrugs = getDrugs();
+      var items = buildPickerList(allDrugs, 'drug', 'bp-drug-search');
       p.innerHTML =
         '<div class="bp-title">Medication</div>' +
-        '<input class="bp-input bp-drug-search" type="text" placeholder="Search drug…" />' +
+        '<input class="bp-input bp-drug-search" type="text" placeholder="Search or type drug name…" />' +
         '<ul class="bp-drug-list">' + items + '</ul>' +
         '<div class="bp-dose-row">' +
           '<input class="bp-dose-in" type="text" placeholder="Dose" />' +
@@ -1507,24 +1717,38 @@ function _suiteConfirm(title, text) {
         '<div class="bp-actions">' +
           '<button class="bp-apply" type="button">Apply</button>' +
           '<button class="bp-cancel" type="button">Cancel</button>' +
-        '</div>';
-      p.querySelectorAll('.bp-drug-list li').forEach(function (li) {
-        li.addEventListener('click', function () {
-          p.querySelectorAll('.bp-drug-list li').forEach(function (x) { x.classList.remove('is-sel'); });
-          li.classList.add('is-sel');
-          var di = p.querySelector('.bp-dose-in');
-          if (di) setTimeout(function () { di.focus(); }, 10);
-        });
-      });
-      p.querySelector('.bp-drug-search').addEventListener('input', function () {
-        var q = this.value.toLowerCase();
-        p.querySelectorAll('.bp-drug-list li').forEach(function (li) {
-          li.style.display = li.textContent.toLowerCase().includes(q) ? '' : 'none';
-        });
-      });
+        '</div>' +
+        '<button class="bp-add-custom" type="button" title="Save typed drug name to your custom list">+ Save as custom medication</button>';
+      wireListSearch(p, '.bp-drug-search', 'drug', 'drug');
       p.querySelector('.bp-dose-in').addEventListener('keydown', function (k) {
-        if (k.key === 'Enter') { k.preventDefault(); applyValue(true); }
+        if (k.key === 'Enter') { k.preventDefault(); applyValue('drug'); }
       });
+      p.querySelector('.bp-add-custom').addEventListener('click', function () {
+        var name = (p.querySelector('.bp-drug-search').value || '').trim();
+        if (!name) { p.querySelector('.bp-drug-search').focus(); return; }
+        if (addCustomDrug(name)) {
+          this.textContent = '✓ Saved "' + name + '"';
+          this.disabled = true;
+        } else {
+          this.textContent = 'Already in list';
+        }
+      });
+
+    } else if (mode === 'test') {
+      var testItems = buildPickerList(TESTS, 'test', 'bp-drug-search');
+      p.innerHTML =
+        '<div class="bp-title">Investigation / Test</div>' +
+        '<input class="bp-input bp-drug-search" type="text" placeholder="Search test…" />' +
+        '<ul class="bp-drug-list">' + testItems + '</ul>' +
+        '<div class="bp-actions">' +
+          '<button class="bp-apply" type="button">Apply</button>' +
+          '<button class="bp-cancel" type="button">Cancel</button>' +
+        '</div>';
+      wireListSearch(p, '.bp-drug-search', 'test', 'test');
+      p.querySelector('.bp-drug-search').addEventListener('keydown', function (k) {
+        if (k.key === 'Enter') { k.preventDefault(); applyValue('test'); }
+      });
+
     } else {
       p.innerHTML =
         '<div class="bp-title">Fill in value</div>' +
@@ -1534,11 +1758,11 @@ function _suiteConfirm(title, text) {
           '<button class="bp-cancel" type="button">Cancel</button>' +
         '</div>';
       p.querySelector('.bp-input').addEventListener('keydown', function (k) {
-        if (k.key === 'Enter') { k.preventDefault(); applyValue(false); }
+        if (k.key === 'Enter') { k.preventDefault(); applyValue('generic'); }
       });
     }
 
-    p.querySelector('.bp-apply').addEventListener('click', function () { applyValue(isDrug); });
+    p.querySelector('.bp-apply').addEventListener('click', function () { applyValue(mode); });
     p.querySelector('.bp-cancel').addEventListener('click', hidePop);
 
     p.style.display = 'block';
@@ -1607,6 +1831,7 @@ function _suiteConfirm(title, text) {
         if (mirror) syncMirror(ta, mirror);
         updateBadge(ta);
         ta.dispatchEvent(new Event('input', { bubbles: true }));
+        if (ta._refreshRichView) ta._refreshRichView();
         hideEraseBtn();
       });
     }
@@ -1710,6 +1935,7 @@ function _suiteConfirm(title, text) {
 
 })();
 </script>
+
 {% endblock %}
 
 {% block extra_scripts %}
@@ -1722,7 +1948,7 @@ function _suiteConfirm(title, text) {
   if (!regenBtn) return;
   var sessionEl = document.querySelector('[data-session-id]');
   var SESSION_ID = sessionEl ? sessionEl.dataset.sessionId : '';
-  var CSRF = '{{ csrf_token }}';
+  var CSRF = window.WELLNEST && window.WELLNEST.getCsrf ? window.WELLNEST.getCsrf() : '{{ csrf_token }}';
 
   regenBtn.addEventListener('click', function (e) {
     e.stopImmediatePropagation(); // prevent wellnest.js handler + any others
@@ -1777,7 +2003,7 @@ function _suiteConfirm(title, text) {
   var sessionEl = document.querySelector('[data-session-id]');
   if (!sessionEl) return;
   var SESSION_ID = sessionEl.dataset.sessionId;
-  var CSRF = '{{ csrf_token }}';
+  var CSRF = window.WELLNEST && window.WELLNEST.getCsrf ? window.WELLNEST.getCsrf() : '{{ csrf_token }}';
   var MAGIC_URL = '/scribe/api/sessions/' + SESSION_ID + '/magic-edit/';
 
   var fab        = document.getElementById('magicEditFloatBtn');
@@ -1868,6 +2094,18 @@ function _suiteConfirm(title, text) {
             });
           }
         }
+        /* Sync patient name bar if instruction says "patient name is X" or "patient is X" */
+        (function () {
+          var nameField = document.getElementById('prbName');
+          if (!nameField || nameField.readOnly) return;
+          var m = instruction.match(/patient\s+(?:name\s+)?(?:is|=|:)\s*([A-Za-z][A-Za-z .'\-]{1,50}?)(?:\s*$|[.,;!?])/i);
+          if (!m || !m[1]) return;
+          var newName = m[1].trim();
+          if (!newName || newName.toLowerCase() === nameField.value.trim().toLowerCase()) return;
+          nameField.value = newName;
+          nameField.dispatchEvent(new Event('input', { bubbles: true }));
+          nameField.dispatchEvent(new Event('blur'));
+        }());
         showStatus('Done! Note updated.', 'success');
         panel.querySelectorAll('.magic-chip').forEach(function (c) { c.classList.remove('is-active'); });
         if (input) input.value = '';
@@ -1921,8 +2159,7 @@ function _suiteConfirm(title, text) {
               if (e.data && e.data.size > 0) _micChunks.push(e.data);
             });
             _micRecorder.addEventListener('stop', function () {
-              _micStream.getTracks().forEach(function (t) { t.stop(); });
-              _micStream = null;
+              if (_micStream) { _micStream.getTracks().forEach(function (t) { t.stop(); }); _micStream = null; }
               _micActive = false;
               micSetIcon('iconamoon:microphone-duotone');
               if (micBtn) micBtn.style.color = '';
@@ -2003,8 +2240,6 @@ function _suiteConfirm(title, text) {
 })();
 
 /* ── Rich note display: bold sub-labels + bracket highlights ─────────── */
-/* Must run after DOMContentLoaded so initMirror() has already wrapped each
-   textarea in .bracket-textarea-wrap before we insert the display div.      */
 (function () {
   var TOP_LABEL_RE = /^(CC|HPI|PMH|Family History|Social History|Current Medications|Allergies|ROS|Vitals|Examination|Investigations|SUMMARY|Assessment|Plan):(.*)/;
   var SUB_LABEL_RE = /^(\s+)(Medications|Investigations|Follow-?up|Referrals|Education|Procedures?|Lifestyle|Diet|Monitoring|Counselli?ng|Other|Imaging|Labs?):(.*)/i;
@@ -2031,13 +2266,54 @@ function _suiteConfirm(title, text) {
   }
 
   function showEdit(ta, rd, wrap) {
-    ta._editStartValue = ta.value;  /* snapshot for undo */
+    /* Only snapshot once per edit session (not on every call) */
+    if (ta._inEditMode) return;
+    ta._inEditMode = true;
+    ta._editStartValue = ta.value;
     rd.style.display = 'none';
     (wrap || ta).style.display = '';
     ta.style.height = 'auto';
     ta.style.height = Math.min(1200, Math.max(ta.scrollHeight + 2, 48)) + 'px';
     ta.focus();
   }
+
+  /* Global selectionchange handler — more reliable than per-textarea mouseup.
+     Fires as the user drags to select, immediately after entering edit mode. */
+  var _selChangeTimer;
+  document.addEventListener('selectionchange', function () {
+    clearTimeout(_selChangeTimer);
+    _selChangeTimer = setTimeout(function () {
+      var active = document.activeElement;
+      if (!active || active.tagName !== 'TEXTAREA' || active.readOnly) { hideEraseBtn(); return; }
+      var s = active.selectionStart, e = active.selectionEnd;
+      if (e > s) {
+        /* Position erase button near the caret using getBoundingClientRect */
+        var rect = active.getBoundingClientRect();
+        var fakeEv = { clientX: rect.left + rect.width / 2, clientY: rect.top + 8 };
+        showEraseBtn(fakeEv, active);
+      } else {
+        hideEraseBtn();
+      }
+    }, 60);
+  });
+
+  /* Ctrl+Z / Cmd+Z: undo in whichever textarea is active or was last edited */
+  var _lastEditedTa = null;
+  document.addEventListener('keydown', function (e) {
+    var ctrlZ = (e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey;
+    if (!ctrlZ) return;
+    var ta = document.activeElement;
+    /* If focus is inside a note section textarea, let native undo handle it */
+    if (ta && ta.tagName === 'TEXTAREA' && ta.dataset.noteField) return;
+    /* Otherwise try our last-edited textarea (user is in rich view) */
+    if (_lastEditedTa && _lastEditedTa._editStartValue !== undefined) {
+      e.preventDefault();
+      _lastEditedTa.value = _lastEditedTa._editStartValue;
+      _lastEditedTa.dispatchEvent(new Event('input', { bubbles: true }));
+      if (_lastEditedTa._refreshRichView) _lastEditedTa._refreshRichView();
+      _lastEditedTa._inEditMode = false;
+    }
+  });
 
   document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.note-section-body .note-textarea[data-note-field]').forEach(function (ta) {
@@ -2049,11 +2325,34 @@ function _suiteConfirm(title, text) {
 
       showRich(ta, rd, wrap);
 
-      rd.addEventListener('click', function () { showEdit(ta, rd, wrap); });
-      ta.addEventListener('blur', function () { showRich(ta, rd, wrap); });
-      ta._refreshRichView = function () { showRich(ta, rd, wrap); };
+      /* mousedown (not click) so user can immediately drag-select after entering edit mode */
+      rd.addEventListener('mousedown', function (e) {
+        e.preventDefault(); /* keep focus on the textarea we're about to show */
+        showEdit(ta, rd, wrap);
+        /* Forward the mousedown so the textarea can set cursor position */
+        ta.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true,
+          clientX: e.clientX, clientY: e.clientY }));
+      });
 
-      /* Add undo button to this section's actions bar */
+      ta.addEventListener('blur', function () {
+        ta._inEditMode = false;
+        _lastEditedTa = ta;
+        showRich(ta, rd, wrap);
+      });
+      ta.addEventListener('focus', function () {
+        _lastEditedTa = ta;
+        /* Take snapshot if entering edit mode via keyboard Tab or external focus */
+        if (!ta._inEditMode) {
+          ta._inEditMode = true;
+          ta._editStartValue = ta.value;
+        }
+      });
+      ta._refreshRichView = function () {
+        ta._inEditMode = false;
+        showRich(ta, rd, wrap);
+      };
+
+      /* Undo button — use a verified iconamoon icon + give it a visible accent color */
       var section = ta.closest('.note-section');
       if (section) {
         var actions = section.querySelector('.note-section-actions');
@@ -2061,14 +2360,20 @@ function _suiteConfirm(title, text) {
           var undoBtn = document.createElement('button');
           undoBtn.type = 'button';
           undoBtn.className = 'note-section-btn';
-          undoBtn.title = 'Undo last edit';
-          undoBtn.innerHTML = '<iconify-icon icon="iconamoon:arrow-undo-left-duotone"></iconify-icon>';
+          undoBtn.title = 'Undo last edit (Ctrl+Z)';
+          undoBtn.innerHTML = '<iconify-icon icon="iconamoon:history-duotone"></iconify-icon>';
+          /* Make it subtly visible at rest so users know it's there */
+          undoBtn.style.cssText = 'color: var(--wellnest-blue, #0d6efd); opacity: 0.55;';
+          undoBtn.addEventListener('mouseenter', function () { undoBtn.style.opacity = '1'; });
+          undoBtn.addEventListener('mouseleave', function () { undoBtn.style.opacity = '0.55'; });
           undoBtn.addEventListener('click', function () {
-            if (ta._editStartValue !== undefined) {
-              ta.value = ta._editStartValue;
-              ta.dispatchEvent(new Event('input', { bubbles: true }));
-              showRich(ta, rd, wrap);
-            }
+            var target = (ta._editStartValue !== undefined) ? ta : (_lastEditedTa || ta);
+            if (target._editStartValue === undefined) return;
+            target.value = target._editStartValue;
+            target._editStartValue = undefined;
+            target.dispatchEvent(new Event('input', { bubbles: true }));
+            if (target._refreshRichView) target._refreshRichView();
+            target._inEditMode = false;
           });
           actions.insertBefore(undoBtn, actions.firstChild);
         }
@@ -2082,7 +2387,7 @@ function _suiteConfirm(title, text) {
   var sessionEl = document.querySelector('[data-session-id]');
   if (!sessionEl) return;
   var SESSION_ID = sessionEl.dataset.sessionId;
-  var CSRF = '{{ csrf_token }}';
+  var CSRF = window.WELLNEST && window.WELLNEST.getCsrf ? window.WELLNEST.getCsrf() : '{{ csrf_token }}';
 
   var resumeBtn           = document.getElementById('resumeSessionBtn');
   var resumeModal         = document.getElementById('resumeModal');
@@ -2109,13 +2414,20 @@ function _suiteConfirm(title, text) {
   var _mr = null, _stream = null, _chunks = [], _timerInt = null, _elapsed = 0;
   var _waveAnim = 0, _running = false;
   var _resumePatient = { name: '', identifier: '' };
+  var _newSessionMode = false;  /* true when recording for a brand-new session, not resuming */
+
+  var recordNewBtn = document.getElementById('recordNewBtn');
 
   function fmt(s) { return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
 
   function showStep(step) {
     stepPatient.classList.toggle('d-none', step !== 'patient');
     stepRecord.classList.toggle('d-none', step !== 'record');
-    resumeTitle.textContent = step === 'patient' ? 'Who is this session for?' : 'Resume session';
+    if (_newSessionMode) {
+      resumeTitle.textContent = 'New recording' + (_resumePatient.name ? ' — ' + _resumePatient.name : '');
+    } else {
+      resumeTitle.textContent = step === 'patient' ? 'Who is this session for?' : 'Resume session';
+    }
   }
 
   function startWave(stream) {
@@ -2177,6 +2489,7 @@ function _suiteConfirm(title, text) {
   async function processResume() {
     if (!_chunks.length) { resumeStatus.textContent = 'No audio captured.'; return; }
     resumeRecordBtn.disabled = true;
+    if (_newSessionMode) { await processNewSession(); return; }
     resumeStatus.textContent = 'Transcribing…';
     var blob = new Blob(_chunks, { type: 'audio/webm' });
     var fd = new FormData();
@@ -2205,6 +2518,31 @@ function _suiteConfirm(title, text) {
     }
   }
 
+  async function processNewSession() {
+    resumeStatus.textContent = 'Creating new session…';
+    var blob = new Blob(_chunks, { type: 'audio/webm' });
+    var fd = new FormData();
+    fd.append('audio', blob, 'new-session.webm');
+    fd.append('csrfmiddlewaretoken', CSRF);
+    if (_resumePatient.name)   fd.append('patient_name',   _resumePatient.name);
+    if (_resumePatient.gender) fd.append('patient_gender', _resumePatient.gender);
+    try {
+      var r = await fetch(window.WELLNEST.endpoints.createSession, {
+        method: 'POST', credentials: 'same-origin', body: fd
+      });
+      var d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Session creation failed');
+      resumeStatus.textContent = 'New session created — opening…';
+      setTimeout(function () {
+        if (_bsModal) _bsModal.hide();
+        window.location.href = '/scribe/sessions/' + d.session_id + '/review/';
+      }, 1200);
+    } catch (err) {
+      resumeStatus.textContent = 'Error: ' + err.message;
+      resumeRecordBtn.disabled = false;
+    }
+  }
+
   function goToRecord(name, identifier) {
     _resumePatient = { name: name || '', identifier: identifier || '' };
     savePatientInfo();
@@ -2217,10 +2555,30 @@ function _suiteConfirm(title, text) {
   }
 
   resumeBtn.addEventListener('click', function () {
+    _newSessionMode = false;
     _bsModal = bootstrap.Modal.getOrCreateInstance(resumeModal);
     showStep('patient');
     _bsModal.show();
   });
+
+  if (recordNewBtn) {
+    recordNewBtn.addEventListener('click', function () {
+      _newSessionMode = true;
+      _resumePatient = {
+        name:       recordNewBtn.dataset.patientName   || '',
+        gender:     recordNewBtn.dataset.patientGender || '',
+        identifier: ''
+      };
+      _bsModal = bootstrap.Modal.getOrCreateInstance(resumeModal);
+      resumeTimer.textContent = '0:00';
+      resumeStatus.textContent = '';
+      resumeLabel.textContent = 'Record';
+      resumeRecordBtn.classList.remove('is-recording');
+      resumeRecordBtn.disabled = false;
+      showStep('record');
+      _bsModal.show();
+    });
+  }
 
   if (confirmPatientBtn) confirmPatientBtn.addEventListener('click', function () {
     goToRecord(resumePatientName ? resumePatientName.value.trim() : '', resumePatientId ? resumePatientId.value.trim() : '');
@@ -2246,16 +2604,19 @@ function _suiteConfirm(title, text) {
   var params = new URLSearchParams(window.location.search);
   var newFor = params.get('new_for');
   if (!newFor) return;
-  var banner = document.getElementById('recordNewBanner');
-  var btn    = document.getElementById('recordNewBtn');
-  var sub    = document.getElementById('recordNewSubtext');
+  var banner     = document.getElementById('recordNewBanner');
+  var btn        = document.getElementById('recordNewBtn');
+  var sub        = document.getElementById('recordNewSubtext');
+  var resumeBtn  = document.getElementById('resumeSessionBtn');
   if (!banner || !btn) return;
   var gender = params.get('new_gender') || '';
-  var dest = '{% url "scribe:record" %}?patient=' + encodeURIComponent(newFor);
-  if (gender) dest += '&gender=' + encodeURIComponent(gender);
-  btn.href = dest;
-  if (sub) sub.textContent = 'Reviewing last visit for ' + newFor + ' — tap above to start a new session';
+  /* Store patient context on the button so the recording modal can pick it up */
+  btn.dataset.patientName   = newFor;
+  btn.dataset.patientGender = gender;
+  if (sub) sub.textContent = 'Reviewing previous visit for ' + newFor;
   banner.classList.remove('d-none');
+  /* Resume is only meaningful for in-progress sessions — hide it here */
+  if (resumeBtn) resumeBtn.classList.add('d-none');
   history.replaceState(null, '', window.location.pathname);
 })();
 </script>
