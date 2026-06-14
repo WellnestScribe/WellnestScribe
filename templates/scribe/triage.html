@@ -257,8 +257,8 @@
                                 <option value="mms" {% if not env.transformers %}disabled{% endif %}>
                                     MMS-1b-l1107 (Patois ASR){% if not env.transformers %} — install transformers{% endif %}
                                 </option>
-                                <option value="omni" {% if not env.transformers %}disabled{% endif %}>
-                                    Omni-ASR (Meta omnilingual / configurable){% if not env.transformers %} — install transformers{% endif %}
+                                <option value="omni">
+                                    omniASR CTC 1B (Meta omnilingual, Patois){% if not env.omnilingual_asr %} — paste Gradio URL or pip install omnilingual-asr{% endif %}
                                 </option>
                                 <option value="parakeet" {% if not env.nemo %}disabled{% endif %}>
                                     Parakeet TDT 0.6B v2 (NVIDIA, English){% if not env.nemo %} — install nemo_toolkit[asr]{% endif %}
@@ -313,11 +313,34 @@
                     </div>
 
                     <div class="mt-3" id="triageOmniRow" style="display:none;">
-                        <label class="form-label small text-muted" for="triageModelId">Omni-ASR model id (HuggingFace)</label>
-                        <input type="text" class="form-control" id="triageModelId"
-                               value="facebook/omnilingual-asr-7b-ctc"
-                               placeholder="e.g. facebook/omnilingual-asr-7b-ctc">
-                        <small class="text-muted">Try the 7B-CTC. For the 700M variant try <code>facebook/omnilingual-asr-700m-ctc</code> if available, or any speech-to-text model id from HuggingFace.</small>
+                        <input type="hidden" id="triageModelId" value="omniASR_CTC_1B">
+                        <p class="small mb-2 text-muted">
+                            Model: <strong>omniASR_CTC_1B</strong> ·
+                            set lang code to <code>jam_Latn</code> for Jamaican Creole ·
+                            VAD chunking handles recordings longer than 30 s automatically.
+                        </p>
+                        <div class="row g-2 mt-2">
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted mb-1" for="triageBatchSize">Batch size</label>
+                                <input type="number" min="1" max="32" value="4"
+                                       class="form-control form-control-sm" id="triageBatchSize">
+                            </div>
+                            <div class="col-md-8">
+                                <label class="form-label small text-muted mb-1" for="triageGradioUrl">
+                                    Gradio endpoint URL
+                                    <span class="text-muted">(optional — paste Colab share URL to run on Colab GPU instead of locally)</span>
+                                </label>
+                                <input type="url" class="form-control form-control-sm" id="triageGradioUrl"
+                                       placeholder="https://xxxx.gradio.live">
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <label class="form-label small text-muted" for="triageReference">
+                                Reference transcript <span class="text-muted">(optional — enables WER/CER accuracy scoring)</span>
+                            </label>
+                            <textarea class="note-textarea" id="triageReference" rows="2"
+                                      placeholder="Paste ground-truth Patois text to score accuracy…"></textarea>
+                        </div>
                     </div>
 
 
@@ -340,6 +363,11 @@
                     <textarea class="note-textarea" id="triageRawOut" rows="6"
                               placeholder="Raw model output appears here…"></textarea>
                     <p class="small text-muted mt-2" id="triageTimings"></p>
+                    <div id="triageAccuracyWrap" class="alert alert-secondary small mt-2 py-2 d-none">
+                        <strong>Accuracy (jiwer):</strong>
+                        CER <span id="triageCer">—</span> · WER <span id="triageWer">—</span>
+                        <span class="text-muted ms-2">CER is the headline metric for Patois — handles spelling variation</span>
+                    </div>
 
                     <div id="triageDiarizedWrap" class="mt-3 d-none">
                         <h6 class="fw-semibold mb-1">3b. Diarized transcript</h6>
@@ -414,11 +442,13 @@
                         <li>noisereduce: {{ env.noisereduce|yesno:"yes,no" }} · DeepFilterNet: {{ env.deepfilternet|yesno:"yes,no" }}</li>
                         <li>pyannote.audio: {{ env.pyannote|yesno:"yes,no" }} · diarize: {{ env.diarize_lib|yesno:"yes,no" }}</li>
                         <li>NeMo: {{ env.nemo|yesno:"yes,no" }}</li>
+                        <li>omnilingual-asr: {{ env.omnilingual_asr|yesno:"yes,no" }} · silero-vad: {{ env.silero_vad|yesno:"yes,no" }} · jiwer: {{ env.jiwer|yesno:"yes,no" }}</li>
                         <li>MMS cached: <span data-env-mms>{{ env.model_cached_mms|yesno:"yes,no" }}</span></li>
                         <li>T5 cached: <span data-env-t5>{{ env.model_cached_t5|yesno:"yes,no" }}</span></li>
                         <li>Qwen cached: <span data-env-qwen>{{ env.model_cached_qwen|yesno:"yes,no" }}</span></li>
                         <li>Gemma cached: <span data-env-gemma>{{ env.model_cached_gemma|yesno:"yes,no" }}</span>{% if env.local_llm_dir %} <span class="text-success">(local fallback active)</span>{% endif %}</li>
                         <li>Parakeet cached: {{ env.model_cached_parakeet|yesno:"yes,no" }}</li>
+                        <li>omniASR cached: {{ env.model_cached_omni|yesno:"yes,no" }}</li>
                     </ul>
                     {% if env.local_llm_dir %}
                     <p class="small text-muted mt-2 mb-0"><code>{{ env.local_llm_dir }}</code></p>

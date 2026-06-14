@@ -1192,8 +1192,32 @@
         if (result.diarize_applied) extras.push("diarized (" + (result.diarize_segments || []).length + " segments)");
         if (result.audio_saved_as) extras.push("saved " + result.audio_saved_as);
         if (timings) {
-          timings.textContent = job.backend + " · " + job.device + " · " + job.elapsed_ms + " ms"
+          let timingText = job.backend + " · " + job.device + " · " + job.elapsed_ms + " ms"
             + (extras.length ? " · " + extras.join(" · ") : "");
+          if (result.backend_meta) {
+            const m = result.backend_meta;
+            const loadNote = m.load_ms ? m.load_ms + " ms load" : "cached";
+            timingText += " | " + loadNote
+              + " · " + m.preprocessing_ms + " ms prep"
+              + " · " + m.inference_ms + " ms infer"
+              + " · " + m.chunk_count + " chunk" + (m.chunk_count !== 1 ? "s" : "")
+              + " · " + m.audio_seconds + " s audio"
+              + (m.realtime_factor != null ? " · RTF " + m.realtime_factor : "");
+          }
+          timings.textContent = timingText;
+        }
+        // WER/CER accuracy panel (omniASR only, when reference was provided).
+        const accuracyWrap = $("#triageAccuracyWrap", root);
+        const cerSpan = $("#triageCer", root);
+        const werSpan = $("#triageWer", root);
+        if (accuracyWrap) {
+          if (result.accuracy && result.accuracy.cer != null) {
+            if (cerSpan) cerSpan.textContent = (result.accuracy.cer * 100).toFixed(1) + "%";
+            if (werSpan) werSpan.textContent = (result.accuracy.wer * 100).toFixed(1) + "%";
+            accuracyWrap.classList.remove("d-none");
+          } else {
+            accuracyWrap.classList.add("d-none");
+          }
         }
         // Diarize panel — only shows when the run actually produced labels.
         const diarWrap = $("#triageDiarizedWrap", root);
@@ -1232,10 +1256,18 @@
       fd.append("device", deviceSel.value);
       fd.append("target_lang", langInput.value || "jam");
       fd.append("text_input", textIn.value || "");
-      if (modelIdInput) fd.append("model_id", modelIdInput.value || "facebook/omnilingual-asr-7b-ctc");
+      if (modelIdInput) fd.append("model_id", modelIdInput.value || "omniASR_CTC_1B");
       if (denoiseChk && denoiseChk.checked) fd.append("denoise", "1");
       if (diarizeChk && diarizeChk.checked) fd.append("diarize", "1");
       if (numSpeakersInp) fd.append("num_speakers", numSpeakersInp.value || "2");
+      if (backendSel.value === "omni") {
+        const batchSizeInp = $("#triageBatchSize", root);
+        const referenceInp = $("#triageReference", root);
+        const gradioUrlInp = $("#triageGradioUrl", root);
+        if (batchSizeInp) fd.append("batch_size", batchSizeInp.value || "4");
+        if (referenceInp) fd.append("reference", referenceInp.value || "");
+        if (gradioUrlInp && gradioUrlInp.value.trim()) fd.append("gradio_url", gradioUrlInp.value.trim());
+      }
       if (currentAudioBlob) {
         const ext = currentAudioBlob.type.indexOf("ogg") >= 0 ? "ogg" :
                     (currentAudioBlob.type.indexOf("mpeg") >= 0 ? "mp3" : "webm");

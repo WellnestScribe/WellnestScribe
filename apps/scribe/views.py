@@ -35,9 +35,11 @@ from .services.pipeline import (
 )
 from .services.triage import (
     TriageDependencyError,
+    _compute_wer_cer,
     probe_environment,
     transcribe_mms,
     transcribe_modal_mms,  # TEMPORARY — Modal GPU latency testing
+    transcribe_gradio,
     transcribe_omni,
     transcribe_parakeet,
     t5_rewrite,
@@ -554,9 +556,10 @@ def triage_run_api(request):
         "instruction",
         "Rewrite the following Jamaican Patois into clear clinical English.",
     )
-    model_id = request.POST.get(
-        "model_id", "facebook/omnilingual-asr-7b-ctc"
-    )
+    model_id = request.POST.get("model_id", "omniASR_CTC_1B")
+    reference = request.POST.get("reference", "").strip()
+    batch_size = max(1, int(request.POST.get("batch_size", "4") or "4"))
+    gradio_url = request.POST.get("gradio_url", "").strip()
     audio = request.FILES.get("audio")
 
     saved_path = None
@@ -573,15 +576,33 @@ def triage_run_api(request):
         return JsonResponse({"ok": False, "error": f"{backend} requires audio."}, status=400)
 
     def _run(job):
+        _omni_result: dict | None = None
         try:
             if backend == "mms":
                 job.stage = "loading MMS model (first run ≈ 60–120 s on CPU)…"
                 job.stage = "transcribing with MMS…"
                 raw = transcribe_mms(saved_path, device=device, target_lang=target_lang)
             elif backend == "omni":
-                job.stage = f"loading Omni-ASR ({model_id}) …"
-                job.stage = "transcribing with Omni-ASR…"
-                raw = transcribe_omni(saved_path, device=device, model_id=model_id)
+                omni_lang = target_lang if "_" in target_lang else target_lang + "_Latn"
+                if gradio_url:
+                    job.stage = f"calling Gradio endpoint…"
+                    _omni_result = transcribe_gradio(
+                        saved_path,
+                        gradio_url=gradio_url,
+                        target_lang=omni_lang,
+                        batch_size=batch_size,
+                        reference=reference,
+                    )
+                else:
+                    job.stage = f"loading {model_id} on {device}…"
+                    _omni_result = transcribe_omni(
+                        saved_path,
+                        device=device,
+                        model_card=model_id,
+                        target_lang=omni_lang,
+                        batch_size=batch_size,
+                    )
+                raw = _omni_result["text"]
             elif backend == "parakeet":
                 job.stage = "loading Parakeet TDT 0.6B v2 (first run ≈ 2–5 min on CPU)…"
                 job.stage = "transcribing with Parakeet…"
@@ -598,6 +619,13 @@ def triage_run_api(request):
                 "raw_text": raw,
                 "audio_saved_as": saved_path.name if saved_path else None,
             }
+            if _omni_result:
+                job.result["backend_meta"] = _omni_result
+                if reference:
+                    try:
+                        job.result["accuracy"] = _compute_wer_cer(reference, raw)
+                    except Exception as exc:  # noqa: BLE001
+                        job.result["accuracy"] = {"error": str(exc)}
             job.stage = "done"
         except TriageDependencyError as exc:
             job.status = "error"

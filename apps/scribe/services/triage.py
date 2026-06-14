@@ -21,6 +21,8 @@ The whole feature can be hidden by setting SCRIBE_ENABLE_TRIAGE=False
 from __future__ import annotations
 
 import logging
+import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -72,6 +74,10 @@ def probe_environment() -> dict[str, Any]:
         "model_cached_parakeet": False,
         "model_cached_local_llm": False,
         "local_llm_dir": "",
+        "omnilingual_asr": False,
+        "silero_vad": False,
+        "jiwer": False,
+        "model_cached_omni": False,
     }
     try:
         import torch  # type: ignore
@@ -103,6 +109,9 @@ def probe_environment() -> dict[str, Any]:
         ("df", "deepfilternet"),
         ("pyannote.audio", "pyannote"),
         ("diarize", "diarize_lib"),
+        ("omnilingual_asr", "omnilingual_asr"),
+        ("silero_vad", "silero_vad"),
+        ("jiwer", "jiwer"),
     ):
         try:
             __import__(pkg)
@@ -129,6 +138,24 @@ def probe_environment() -> dict[str, Any]:
             info["local_llm_dir"] = str(p)
             info["model_cached_local_llm"] = True
             break
+    # fairseq2 asset cache — weights land in ~/.cache/fairseq2/assets/<hash>/
+    try:
+        _f2_root = Path.home() / ".cache" / "fairseq2"
+        for _f2_dir in (
+            _f2_root / "assets",
+            _f2_root / "models",
+            _f2_root,
+        ):
+            if _f2_dir.exists():
+                if any(
+                    "omni" in f.name.lower()
+                    for d in _f2_dir.iterdir() if d.is_dir()
+                    for f in d.iterdir()
+                ):
+                    info["model_cached_omni"] = True
+                break
+    except Exception:  # noqa: BLE001
+        pass
     return info
 
 
@@ -252,90 +279,311 @@ def _load_t5(device: str = "cpu", model_id: str = "google/flan-t5-base"):
     return _T5_CACHE[key]
 
 
-# ---- Omni-ASR (Meta omnilingual / generic Whisper-style ASR) ---------------
+# ---- OmniASR — Meta omnilingual CTC (ASRInferencePipeline / fairseq2) ------
 
-_OMNI_CACHE: dict[str, Any] = {}
+_OMNI_CACHE: dict[str, tuple[Any, int]] = {}
 
 
-def _load_omni(device: str = "cpu", model_id: str = "facebook/omnilingual-asr-7b-ctc"):
-    """Load any HuggingFace seq2seq or CTC ASR model lazily.
+def _check_omni_lang_support(lang_code: str) -> bool:
+    """Return True if lang_code is in omnilingual_asr supported_langs."""
+    try:
+        from omnilingual_asr.models.wav2vec2_llama.lang_ids import supported_langs  # type: ignore
+        return lang_code in supported_langs
+    except Exception:  # noqa: BLE001
+        return True  # optimistic if module layout differs
 
-    `model_id` is configurable so you can test multiple Meta releases
-    (omnilingual-asr 7B / 3B / 700M variants, seamless-m4t, voxtral, etc.).
+
+def _vad_chunk_audio(
+    audio: Any,
+    sample_rate: int = 16000,
+    max_chunk_seconds: int = 30,
+) -> list:
+    """Split float32 audio into ≤max_chunk_seconds chunks at natural speech silences.
+
+    Uses silero-VAD when available; falls back to fixed-size splitting.
+    CTC models cap out at 40 s — default max_chunk_seconds=30 keeps headroom.
     """
-    key = f"{device}|{model_id}"
-    if key in _OMNI_CACHE:
-        return _OMNI_CACHE[key]
+    max_samples = max_chunk_seconds * sample_rate
+    if len(audio) <= max_samples:
+        return [audio]
 
     try:
         import torch  # type: ignore
-        from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq, AutoModelForCTC  # type: ignore
-    except ImportError as exc:  # noqa: BLE001
+        from silero_vad import get_speech_timestamps, load_silero_vad  # type: ignore
+
+        vad = load_silero_vad()
+        tensor = torch.from_numpy(audio).float()
+        timestamps = get_speech_timestamps(tensor, vad, sampling_rate=sample_rate)
+
+        if timestamps:
+            chunks: list = []
+            chunk_start = 0
+            last_speech_end = 0
+            for seg in timestamps:
+                seg_end = int(seg["end"])
+                seg_start = int(seg["start"])
+                if seg_end - chunk_start > max_samples and last_speech_end > chunk_start:
+                    chunks.append(audio[chunk_start:last_speech_end])
+                    chunk_start = seg_start
+                last_speech_end = seg_end
+            if chunk_start < len(audio):
+                chunks.append(audio[chunk_start:])
+            if chunks:
+                return chunks
+    except Exception:  # noqa: BLE001
+        pass  # silero-vad unavailable — fall through to fixed split
+
+    return [audio[i : i + max_samples] for i in range(0, len(audio), max_samples)]
+
+
+def _load_omni(
+    device: str = "cpu",
+    model_card: str = "omniASR_CTC_1B",
+) -> tuple[Any, int]:
+    """Lazy-load ASRInferencePipeline; return (pipeline, load_ms_on_first_call).
+
+    Subsequent calls return (cached_pipeline, 0).
+    """
+    key = f"{device}|{model_card}"
+    if key in _OMNI_CACHE:
+        return _OMNI_CACHE[key][0], 0
+
+    try:
+        from omnilingual_asr.models.inference.pipeline import ASRInferencePipeline  # type: ignore
+    except ImportError as exc:
         raise TriageDependencyError(
-            "transformers + torch not installed.\n"
-            "    pip install transformers torch torchaudio librosa soundfile"
+            "omnilingual-asr is not installed.\n"
+            "    pip install omnilingual-asr jiwer silero-vad\n"
+            "Also requires libsndfile:\n"
+            "    brew install libsndfile  (macOS)\n"
+            "    apt install libsndfile1  (Linux)"
         ) from exc
 
-    if device == "cuda" and not torch.cuda.is_available():
+    omni_cache_dir = getattr(settings, "OMNI_CACHE_DIR", "")
+    if omni_cache_dir:
+        os.environ.setdefault("FAIRSEQ2_CACHE_DIR", omni_cache_dir)
+        logger.info("omniASR: FAIRSEQ2_CACHE_DIR=%s", omni_cache_dir)
+
+    logger.info("Loading omniASR pipeline (%s) on %s …", model_card, device)
+    t0 = time.perf_counter()
+    pipeline = ASRInferencePipeline(model_card=model_card, device=device or None)
+    load_ms = int((time.perf_counter() - t0) * 1000)
+    logger.info("omniASR %s loaded in %d ms", model_card, load_ms)
+
+    _OMNI_CACHE[key] = (pipeline, load_ms)
+    return pipeline, load_ms
+
+
+def transcribe_gradio(
+    audio_path: str | Path,
+    *,
+    gradio_url: str,
+    target_lang: str = "jam_Latn",
+    model_label: str = "CTC 300M  (faster, ~1.2 GB)",
+    batch_size: int = 4,
+    reference: str = "",
+) -> dict:
+    """Call a running Gradio omniASR Colab endpoint and return a result dict
+    matching the shape of transcribe_omni()."""
+    try:
+        from gradio_client import Client, handle_file  # type: ignore
+    except ImportError as exc:
         raise TriageDependencyError(
-            "CUDA requested but no CUDA-capable GPU is visible to PyTorch."
+            "gradio_client not installed.\n    pip install gradio_client"
+        ) from exc
+
+    lang_label_map = {
+        "jam_Latn": "Jamaican Creole (Patois) — jam_Latn",
+        "eng_Latn": "English — eng_Latn",
+        "spa_Latn": "Spanish — spa_Latn",
+        "fra_Latn": "French — fra_Latn",
+        "hat_Latn": "Haitian Creole — hat_Latn",
+        "por_Latn": "Portuguese — por_Latn",
+    }
+    lang_label = lang_label_map.get(target_lang, target_lang)
+
+    t0 = time.perf_counter()
+    client = Client(gradio_url, verbose=False)
+    transcript, stats, accuracy = client.predict(
+        handle_file(str(audio_path)),
+        None,           # mic_audio — not used via API
+        lang_label,
+        model_label,
+        batch_size,
+        reference,
+        api_name="/predict",
+    )
+    total_ms = int((time.perf_counter() - t0) * 1000)
+
+    # Parse timing from stats string e.g. "Audio: 12.3s | Chunks: 1 | Prep: 45ms | Inference: 820ms | RTF: 0.067x"
+    import re as _re
+    def _extract(pattern, s, cast=float):
+        m = _re.search(pattern, s or "")
+        return cast(m.group(1)) if m else None
+
+    return {
+        "text": transcript,
+        "model_card": model_label,
+        "device": "cuda (gradio)",
+        "target_lang": target_lang,
+        "lang_supported": True,
+        "audio_seconds": _extract(r"Audio:\s*([\d.]+)", stats),
+        "chunk_count": _extract(r"Chunks:\s*(\d+)", stats, int),
+        "load_ms": 0,
+        "preprocessing_ms": _extract(r"Prep:\s*(\d+)", stats, int),
+        "inference_ms": _extract(r"Inference:\s*(\d+)", stats, int),
+        "total_ms": total_ms,
+        "realtime_factor": _extract(r"RTF:\s*([\d.]+)", stats),
+        "accuracy_str": accuracy,
+    }
+
+
+def transcribe_omni(
+    audio_path: str | Path,
+    *,
+    device: str = "cpu",
+    model_card: str = "omniASR_CTC_1B",
+    target_lang: str = "jam_Latn",
+    batch_size: int = 4,
+    max_chunk_seconds: int = 30,
+) -> dict:
+    """Transcribe with omniASR CTC via VAD-chunking + batched inference.
+
+    Returns a dict with: text, model_card, device, target_lang, lang_supported,
+    audio_seconds, chunk_count, load_ms, preprocessing_ms, inference_ms,
+    total_ms, realtime_factor.
+    """
+    import tempfile
+    import wave as _wave
+
+    try:
+        import numpy as np  # type: ignore
+    except ImportError as exc:
+        raise TriageDependencyError("numpy not installed. Run: pip install numpy") from exc
+
+    lang_supported = _check_omni_lang_support(target_lang)
+    if not lang_supported:
+        logger.warning(
+            "omniASR: lang %r not in supported_langs — try jam_Latn for Jamaican Creole.",
+            target_lang,
         )
 
-    logger.info("Loading omni model %s on %s …", model_id, device)
-    processor = AutoProcessor.from_pretrained(model_id)
-    # Try seq2seq (Whisper-style) first; fall back to CTC (Wav2Vec-style).
+    # fairseq2 gang context is thread-local; reinitialise it for this thread
+    # so cached pipelines work when called from Django's background threads.
     try:
-        model = AutoModelForSpeechSeq2Seq.from_pretrained(model_id)
-        kind = "seq2seq"
-    except Exception:  # noqa: BLE001
-        model = AutoModelForCTC.from_pretrained(model_id)
-        kind = "ctc"
-    model = model.to(device)
-    model.eval()
-    _OMNI_CACHE[key] = (processor, model, device, kind)
-    return _OMNI_CACHE[key]
+        from fairseq2.gang import create_fake_gangs, _thread_local
+        import torch as _torch
+        _dev = _torch.device(device if device != "cuda" or _torch.cuda.is_available() else "cpu")
+        _thread_local.current_gangs = [create_fake_gangs(_dev)]
+    except Exception:
+        pass
 
+    pipeline, load_ms = _load_omni(device=device, model_card=model_card)
 
-def transcribe_omni(audio_path: str | Path, *, device: str = "cpu",
-                    model_id: str = "facebook/omnilingual-asr-7b-ctc",
-                    language: str | None = None) -> str:
+    # Load and resample audio to 16 kHz mono float32.
+    t_pre = time.perf_counter()
     try:
+        import av  # type: ignore
         import librosa  # type: ignore
-        import torch  # type: ignore
-    except ImportError as exc:  # noqa: BLE001
-        raise TriageDependencyError(
-            "Missing audio libs. Run: pip install librosa soundfile torchaudio"
-        ) from exc
 
-    processor, model, dev, kind = _load_omni(device=device, model_id=model_id)
-    audio, _ = librosa.load(str(audio_path), sr=16000, mono=True)
+        container = av.open(str(audio_path))
+        samples: list = []
+        native_sr: int | None = None
+        for frame in container.decode(audio=0):
+            if native_sr is None:
+                native_sr = frame.sample_rate
+            arr = frame.to_ndarray()
+            if arr.ndim > 1:
+                arr = arr.mean(axis=0)
+            samples.append(arr.astype(np.float32))
+        audio = np.concatenate(samples)
+        if native_sr and native_sr != 16000:
+            audio = librosa.resample(audio, orig_sr=native_sr, target_sr=16000)
+    except Exception:  # noqa: BLE001
+        try:
+            import librosa  # type: ignore
+        except ImportError as exc:
+            raise TriageDependencyError(
+                "librosa is required. Run: pip install librosa soundfile"
+            ) from exc
+        audio, _ = librosa.load(str(audio_path), sr=16000, mono=True)
 
-    chunk_size = 25 * 16000
-    chunks = (
-        [audio[i:i + chunk_size] for i in range(0, len(audio), chunk_size)]
-        if len(audio) > chunk_size
-        else [audio]
-    )
-    out: list[str] = []
-    for ch in chunks:
-        inputs = processor(ch, sampling_rate=16000, return_tensors="pt")
-        if hasattr(inputs, "input_values"):
-            input_tensor = inputs.input_values.to(dev)
-        else:
-            input_tensor = inputs.input_features.to(dev)
-        with torch.no_grad():
-            if kind == "seq2seq":
-                gen_kwargs = {"max_new_tokens": 444}
-                if language:
-                    gen_kwargs["language"] = language
-                ids = model.generate(input_tensor, **gen_kwargs)
-                text = processor.batch_decode(ids, skip_special_tokens=True)[0]
-            else:
-                logits = model(input_tensor).logits
-                ids = torch.argmax(logits, dim=-1)
-                text = processor.batch_decode(ids)[0]
-        out.append(text)
-    return " ".join(out).strip()
+    audio_seconds = len(audio) / 16000
+    chunks = _vad_chunk_audio(audio, sample_rate=16000, max_chunk_seconds=max_chunk_seconds)
+    preprocessing_ms = int((time.perf_counter() - t_pre) * 1000)
+
+    # Write each chunk to a temp WAV so fairseq2 can load from file paths.
+    tmp_paths: list[Path] = []
+    try:
+        for chunk in chunks:
+            audio_int16 = (chunk * 32767).clip(-32768, 32767).astype(np.int16)
+            tf = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            tf.close()
+            with _wave.open(tf.name, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(16000)
+                wf.writeframes(audio_int16.tobytes())
+            tmp_paths.append(Path(tf.name))
+
+        lang_list = [target_lang] * len(tmp_paths)
+        t_inf = time.perf_counter()
+        transcriptions: list[str] = pipeline.transcribe(
+            [str(p) for p in tmp_paths],
+            lang=lang_list,
+            batch_size=batch_size,
+        )
+        inference_ms = int((time.perf_counter() - t_inf) * 1000)
+    finally:
+        for p in tmp_paths:
+            try:
+                p.unlink()
+            except Exception:  # noqa: BLE001
+                pass
+
+    total_ms = load_ms + preprocessing_ms + inference_ms
+    rtf = round(inference_ms / 1000 / audio_seconds, 4) if audio_seconds > 0 else None
+
+    return {
+        "text": " ".join(t.strip() for t in transcriptions if t.strip()),
+        "model_card": model_card,
+        "device": device,
+        "target_lang": target_lang,
+        "lang_supported": lang_supported,
+        "audio_seconds": round(audio_seconds, 3),
+        "chunk_count": len(chunks),
+        "load_ms": load_ms,
+        "preprocessing_ms": preprocessing_ms,
+        "inference_ms": inference_ms,
+        "total_ms": total_ms,
+        "realtime_factor": rtf,
+    }
+
+
+def _compute_wer_cer(reference: str, hypothesis: str) -> dict:
+    """Compute WER + CER with basic normalization using jiwer.
+
+    CER is the headline metric for Patois — WER overpunishes spelling
+    variation that is phonetically equivalent.
+    """
+    try:
+        import jiwer  # type: ignore
+    except ImportError as exc:
+        raise TriageDependencyError("jiwer not installed. Run: pip install jiwer") from exc
+
+    import re
+
+    def _norm(text: str) -> str:
+        text = text.lower()
+        text = re.sub(r"[^\w\s']", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    ref_n = _norm(reference)
+    hyp_n = _norm(hypothesis)
+    return {
+        "wer": round(jiwer.wer(ref_n, hyp_n), 4),
+        "cer": round(jiwer.cer(ref_n, hyp_n), 4),
+    }
 
 
 def t5_rewrite(text: str, *, instruction: str, device: str = "cpu",
