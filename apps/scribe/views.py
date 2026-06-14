@@ -1095,11 +1095,11 @@ def generate_note_api(request, pk):
                 transcript = step2
                 session.transcript = step2
 
-    if not transcript or len(transcript) < 50:
+    if not transcript or len(transcript.strip()) < 5:
         return JsonResponse(
             {
                 "ok": False,
-                "error": "Transcript is too short. Record at least 30 seconds of speech or paste more text.",
+                "error": "Transcript came back empty. Try a longer recording or check your audio.",
             },
             status=400,
         )

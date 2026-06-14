@@ -313,21 +313,21 @@
                         <div class="d-flex align-items-center gap-2 mb-3 flex-wrap {% if not request.user.is_staff %}d-none{% endif %}">
                             <span class="small text-muted fw-semibold">Transcript source:</span>
                             <div class="btn-group btn-group-sm" role="group" id="ambientBackendGroup">
-                                <input type="radio" class="btn-check" name="ambientBackend" id="backendModal" value="modal" autocomplete="off" {% if ambient_backend == 'modal' %}checked{% endif %}>
+                                <input type="radio" class="btn-check" name="ambientBackend" id="backendModal" value="modal-omni" autocomplete="off" {% if ambient_backend != 'local' %}checked{% endif %}>
                                 <label class="btn btn-outline-primary" for="backendModal">
                                     <iconify-icon icon="iconamoon:lightning-1-duotone" class="me-1 align-middle"></iconify-icon>
-                                    Cloud
+                                    Cadence Cloud
                                 </label>
-                                <input type="radio" class="btn-check" name="ambientBackend" id="backendLocal" value="local" autocomplete="off" {% if ambient_backend != 'modal' %}checked{% endif %}>
+                                <input type="radio" class="btn-check" name="ambientBackend" id="backendLocal" value="local" autocomplete="off" {% if ambient_backend == 'local' %}checked{% endif %}>
                                 <label class="btn btn-outline-secondary" for="backendLocal">
                                     <iconify-icon icon="iconamoon:cpu-duotone" class="me-1 align-middle"></iconify-icon>
                                     Local
                                 </label>
                             </div>
                         </div>
-                        {# Always default to cloud for regular users #}
+                        {# Always default to Cadence Cloud for regular users #}
                         {% if not request.user.is_staff %}
-                        <input type="radio" name="ambientBackend" id="backendModalHidden" value="modal" checked hidden>
+                        <input type="radio" name="ambientBackend" id="backendModalHidden" value="modal-omni" checked hidden>
                         {% endif %}
 
                         <div class="recorder-shell text-center">
@@ -1460,6 +1460,9 @@ document.addEventListener('DOMContentLoaded', function () {
       'waiting': 'Waiting in queue',
       'queued': 'Queued',
       'done': 'Done',
+      'sending to modal omniasr gpu…': 'Sending to Cadence Cloud…',
+      'sending to modal mms gpu…': 'Sending to Cadence Cloud…',
+      'sending to modal l4 gpu…': 'Sending to Cadence Cloud…',
     };
     if (!stage) return 'Processing';
     var key = stage.toLowerCase().trim();
@@ -1619,7 +1622,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (ambientRetryBtn) ambientRetryBtn.style.display = 'none';
     ambientRecordBtn.disabled = true;
     var backend = getAmbientBackend();
-    var backendLabel = backend === 'modal' ? 'Cloud' : 'Local';
+    var backendLabel = backend === 'local' ? 'Local' : 'Cadence Cloud';
 
     try {
       var activeStyleBtn = document.querySelector('.note-style-pill.is-active');
@@ -1663,7 +1666,7 @@ document.addEventListener('DOMContentLoaded', function () {
       var jobId = ambData.job_id;
 
       // 3. Poll — Modal fast (~50s RTT), local CPU can be minutes
-      var pollMs = backend === 'modal' ? 2000 : 4000;
+      var pollMs = backend !== 'local' ? 2000 : 4000;
       var transcript = null;
       var jobResult = {};
       var _shownSlowHint = false;
@@ -1691,10 +1694,10 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       // TEMPORARY: show timing card if Modal returned stats
-      if (jobResult.backend === 'modal') showTimingCard(jobResult);
+      if (jobResult.backend && jobResult.backend !== 'local') showTimingCard(jobResult);
 
-      if (!transcript || transcript.trim().length < 10) {
-        throw new Error('MMS returned an empty transcript. Try a longer recording (30+ seconds).');
+      if (!transcript || transcript.trim().length < 5) {
+        throw new Error('Transcript came back empty — try a longer recording or check audio quality.');
       }
 
       // 4. Generate note
