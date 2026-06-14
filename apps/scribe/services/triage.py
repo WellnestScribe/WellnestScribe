@@ -918,3 +918,68 @@ def transcribe_modal_mms(
     if not data.get("ok"):
         raise RuntimeError(f"Modal MMS error: {data.get('error') or data}")
     return data
+
+
+def transcribe_modal_omni(
+    audio_path: str | Path,
+    *,
+    target_lang: str = "jam_Latn",
+    model_id: str = "omniASR_CTC_1B_v2",
+    chunk_seconds: int = 30,
+) -> dict:
+    """POST audio to the Modal-hosted omniASR endpoint.
+
+    Response keys: ok, transcript, audio_seconds, chunk_count,
+    inference_ms, realtime_factor, model_id, target_lang.
+    """
+    try:
+        import requests  # type: ignore
+    except ImportError as exc:
+        raise TriageDependencyError("requests not installed. Run: pip install requests") from exc
+
+    url = settings.MODAL_OMNI_URL
+    if not url:
+        raise TriageDependencyError(
+            "MODAL_OMNI_URL is not set in .env. "
+            "Add the endpoint URL from your friend's Modal deployment."
+        )
+
+    headers = {}
+    if settings.MODAL_OMNI_API_KEY:
+        headers["X-API-Key"] = settings.MODAL_OMNI_API_KEY
+
+    src = Path(audio_path)
+    tmp_wav: "Path | None" = None
+    if src.suffix.lower() in {".webm", ".ogg", ".opus"}:
+        tmp_wav = _convert_webm_to_wav(src)
+
+    send_path = tmp_wav if tmp_wav else src
+    try:
+        with open(send_path, "rb") as f:
+            resp = requests.post(
+                url,
+                headers=headers,
+                files={"file": (send_path.name, f, "audio/wav" if tmp_wav else "audio/mpeg")},
+                data={
+                    "target_lang": target_lang,
+                    "model_id": model_id,
+                    "chunk_seconds": str(chunk_seconds),
+                },
+                timeout=300,
+            )
+    finally:
+        if tmp_wav:
+            tmp_wav.unlink(missing_ok=True)
+
+    if not resp.ok:
+        body = ""
+        try:
+            body = resp.json().get("detail") or resp.json().get("error") or resp.text[:300]
+        except Exception:  # noqa: BLE001
+            body = resp.text[:300]
+        raise RuntimeError(f"Modal omniASR HTTP {resp.status_code}: {body}")
+
+    data = resp.json()
+    if not data.get("ok"):
+        raise RuntimeError(f"Modal omniASR error: {data.get('error') or data}")
+    return data

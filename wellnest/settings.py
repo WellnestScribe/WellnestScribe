@@ -339,7 +339,9 @@ TRIAGE_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 # Remove both lines after the testing phase.
 MODAL_MMS_URL = config("MODAL_MMS_URL", default="")
 MODAL_MMS_API_KEY = config("MODAL_MMS_API_KEY", default="")
-AMBIENT_BACKEND = config("AMBIENT_BACKEND", default="local")  # modal | local
+MODAL_OMNI_URL = config("MODAL_OMNI_URL", default="")
+MODAL_OMNI_API_KEY = config("MODAL_OMNI_API_KEY", default="")
+AMBIENT_BACKEND = config("AMBIENT_BACKEND", default="local")  # modal-omni | modal | local
 OMNI_CACHE_DIR = config("OMNI_CACHE_DIR", default="")  # overrides FAIRSEQ2_CACHE_DIR for omniASR weights
 
 # ---- Logging ----

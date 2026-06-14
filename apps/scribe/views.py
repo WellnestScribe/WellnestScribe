@@ -39,6 +39,7 @@ from .services.triage import (
     probe_environment,
     transcribe_mms,
     transcribe_modal_mms,  # TEMPORARY — Modal GPU latency testing
+    transcribe_modal_omni,
     transcribe_gradio,
     transcribe_omni,
     transcribe_parakeet,
@@ -1626,14 +1627,29 @@ def ambient_transcribe_api(request, pk):
     backend = payload.get("backend") or dj_settings.AMBIENT_BACKEND  # "modal" | "local"
 
     def _run(job):
-        if backend == "modal":
-            job.stage = "sending to Modal L4 GPU…"
+        if backend == "modal-omni":
+            job.stage = "sending to Modal omniASR GPU…"
+            resp = transcribe_modal_omni(str(audio_path), target_lang="jam_Latn")
+            job.result = {
+                "raw_text": resp.get("transcript", ""),
+                "session_id": pk,
+                "backend": "modal-omni",
+                "audio_seconds": resp.get("audio_seconds"),
+                "chunk_count": resp.get("chunk_count"),
+                "load_ms": resp.get("load_ms"),
+                "preprocessing_ms": resp.get("preprocessing_ms"),
+                "inference_ms": resp.get("inference_ms"),
+                "total_ms": resp.get("total_ms"),
+                "realtime_factor": resp.get("realtime_factor"),
+                "model_device": resp.get("device", "cuda"),
+            }
+        elif backend == "modal":
+            job.stage = "sending to Modal MMS GPU…"
             resp = transcribe_modal_mms(str(audio_path), target_lang="jam")
             job.result = {
                 "raw_text": resp.get("transcript", ""),
                 "session_id": pk,
                 "backend": "modal",
-                # TEMPORARY timing stats for latency testing
                 "audio_seconds": resp.get("audio_seconds"),
                 "preprocessing_ms": resp.get("preprocessing_ms"),
                 "inference_ms": resp.get("inference_ms"),
@@ -1648,7 +1664,7 @@ def ambient_transcribe_api(request, pk):
             job.result = {"raw_text": raw, "session_id": pk, "backend": "local"}
         job.stage = "done"
 
-    job = submit_triage_job(f"mms-ambient-{backend}", "gpu" if backend == "modal" else "cpu", _run)
+    job = submit_triage_job(f"asr-ambient-{backend}", "gpu" if backend != "local" else "cpu", _run)
     _AMBIENT_JOB_OWNERS[job.job_id] = request.user.pk
     return JsonResponse({"ok": True, "job_id": job.job_id})
 
