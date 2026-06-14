@@ -837,23 +837,55 @@ def transcribe_parakeet(audio_path: str | Path, *, device: str = "cpu") -> str:
 # TEMPORARY — Modal L4 GPU endpoint for ambient-mode latency testing.
 # Remove this function once the testing phase is complete.
 def _convert_webm_to_wav(src: Path) -> "Path | None":
-    """Best-effort webm→WAV via ffmpeg. Returns temp WAV path or None."""
+    """Convert any audio/video format to 16 kHz mono WAV.
+
+    Tries ffmpeg first (best compatibility), falls back to torchaudio
+    (handles MP3, M4A, WAV, FLAC, OGG without ffmpeg on Windows).
+    """
     import subprocess
     import tempfile
 
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp.close()
+    tmp_path = Path(tmp.name)
+
+    # ── ffmpeg path ───────────────────────────────────────────────────────────
     try:
-        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        tmp.close()
         result = subprocess.run(
-            ["ffmpeg", "-y", "-i", str(src), "-ar", "16000", "-ac", "1", tmp.name],
+            ["ffmpeg", "-y", "-i", str(src), "-ar", "16000", "-ac", "1", str(tmp_path)],
             capture_output=True,
             timeout=60,
         )
-        if result.returncode == 0 and Path(tmp.name).stat().st_size > 100:
-            return Path(tmp.name)
-        Path(tmp.name).unlink(missing_ok=True)
+        if result.returncode == 0 and tmp_path.stat().st_size > 100:
+            return tmp_path
+    except FileNotFoundError:
+        pass  # ffmpeg not installed — fall through to torchaudio
     except Exception:  # noqa: BLE001
         pass
+
+    # ── torchaudio fallback ───────────────────────────────────────────────────
+    try:
+        import wave as _wave
+        import torch
+        import torchaudio
+        import torchaudio.functional as TAF
+
+        waveform, orig_sr = torchaudio.load(str(src))
+        if orig_sr != 16000:
+            waveform = TAF.resample(waveform, orig_sr, 16000)
+        mono = waveform.mean(0)
+        pcm = (mono * 32767).clamp(-32768, 32767).to(torch.int16).numpy()
+        with _wave.open(str(tmp_path), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(16000)
+            wf.writeframes(pcm.tobytes())
+        if tmp_path.stat().st_size > 100:
+            return tmp_path
+    except Exception:  # noqa: BLE001
+        pass
+
+    tmp_path.unlink(missing_ok=True)
     return None
 
 
@@ -950,16 +982,19 @@ def transcribe_modal_omni(
 
     src = Path(audio_path)
     tmp_wav: "Path | None" = None
+    # Browser-recorded webm/ogg/opus have a broken duration header — convert locally.
+    # All other formats (m4a, mp3, mp4, wav, flac…) are sent raw; Modal's ffmpeg handles them.
     if src.suffix.lower() in {".webm", ".ogg", ".opus"}:
         tmp_wav = _convert_webm_to_wav(src)
 
     send_path = tmp_wav if tmp_wav else src
+    mime = "audio/wav" if tmp_wav else "application/octet-stream"
     try:
         with open(send_path, "rb") as f:
             resp = requests.post(
                 url,
                 headers=headers,
-                files={"file": (send_path.name, f, "audio/wav" if tmp_wav else "audio/mpeg")},
+                files={"file": (send_path.name, f, mime)},
                 data={
                     "target_lang": target_lang,
                     "model_id": model_id,
