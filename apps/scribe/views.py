@@ -1017,7 +1017,11 @@ def transcribe_session_api(request, pk):
     session.status = "transcribing"
     session.save(update_fields=["status", "updated_at"])
     try:
-        transcript = run_transcription(session.audio_file.path)
+        if dj_settings.MODAL_OMNI_URL:
+            resp = transcribe_modal_omni(str(session.audio_file.path), target_lang="jam_Latn")
+            transcript = resp.get("transcript", "")
+        else:
+            transcript = run_transcription(session.audio_file.path)
     except Exception as exc:  # noqa: BLE001
         logger.exception("Transcription failed for session %s", pk)
         session.status = "error"
