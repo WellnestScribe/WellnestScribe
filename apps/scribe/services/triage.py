@@ -1000,7 +1000,7 @@ def transcribe_modal_omni(
                     "model_id": model_id,
                     "chunk_seconds": str(chunk_seconds),
                 },
-                timeout=300,
+                timeout=600,
             )
     finally:
         if tmp_wav:
@@ -1015,6 +1015,12 @@ def transcribe_modal_omni(
         raise RuntimeError(f"Modal omniASR HTTP {resp.status_code}: {body}")
 
     data = resp.json()
+    logger.warning(
+        "Modal omniASR response: ok=%s transcript_len=%d audio_seconds=%s",
+        data.get("ok"),
+        len(data.get("transcript") or ""),
+        data.get("audio_seconds"),
+    )
     if not data.get("ok"):
         raise RuntimeError(f"Modal omniASR error: {data.get('error') or data}")
     return data

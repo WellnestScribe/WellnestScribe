@@ -1076,6 +1076,13 @@ def generate_note_api(request, pk):
         raw_source = _reconstruct_raw_from_step1(session.transcript)
         if raw_source:
             session.raw_transcript = raw_source
+    # Ambient flow: raw ASR text arrives in the POST body because the background
+    # transcription job doesn't persist it to the DB before generate is called.
+    if not raw_source:
+        body_transcript = (payload.get("transcript") or "").strip()
+        if body_transcript:
+            raw_source = body_transcript
+            session.raw_transcript = body_transcript  # cache for future regeneration
 
     is_first_generation = not SOAPNote.objects.filter(session=session).exists()
 
@@ -1634,8 +1641,9 @@ def ambient_transcribe_api(request, pk):
         if backend == "modal-omni":
             job.stage = "sending to Modal omniASR GPU…"
             resp = transcribe_modal_omni(str(audio_path), target_lang="jam_Latn")
+            raw_text = resp.get("transcript", "")
             job.result = {
-                "raw_text": resp.get("transcript", ""),
+                "raw_text": raw_text,
                 "session_id": pk,
                 "backend": "modal-omni",
                 "audio_seconds": resp.get("audio_seconds"),
@@ -1650,8 +1658,9 @@ def ambient_transcribe_api(request, pk):
         elif backend == "modal":
             job.stage = "sending to Modal MMS GPU…"
             resp = transcribe_modal_mms(str(audio_path), target_lang="jam")
+            raw_text = resp.get("transcript", "")
             job.result = {
-                "raw_text": resp.get("transcript", ""),
+                "raw_text": raw_text,
                 "session_id": pk,
                 "backend": "modal",
                 "audio_seconds": resp.get("audio_seconds"),
@@ -1664,8 +1673,11 @@ def ambient_transcribe_api(request, pk):
         else:
             job.stage = "loading MMS model (first run ≈ 60–120 s on CPU)…"
             job.stage = "transcribing with MMS…"
-            raw = transcribe_mms(str(audio_path), device="cpu", target_lang="jam")
-            job.result = {"raw_text": raw, "session_id": pk, "backend": "local"}
+            raw_text = transcribe_mms(str(audio_path), device="cpu", target_lang="jam")
+            job.result = {"raw_text": raw_text, "session_id": pk, "backend": "local"}
+        # Persist raw ASR output to DB so generate can read it and regeneration works later.
+        if raw_text:
+            ScribeSession.objects.filter(pk=pk).update(raw_transcript=raw_text)
         job.stage = "done"
 
     job = submit_triage_job(f"asr-ambient-{backend}", "gpu" if backend != "local" else "cpu", _run)

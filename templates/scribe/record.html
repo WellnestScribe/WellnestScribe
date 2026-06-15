@@ -56,6 +56,35 @@
 }
 #micTestMeter > div { transition: height 0.08s ease, background 0.08s ease; }
 #micTestModal .modal-content { border: 1px solid var(--bs-border-color); }
+
+/* ── Ambient processing progress bar ─────────────────────────────────────── */
+#ambientProgress {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(61, 139, 253, 0.12);
+  overflow: hidden;
+  display: none;
+  margin: 8px auto 0;
+  width: 72%;
+  max-width: 320px;
+}
+#ambientProgress.is-active { display: block; }
+#ambientProgress .ap-fill {
+  width: 50%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+    rgba(61, 139, 253, 0),
+    rgba(116, 185, 255, 1) 50%,
+    rgba(61, 139, 253, 0));
+  box-shadow: 0 0 10px 3px rgba(116, 185, 255, 0.55),
+              0 0 22px 6px rgba(61, 139, 253, 0.28);
+  animation: ap-glide 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes ap-glide {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(250%); }
+}
 </style>
 {% endblock %}
 
@@ -334,6 +363,7 @@
                             <div class="mic-live-dot" id="ambientMicDot"></div>
                             <div class="recorder-timer" id="ambientTimer">0:00</div>
                             <div class="waveform-bars" id="ambientWaveform"></div>
+                            <div id="ambientProgress"><div class="ap-fill"></div></div>
                             <div class="d-flex justify-content-center align-items-center mt-3 gap-3">
                                 <button type="button" class="record-cta" id="ambientRecordBtn" aria-label="Start ambient recording">
                                     <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
@@ -1623,6 +1653,7 @@ document.addEventListener('DOMContentLoaded', function () {
     ambientRecordBtn.disabled = true;
     var backend = getAmbientBackend();
     var backendLabel = backend === 'local' ? 'Local' : 'Cadence Cloud';
+    var progressBar = document.getElementById('ambientProgress');
 
     try {
       var activeStyleBtn = document.querySelector('.note-style-pill.is-active');
@@ -1656,6 +1687,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
       // 2. Submit ambient job with selected backend
       ambientStatus.textContent = 'Sending to ' + backendLabel + '...';
+      if (progressBar) progressBar.classList.add('is-active');
       var ambResp = await fetch('/scribe/api/sessions/' + sessionId + '/ambient-transcribe/', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
@@ -1701,6 +1733,7 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       // 4. Generate note
+      if (progressBar) progressBar.classList.remove('is-active');
       ambientStatus.textContent = 'Generating note...';
       var lengthSwitch = document.getElementById('lengthModeSwitch');
       var lengthMode = lengthSwitch ? (lengthSwitch.value || 'normal') : 'normal';
@@ -1726,6 +1759,7 @@ document.addEventListener('DOMContentLoaded', function () {
       window.location.href = '/scribe/sessions/' + sessionId + '/review/';
 
     } catch (err) {
+      if (progressBar) progressBar.classList.remove('is-active');
       var msg = err.message || '';
       /* "Failed to fetch" = connection dropped before any response */
       if (err instanceof TypeError && msg.toLowerCase().includes('fetch')) {
