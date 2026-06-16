@@ -103,6 +103,20 @@ class ScribeSession(models.Model):
         help_text="Timestamp when the doctor confirmed verbal patient consent before recording.",
     )
 
+    # Pipeline timing — populated during ambient transcription and note generation.
+    # Schema: {
+    #   audio_seconds: float,       # recording duration
+    #   transcription_ms: int,      # Modal GPU total RTT (ms)
+    #   preprocess_ms: int,         # Modal audio pre-processing (ms)
+    #   inference_ms: int,          # Modal model inference only (ms)
+    #   realtime_factor: float,     # audio_seconds / (transcription_ms/1000)
+    #   interpret_ms: int,          # GPT-5 Patois interpret call (ms)
+    #   generation_ms: int,         # GPT-5 SOAP generation call (ms)
+    #   total_generation_ms: int,   # interpret + generation (ms)
+    #   pipeline_mode: str,         # "two-call" | "combined" | "stream"
+    # }
+    timings = models.JSONField(default=dict, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     finalized_at = models.DateTimeField(null=True, blank=True)
@@ -272,6 +286,41 @@ class DrugInteractionCheck(models.Model):
 
     def __str__(self) -> str:
         return f"Drug check #{self.pk} by {self.doctor_id} @ {self.created_at:%Y-%m-%d %H:%M}"
+
+
+class NoteFeedback(models.Model):
+    """Per-section thumbs up/down rating with optional comment from the doctor.
+
+    Used to track note quality and surface prompt improvement opportunities.
+    Admins review via /scribe/feedback/.
+    """
+
+    RATING_CHOICES = [("up", "Good"), ("down", "Needs improvement")]
+    SECTION_CHOICES = [
+        ("subjective", "Subjective"),
+        ("objective", "Objective"),
+        ("assessment", "Assessment"),
+        ("plan", "Plan"),
+        ("overall", "Overall"),
+    ]
+
+    session = models.ForeignKey(
+        ScribeSession, on_delete=models.CASCADE, related_name="feedback"
+    )
+    doctor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="note_feedback"
+    )
+    section = models.CharField(max_length=20, choices=SECTION_CHOICES)
+    rating = models.CharField(max_length=4, choices=RATING_CHOICES)
+    comment = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+        unique_together = ("session", "doctor", "section")
+
+    def __str__(self) -> str:
+        return f"{self.rating} on {self.section} — session {self.session_id}"
 
 
 class SessionEvent(models.Model):

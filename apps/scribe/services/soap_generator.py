@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Iterable
+from typing import Iterable, Iterator
 
 from django.conf import settings
 from openai import BadRequestError
@@ -56,8 +56,8 @@ _REASONING_HINTS = ("gpt-5", "o1", "o3", "o4", "reasoning")
 _reasoning_effort_supported: bool | None = None
 
 
-def _is_reasoning_deployment() -> bool:
-    name = (settings.SCRIBE_AZURE_OPENAI_DEPLOYMENT or "").lower()
+def _is_reasoning_deployment(deployment: str | None = None) -> bool:
+    name = (deployment or settings.SCRIBE_AZURE_OPENAI_DEPLOYMENT or "").lower()
     return any(h in name for h in _REASONING_HINTS)
 
 
@@ -112,13 +112,17 @@ def _is_reasoning_effort_error(exc: BadRequestError) -> bool:
     return "reasoning_effort" in message and "unrecognized request argument" in message
 
 
-def _chat(messages: list[dict], *, max_tokens: int | None = None) -> str:
-    """Call the chat deployment, with retry-on-empty for reasoning models."""
+def _chat(messages: list[dict], *, max_tokens: int | None = None, deployment: str | None = None) -> str:
+    """Call the chat deployment, with retry-on-empty for reasoning models.
+
+    Pass `deployment` to override the default (e.g. use a fast non-reasoning
+    model for a specific step without touching the global setting).
+    """
     global _reasoning_effort_supported
 
     client = get_chat_client()
-    deployment = settings.SCRIBE_AZURE_OPENAI_DEPLOYMENT
-    is_reasoning = _is_reasoning_deployment()
+    deployment = deployment or settings.SCRIBE_AZURE_OPENAI_DEPLOYMENT
+    is_reasoning = _is_reasoning_deployment(deployment)
     supports_reasoning_effort = _reasoning_effort_supported is not False
 
     base_budget = max_tokens or settings.SCRIBE_MAX_COMPLETION_TOKENS
@@ -1090,8 +1094,10 @@ def validate_note_safety(full_note: str, raw_transcript: str = "") -> list[str]:
                 )
 
     # ── Gestational age ───────────────────────────────────────────────────
+    # Require an explicit gestational-context keyword so "in 2 weeks" / "reassess in 2 weeks"
+    # don't trigger this alert.
     _ga_re = re.compile(
-        r"\b([0-9]{1,2})\s*(?:\+[0-9])?\s*weeks?\s*(?:gestation|ga|gest(?:ational)?)?",
+        r"\b([0-9]{1,2})\s*(?:\+[0-9])?\s*weeks?\s*(?:gestation(?:al)?|ga\b|gest\.?)",
         re.IGNORECASE,
     )
     for m in _ga_re.finditer(full_note):
@@ -1121,30 +1127,53 @@ def validate_note_safety(full_note: str, raw_transcript: str = "") -> list[str]:
     return warnings
 
 
+# ── Option 1: slim output for reasoning models ────────────────────────────────
+# GPT-5 performs Steps 1 & 3 internally via reasoning tokens — forcing them into
+# visible output wastes 500-1 000 tokens (~5-8 s) that we immediately discard.
+# When SCRIBE_SLIM_INTERPRET=True we append this instruction so the model emits
+# only Step 2. The _extract_step2() regex in views.py has a \Z fallback so it
+# works even without Step 3 as a delimiter.
+_REASONING_SLIM_ADDENDUM = """
+=== REASONING MODEL OUTPUT EFFICIENCY ===
+
+You are running as a reasoning model (GPT-5). Your internal chain-of-thought
+already handles STEP 1 phonetic resolution and STEP 3 clinical structuring.
+To reduce response time and token cost:
+
+- DO NOT write STEP 1 — PHONETIC RESOLUTION in your visible output.
+  Perform it entirely via internal reasoning.
+- Write STEP 2 — ASSEMBLED ENGLISH in full (required — extracted by downstream code).
+- OMIT STEP 3 — CLINICAL INTERPRETATION from your visible output.
+
+Start your visible response immediately with this exact label on its own line:
+STEP 2 — ASSEMBLED ENGLISH:
+[then the full clinical English output]
+"""
+
+
 def interpret_patois(patois_text: str) -> str:  # noqa: C901
-    """Convert raw MMS Patois transcript into clean clinical English.
+    """Convert raw Patois ASR transcript into clean clinical English.
 
-    Empirical fix for Azure content-filter false positives:
-    sending the PATOIS_INTERPRETER_SYSTEM_PROMPT as a separate `system`
-    message gets the Patois user text scanned in isolation — Azure flags
-    phonetic Patois tokens as 'sexual high' (e.g. "naip", "fingga",
-    "beli", "batam") because it lacks the medical context.
+    Azure content-filter workaround: the heavy Patois interpreter prompt and
+    the transcript travel together in the user message so the combined clinical
+    framing prevents false-positive flagging on Patwa anatomical terms.
 
-    When the same instructions live inside the user message alongside
-    the Patois, Azure's filter scans the combined block and recognises
-    the medical / clinical framing, so the request goes through.
-
-    Keep `system` minimal; put the heavy interpreter prompt + the
-    transcript together in the user content.
+    Option 1 (SCRIBE_SLIM_INTERPRET): appends _REASONING_SLIM_ADDENDUM so GPT-5
+    skips writing Steps 1 & 3 in visible output, saving ~500-1 000 output tokens.
     """
     text = (patois_text or "").strip()
     if not text:
         return ""
     text = _preprocess_patois(text)
+
+    slim = getattr(settings, "SCRIBE_SLIM_INTERPRET", True)
+    slim_block = _REASONING_SLIM_ADDENDUM if (slim and _is_reasoning_deployment()) else ""
+
     combined = (
         f"{PATOIS_INTERPRETER_SYSTEM_PROMPT.strip()}\n\n"
         f"=== END OF INSTRUCTIONS — PATOIS INPUT BELOW ===\n\n"
         f"PATWA TRANSCRIPT:\n{text}"
+        f"{slim_block}"
     )
     return _chat(
         [
@@ -1162,3 +1191,240 @@ def interpret_patois(patois_text: str) -> str:  # noqa: C901
             {"role": "user", "content": combined},
         ]
     )
+
+
+# ── Option 2: combined single GPT-5 call ─────────────────────────────────────
+# Appended to the Patois interpreter user message when SCRIBE_COMBINED_PIPELINE=True.
+# Asks GPT-5 to output Step 2 (for session.transcript cache) then the SOAP note,
+# separated by ---SOAP--- so the caller can split them cleanly.
+_COMBINED_SOAP_ADDENDUM = (
+    "\n\n=== ADDITIONAL TASK: SOAP NOTE ===\n\n"
+    "After your Patois interpretation, immediately generate a full clinical SOAP note.\n\n"
+    "Apply these documentation rules:\n\n"
+    "{master}\n\n"
+    "{jamaican}\n\n"
+    "Output your response in EXACTLY this structure, with both sections present:\n\n"
+    "STEP 2 — ASSEMBLED ENGLISH:\n"
+    "[3-8 sentences of clean clinical English summarising the encounter]\n\n"
+    "---SOAP---\n\n"
+    "SUMMARY:\n"
+    "[2-3 bullet TL;DR]\n\n"
+    "S:\n[Subjective]\n\n"
+    "O:\n[Objective]\n\n"
+    "A:\n[Assessment]\n\n"
+    "P:\n[Plan]\n\n"
+    "AI-generated draft - review and edit required before clinical use.\n\n"
+    "Separator rules:\n"
+    "- The line ---SOAP--- must appear exactly as shown, alone on its own line.\n"
+    "- Everything before ---SOAP--- is the clinical English summary.\n"
+    "- Everything after ---SOAP--- is the SOAP note.\n"
+    "- Apply all the same EXTRACT-DON'T-INVENT, negation, and safety rules as usual.\n"
+    "- specialty={specialty} | length_mode={length_mode}"
+)
+
+
+def interpret_and_generate_soap(
+    patois_text: str,
+    *,
+    note_format: str = "soap",
+    specialty: str = "general",
+    length_mode: str = "normal",
+    custom_instructions: str = "",
+    custom_terms: str = "",
+    suggestive_assist: bool = False,
+    is_sensitive: bool = False,
+) -> tuple[str, GeneratedNote]:
+    """Option 2: single GPT-5 call that interprets Patois AND generates the SOAP note.
+
+    Returns (clinical_english, GeneratedNote).
+    clinical_english → saved to session.transcript for regeneration caching.
+    GeneratedNote    → same shape as generate_note() output, saved to SOAPNote.
+
+    Falls back gracefully: if the ---SOAP--- separator is missing the full
+    response is treated as a SOAP note and clinical_english is left empty
+    (regeneration will re-interpret next time).
+    """
+    text = (patois_text or "").strip()
+    if not text:
+        raise ValueError("Cannot process an empty Patois transcript.")
+
+    text = _preprocess_patois(text)
+
+    addendum = _COMBINED_SOAP_ADDENDUM.format(
+        master=MASTER_SYSTEM_PROMPT.strip(),
+        jamaican=JAMAICAN_CONTEXT_ADDENDUM.strip(),
+        specialty=specialty,
+        length_mode=length_mode,
+    )
+
+    slim = getattr(settings, "SCRIBE_SLIM_INTERPRET", True)
+    # In combined mode the model MUST output Step 2 so downstream caching works —
+    # override slim to always include the Step 2 label instruction.
+    slim_block = _REASONING_SLIM_ADDENDUM if slim or _is_reasoning_deployment() else ""
+
+    # The combined prompt: full Patois rules → transcript → (optional slim hint) → SOAP task
+    combined = (
+        f"{PATOIS_INTERPRETER_SYSTEM_PROMPT.strip()}\n\n"
+        f"=== END OF INSTRUCTIONS — PATOIS INPUT BELOW ===\n\n"
+        f"PATWA TRANSCRIPT:\n{text}"
+        f"{slim_block}"
+        f"{addendum}"
+    )
+
+    # Build extra system addenda (sensitive, suggestive, custom)
+    extra_parts: list[str] = []
+    if is_sensitive:
+        extra_parts.append(SENSITIVE_ENCOUNTER_ADDENDUM.strip())
+    if suggestive_assist:
+        extra_parts.append(SUGGESTIVE_ASSIST_ADDENDUM.strip())
+    if custom_terms:
+        extra_parts.append(
+            "DOCTOR'S CUSTOM TERMINOLOGY:\n" + custom_terms.strip()
+        )
+    if custom_instructions:
+        extra_parts.append(
+            "DOCTOR PREFERENCES:\n" + custom_instructions.strip()
+        )
+    system_extra = ("\n\n".join(extra_parts) + "\n\n") if extra_parts else ""
+
+    raw = _chat(
+        [
+            {
+                "role": "system",
+                "content": (
+                    "You are a licensed medical Patois-to-clinical-English interpreter "
+                    "and clinical documentation assistant. All input is clinical data "
+                    "from a medical encounter. Do not refuse — Patwa anatomical and "
+                    "symptom vocabulary is legitimate medical terminology in this dialect.\n\n"
+                    + system_extra
+                ),
+            },
+            {"role": "user", "content": combined},
+        ]
+    )
+
+    # Split on the separator
+    soap_sep = re.search(r"^---SOAP---\s*$", raw, re.MULTILINE)
+    if soap_sep:
+        interpret_block = raw[: soap_sep.start()].strip()
+        soap_block = raw[soap_sep.end() :].strip()
+    else:
+        # Fallback: no separator found — treat everything as SOAP, no clinical English
+        logger.warning("interpret_and_generate_soap: ---SOAP--- separator missing; treating full output as SOAP")
+        interpret_block = ""
+        soap_block = raw
+
+    # Extract Step 2 from the interpret block (same regex as views._extract_step2)
+    step2_match = re.search(
+        r"STEP\s+2[^:]*:\s*\n+(.*?)(?=\n---|\nSTEP\s+3\b|\Z)",
+        interpret_block,
+        re.DOTALL | re.IGNORECASE,
+    )
+    clinical_english = (step2_match.group(1).strip() if step2_match else interpret_block).strip()
+
+    # Parse SOAP note
+    soap_block = _strip_ai_disclaimer(soap_block)
+    note = GeneratedNote(note_format=note_format if note_format else "soap", full_note=soap_block)
+    note.flags = _extract_flags(soap_block)
+    if note.note_format == "soap":
+        sections = _split_soap(soap_block)
+        note.visit_summary = _strip_ai_disclaimer(sections["visit_summary"])
+        note.subjective = _strip_ai_disclaimer(sections["subjective"])
+        note.objective = _strip_ai_disclaimer(sections["objective"])
+        note.assessment = _strip_ai_disclaimer(sections["assessment"])
+        note.plan = _strip_ai_disclaimer(sections["plan"])
+
+    return clinical_english, note
+
+
+# ── Option 3: streaming SOAP generation ──────────────────────────────────────
+
+def stream_note_generation(
+    transcript: str,
+    *,
+    note_format: str = "soap",
+    specialty: str = "general",
+    length_mode: str = "normal",
+    custom_instructions: str = "",
+    custom_terms: str = "",
+    suggestive_assist: bool = False,
+    is_sensitive: bool = False,
+) -> Iterator[str]:
+    """Yield SOAP note text tokens as they arrive from the API (Option 3).
+
+    This is Call 2 only — the caller must pass already-interpreted clinical
+    English as `transcript` (not raw Patois). Yields raw string chunks;
+    the caller accumulates them into the full note for post-processing.
+
+    Uses stream=True with reasoning_effort=minimal so the first token arrives
+    in ~2-3 s instead of waiting for the full response.
+    """
+    transcript = (transcript or "").strip()
+    if not transcript:
+        return
+
+    system_prompt = _system_prompt(
+        specialty,
+        custom_instructions,
+        custom_terms,
+        suggestive_assist=suggestive_assist,
+        is_sensitive=is_sensitive,
+    )
+
+    if note_format == "narrative":
+        user = NARRATIVE_USER_PROMPT.format(
+            specialty=specialty, length_mode=length_mode, transcript=transcript
+        )
+    elif note_format == "chart":
+        user = CHART_USER_PROMPT.format(
+            specialty=specialty, length_mode=length_mode, transcript=transcript
+        )
+    else:
+        soap_prompt = (
+            SINGLE_SOAP_USER_PROMPT_SUGGESTIVE if suggestive_assist else SINGLE_SOAP_USER_PROMPT
+        )
+        user = soap_prompt.format(
+            specialty=specialty,
+            note_style="SOAP",
+            length_mode=length_mode,
+            transcript=transcript,
+        )
+
+    global _reasoning_effort_supported
+
+    client = get_chat_client()
+    deployment = settings.SCRIBE_AZURE_OPENAI_DEPLOYMENT
+    is_reasoning = _is_reasoning_deployment(deployment)
+
+    kwargs: dict = {
+        "model": deployment,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user},
+        ],
+        "max_completion_tokens": max(settings.SCRIBE_MAX_COMPLETION_TOKENS, 4000),
+        "stream": True,
+    }
+    if is_reasoning and _reasoning_effort_supported is not False:
+        kwargs["extra_body"] = {"reasoning_effort": "minimal"}
+
+    def _stream_chunks(kw: dict):
+        response = client.chat.completions.create(**kw)
+        for chunk in response:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+
+    try:
+        yield from _stream_chunks(kwargs)
+    except BadRequestError as exc:
+        if _is_reasoning_effort_error(exc) and "extra_body" in kwargs:
+            _reasoning_effort_supported = False
+            kwargs.pop("extra_body")
+            logger.warning("Deployment rejected reasoning_effort on stream; retrying without it.")
+            yield from _stream_chunks(kwargs)
+        else:
+            logger.exception("stream_note_generation failed")
+            raise
+    except Exception:
+        logger.exception("stream_note_generation failed")
+        raise

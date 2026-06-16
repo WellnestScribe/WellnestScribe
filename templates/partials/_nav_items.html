@@ -93,6 +93,8 @@ Sections are collapsible — state saved in localStorage.
 {% if is_admin %}
 {% url 'scribe:audit_log' as audit_url %}
 {% url 'scribe:compliance' as compliance_url %}
+{% url 'scribe:latency_log' as latency_url %}
+{% url 'scribe:feedback_log' as feedback_log_url %}
 {% endif %}
 
 <li class="menu-title nav-section-toggle" data-section="nav-admin" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;">
@@ -117,6 +119,24 @@ Sections are collapsible — state saved in localStorage.
             <iconify-icon icon="iconamoon:shield-duotone"></iconify-icon>
         </span>
         <span class="nav-text">Compliance</span>
+    </a>
+</li>
+
+<li class="nav-item">
+    <a class="nav-link {% if request.path == latency_url %}active{% endif %}" href="{{ latency_url }}">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:clock-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">Latency log</span>
+    </a>
+</li>
+
+<li class="nav-item">
+    <a class="nav-link {% if request.path == feedback_log_url %}active{% endif %}" href="{{ feedback_log_url }}">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:comment-dots-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">Note feedback</span>
     </a>
 </li>
 {% endif %}

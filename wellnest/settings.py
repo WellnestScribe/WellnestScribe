@@ -310,6 +310,15 @@ SCRIBE_AZURE_OPENAI_DEPLOYMENT = config(
 SCRIBE_AZURE_OPENAI_API_VERSION = config(
     "SCRIBE_AZURE_OPENAI_API_VERSION", default="2024-12-01-preview"
 )
+# Opt 1: tell GPT-5 to skip writing Steps 1 & 3 in visible output (it reasons
+# internally). Saves ~500-1 000 output tokens ≈ 5-8 s on the interpret call.
+SCRIBE_SLIM_INTERPRET = config("SCRIBE_SLIM_INTERPRET", default=True, cast=bool)
+# Opt 2: combine interpret + SOAP into a single GPT-5 call. Saves one full
+# round-trip (~10-15 s). Disabled by default until battle-tested.
+SCRIBE_COMBINED_PIPELINE = config("SCRIBE_COMBINED_PIPELINE", default=False, cast=bool)
+# Opt 3: stream SOAP generation tokens to the browser via SSE so the doctor
+# sees text appearing immediately instead of waiting for the full response.
+SCRIBE_STREAM_GENERATION = config("SCRIBE_STREAM_GENERATION", default=False, cast=bool)
 
 SCRIBE_MODE = config("SCRIBE_MODE", default="cloud")
 PILOT_MODE = config("PILOT_MODE", default=True, cast=bool)

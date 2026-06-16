@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WellNest Scribe — Pipeline Diagram v2</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  body {
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    padding: 2rem;
+    margin: 0;
+  }
+  h1 { color: #4a9eff; margin-bottom: 0.25rem; }
+  .subtitle { color: #8b949e; font-size: 0.9rem; margin-bottom: 2rem; }
+  .diagram-wrap {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 2rem;
+    overflow-x: auto;
+  }
+  h2 { color: #4aff9e; margin-top: 2.5rem; font-size: 1.1rem; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    background: #161b22;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 1rem;
+  }
+  th { background: #21262d; color: #4a9eff; padding: 0.6rem 1rem; text-align: left; font-size: 0.85rem; }
+  td { padding: 0.6rem 1rem; border-top: 1px solid #30363d; font-size: 0.85rem; }
+  .pill {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+  .pill-blue { background: rgba(74,158,255,0.15); color: #4a9eff; }
+  .pill-green { background: rgba(74,255,158,0.15); color: #4aff9e; }
+  .pill-orange { background: rgba(255,158,74,0.15); color: #ff9e4a; }
+  .pill-purple { background: rgba(158,74,255,0.15); color: #9e4aff; }
+</style>
+</head>
+<body>
+
+<h1>WellNest Scribe — Pipeline Architecture v2</h1>
+<p class="subtitle">Open this file directly in a browser. Requires internet connection to load Mermaid JS from CDN.</p>
+
+<div class="diagram-wrap">
+<div class="mermaid">
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#1a2a3a', 'primaryTextColor': '#e6edf3', 'primaryBorderColor': '#4a9eff', 'lineColor': '#4a9eff', 'secondaryColor': '#161b22', 'tertiaryColor': '#21262d'}}}%%
+flowchart TD
+    A([🎙️ Doctor presses Record]) --> B[Browser MediaRecorder\nCaptures WebM audio blob]
+    B --> C["POST /upload-audio/\nCreates ScribeSession\nSaves audio file to disk"]
+    C --> D["POST /ambient-transcribe/\nbody: {backend: 'modal-omni'}"]
+    D --> E[Django: submit_triage_job\nSpawns background thread]
+    E --> F["→ Returns immediately\n{ok: true, job_id: '...'}"]
+    F --> G{Browser polls\n/ambient-jobs/job_id/\nevery 2 seconds}
+
+    subgraph MODAL ["☁️ Modal GPU — Background Thread"]
+        M1["transcribe_modal_omni()\nPOST audio to\nturbogary555.modal.run"]
+        M1 --> M2["Whisper-based omniASR\nL4 GPU · RTFx ~11×\nModel baked into container"]
+        M2 --> M3["Return transcript\n+ audio_seconds\n+ inference_ms\n+ realtime_factor"]
+        M3 --> M4["ScribeSession.update()\nraw_transcript = text\ntimings.transcription_ms = N"]
+        M4 --> M5["job.stage = 'done'"]
+    end
+
+    D -.-> M1
+    G -- "status == done" --> N["Browser: got raw transcript\nUpdate timing card UI"]
+
+    N --> OPT{SCRIBE_STREAM\n_GENERATION?}
+
+    OPT -- "False (default)" --> BLOCK
+    OPT -- "True (Opt 3)" --> SSTREAM
+
+    subgraph BLOCK ["📝 Blocking Generate — POST /generate/"]
+        direction TB
+        B1{SCRIBE_COMBINED\n_PIPELINE?}
+        B1 -- "False (default)\nTwo-call path" --> TC1
+        B1 -- "True (Opt 2)" --> CC1
+
+        subgraph TC ["Two-Call Path"]
+            TC1["GPT-5 Call 1\ninterpret_patois()\n~7-10s with slim output\n~12-15s without"]
+            TC1 --> TC2["_extract_step2()\nDiscard Steps 1 & 3\nKeep clinical English"]
+            TC2 --> TC3["GPT-5 Call 2\ngenerate_note()\nSOAP generation\n~10-20s"]
+        end
+
+        subgraph CC ["Combined Path (Opt 2)"]
+            CC1["Single GPT-5 Call\ninterpret_and_generate_soap()\n~15-25s\nOutputs Step2 + SOAP\nseparated by ---SOAP---"]
+        end
+
+        TC3 --> SAVE
+        CC1 --> SAVE
+        SAVE["Post-process:\n_split_soap() · _extract_flags()\nvalidate_note_safety()\nSOAPNote.save()\ntimings.generation_ms = N\nstatus = review"]
+    end
+
+    subgraph SSTREAM ["⚡ Streaming — POST /generate/stream/"]
+        SS1["Phase 1 (blocking)\nrun_interpret_patois()\nWaits for full interpret output"]
+        SS1 --> SS2["Phase 2 (streaming)\nstream_note_generation()\nstream=True · reasoning_effort=minimal"]
+        SS2 --> SS3["SSE chunks yield as tokens arrive\ndata: {chunk: 'S:\\nCC: ...'}\nFirst text visible in ~2-3s"]
+        SS3 --> SS4["data: {stage: 'done', review_url: '...'}"]
+    end
+
+    SAVE --> END(["🏁 Redirect to\n/sessions/pk/review/"])
+    SS4 --> END
+
+    style MODAL fill:#1a2a3a,stroke:#4a9eff,color:#e6edf3
+    style TC fill:#1a3a2a,stroke:#4aff9e,color:#e6edf3
+    style CC fill:#3a2a1a,stroke:#ff9e4a,color:#e6edf3
+    style SSTREAM fill:#2a1a3a,stroke:#9e4aff,color:#e6edf3
+    style BLOCK fill:#161b22,stroke:#30363d,color:#e6edf3
+</div>
+</div>
+
+<h2>Option Flags</h2>
+<table>
+  <tr><th>Env var</th><th>Default</th><th>Effect when True</th><th>Status</th></tr>
+  <tr><td><code>SCRIBE_SLIM_INTERPRET</code></td><td>True</td><td>GPT-5 skips writing Steps 1 & 3 in visible output — saves 500–1 000 tokens → ~5–8 s</td><td><span class="pill pill-green">Active</span></td></tr>
+  <tr><td><code>SCRIBE_COMBINED_PIPELINE</code></td><td>False</td><td>Interpret + SOAP in one GPT-5 call — saves one full round-trip (~10–15 s)</td><td><span class="pill pill-orange">Off — testing</span></td></tr>
+  <tr><td><code>SCRIBE_STREAM_GENERATION</code></td><td>False</td><td>SOAP tokens stream to browser — first text at ~2–3 s instead of waiting 15–20 s</td><td><span class="pill pill-purple">Off — opt-in</span></td></tr>
+</table>
+
+<h2>Performance Budget (5-min consult, 324 s audio)</h2>
+<table>
+  <tr><th>Stage</th><th>v1</th><th>v2 two-call</th><th>v2 combined</th></tr>
+  <tr><td>Modal GPU transcription</td><td>29.8 s</td><td>29.8 s</td><td>29.8 s</td></tr>
+  <tr><td>GPT-5 interpret</td><td>12–15 s</td><td><span class="pill pill-green">7–10 s (slim)</span></td><td>—</td></tr>
+  <tr><td>GPT-5 SOAP generate</td><td>10–20 s</td><td>10–20 s</td><td>—</td></tr>
+  <tr><td>Combined single call</td><td>—</td><td>—</td><td><span class="pill pill-orange">15–25 s</span></td></tr>
+  <tr><td><strong>Total wall time</strong></td><td>52–65 s</td><td><strong>47–60 s</strong></td><td><strong>45–55 s</strong></td></tr>
+  <tr><td>Perceived w/ streaming (Opt 3)</td><td>same</td><td>same</td><td><span class="pill pill-purple">~3 s first text</span></td></tr>
+</table>
+
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+</script>
+</body>
+</html>

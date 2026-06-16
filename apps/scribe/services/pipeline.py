@@ -17,8 +17,10 @@ from .soap_generator import (
     extract_demographics,
     generate_modular_soap,
     generate_note,
+    interpret_and_generate_soap,
     interpret_patois,
     polish_grammar,
+    stream_note_generation,
     suggest_improvements,
 )
 from .stub import fake_generate_note, fake_transcribe
@@ -142,6 +144,106 @@ def run_interpret_patois(patois_text: str) -> str:
     except AIConfigError as exc:
         logger.warning("Interpret patois stub: %s", exc)
         return patois_text
+
+
+def run_interpret_and_generate_soap(
+    patois_text: str,
+    *,
+    note_format: str = "soap",
+    specialty: str = "general",
+    length_mode: str = "normal",
+    custom_instructions: str = "",
+    custom_terms: str = "",
+    suggestive_assist: bool = False,
+    is_sensitive: bool = False,
+) -> tuple[str, GeneratedNote]:
+    """Option 2 wrapper: single GPT-5 call for interpret + SOAP generation.
+
+    Returns (clinical_english, GeneratedNote). Falls back to the two-call
+    pipeline when real AI is disabled.
+    """
+    if not _use_real_ai():
+        stub = fake_generate_note(
+            patois_text,
+            note_format=note_format,
+            specialty=specialty,
+            length_mode=length_mode,
+            custom_instructions=custom_instructions,
+            suggestive_assist=suggestive_assist,
+        )
+        return patois_text, stub
+    try:
+        return interpret_and_generate_soap(
+            patois_text,
+            note_format=note_format,
+            specialty=specialty,
+            length_mode=length_mode,
+            custom_instructions=custom_instructions,
+            custom_terms=custom_terms,
+            suggestive_assist=suggestive_assist,
+            is_sensitive=is_sensitive,
+        )
+    except AIConfigError as exc:
+        logger.warning("Falling back to two-call pipeline: %s", exc)
+        clinical_english = interpret_patois(patois_text)
+        note = generate_note(
+            clinical_english,
+            note_format=note_format,
+            specialty=specialty,
+            length_mode=length_mode,
+            custom_instructions=custom_instructions,
+            custom_terms=custom_terms,
+            suggestive_assist=suggestive_assist,
+            is_sensitive=is_sensitive,
+        )
+        return clinical_english, note
+
+
+def run_stream_note_generation(
+    transcript: str,
+    *,
+    note_format: str = "soap",
+    specialty: str = "general",
+    length_mode: str = "normal",
+    custom_instructions: str = "",
+    custom_terms: str = "",
+    suggestive_assist: bool = False,
+    is_sensitive: bool = False,
+):
+    """Option 3 wrapper: yields SOAP note tokens as they stream from the API."""
+    if not _use_real_ai():
+        stub = fake_generate_note(
+            transcript,
+            note_format=note_format,
+            specialty=specialty,
+            length_mode=length_mode,
+            custom_instructions=custom_instructions,
+            suggestive_assist=suggestive_assist,
+        )
+        yield stub.full_note
+        return
+    try:
+        yield from stream_note_generation(
+            transcript,
+            note_format=note_format,
+            specialty=specialty,
+            length_mode=length_mode,
+            custom_instructions=custom_instructions,
+            custom_terms=custom_terms,
+            suggestive_assist=suggestive_assist,
+            is_sensitive=is_sensitive,
+        )
+    except AIConfigError as exc:
+        logger.warning("Stream generation config error: %s", exc)
+        stub = fake_generate_note(
+            transcript,
+            note_format=note_format,
+            specialty=specialty,
+            length_mode=length_mode,
+            custom_instructions=custom_instructions,
+            suggestive_assist=suggestive_assist,
+        )
+        yield stub.full_note
 
 
 def run_extract_demographics(transcript: str) -> dict:

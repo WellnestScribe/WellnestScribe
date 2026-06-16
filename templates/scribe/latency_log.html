@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Latency Log — WellNest Scribe{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <iconify-icon icon="iconamoon:clock-duotone" style="font-size:1.6rem;color:var(--bs-primary)"></iconify-icon>
+    <div>
+      <h4 class="mb-0">Pipeline Latency Log</h4>
+      <p class="text-muted small mb-0">Per-session timing breakdown: audio → transcription → interpret → SOAP generation</p>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2 mb-3 flex-wrap">
+    <input type="search" id="latSearch" class="form-control form-control-sm" style="max-width:280px;" placeholder="Search session, doctor…">
+    <select id="latModeFilter" class="form-select form-select-sm" style="max-width:160px;">
+      <option value="">All modes</option>
+      <option value="two-call">two-call</option>
+      <option value="combined">combined</option>
+      <option value="stream">stream</option>
+    </select>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" style="font-size:0.83rem;" id="latTable">
+          <thead class="table-dark">
+            <tr>
+              <th style="width:180px">Session</th>
+              <th>Doctor</th>
+              <th class="text-center" title="Audio recording length">
+                <iconify-icon icon="iconamoon:microphone-duotone" class="me-1"></iconify-icon>Audio
+              </th>
+              <th class="text-center" title="Modal GPU transcription total RTT">
+                <iconify-icon icon="iconamoon:lightning-1-duotone" class="me-1"></iconify-icon>Transcription
+              </th>
+              <th class="text-center" title="RTFx = audio_seconds / transcription_seconds">RTFx</th>
+              <th class="text-center" title="GPT-5 Patois interpret call">
+                <iconify-icon icon="iconamoon:translate-duotone" class="me-1"></iconify-icon>Interpret
+              </th>
+              <th class="text-center" title="GPT-5 SOAP note generation">
+                <iconify-icon icon="iconamoon:file-document-duotone" class="me-1"></iconify-icon>SOAP Gen
+              </th>
+              <th class="text-center" title="Total: interpret + generation (transcription not included)">Total Gen</th>
+              <th class="text-center">Mode</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for session in sessions %}
+            {% with t=session.timings %}
+            <tr data-mode="{{ t.pipeline_mode|default:'' }}">
+              <td>
+                <a href="{% url 'scribe:review' session.pk %}" class="text-decoration-none fw-semibold">
+                  {{ session.display_title|truncatechars:30 }}
+                </a>
+              </td>
+              <td class="text-muted">{{ session.doctor.get_full_name|default:session.doctor.username }}</td>
+
+              {# Audio duration #}
+              <td class="text-center">
+                {% if t.audio_seconds %}
+                  <span class="badge bg-secondary bg-opacity-25 text-body">{{ t.audio_seconds|floatformat:0 }} s</span>
+                {% else %}—{% endif %}
+              </td>
+
+              {# Transcription RTT (Modal GPU) #}
+              <td class="text-center">
+                {% if t.total_ms %}
+                  {% with ms=t.total_ms %}
+                  <span class="badge {% if ms < 30000 %}bg-success{% elif ms < 60000 %}bg-warning text-dark{% else %}bg-danger{% endif %} bg-opacity-25 text-body">
+                    {{ ms|floatformat:"-0" }} ms
+                  </span>
+                  {% endwith %}
+                {% else %}—{% endif %}
+              </td>
+
+              {# RTFx #}
+              <td class="text-center">
+                {% if t.realtime_factor %}
+                  <span class="text-{% if t.realtime_factor >= 8 %}success{% elif t.realtime_factor >= 4 %}warning{% else %}danger{% endif %}">
+                    {{ t.realtime_factor|floatformat:1 }}×
+                  </span>
+                {% else %}—{% endif %}
+              </td>
+
+              {# Interpret (GPT-5 call 1) #}
+              <td class="text-center">
+                {% if t.interpret_ms %}
+                  {% with ms=t.interpret_ms %}
+                  <span class="badge {% if ms < 8000 %}bg-success{% elif ms < 14000 %}bg-warning text-dark{% else %}bg-danger{% endif %} bg-opacity-25 text-body">
+                    {{ ms|floatformat:"-0" }} ms
+                  </span>
+                  {% endwith %}
+                {% else %}<span class="text-muted">—</span>{% endif %}
+              </td>
+
+              {# SOAP generation (GPT-5 call 2) #}
+              <td class="text-center">
+                {% if t.generation_ms %}
+                  {% with ms=t.generation_ms %}
+                  <span class="badge {% if ms < 12000 %}bg-success{% elif ms < 20000 %}bg-warning text-dark{% else %}bg-danger{% endif %} bg-opacity-25 text-body">
+                    {{ ms|floatformat:"-0" }} ms
+                  </span>
+                  {% endwith %}
+                {% else %}<span class="text-muted">—</span>{% endif %}
+              </td>
+
+              {# Total generation (interpret + SOAP) #}
+              <td class="text-center fw-semibold">
+                {% if t.total_generation_ms %}
+                  {% with ms=t.total_generation_ms %}
+                  <span class="{% if ms < 20000 %}text-success{% elif ms < 35000 %}text-warning{% else %}text-danger{% endif %}">
+                    {{ ms|floatformat:"-0" }} ms
+                  </span>
+                  {% endwith %}
+                {% else %}—{% endif %}
+              </td>
+
+              {# Pipeline mode #}
+              <td class="text-center">
+                {% if t.pipeline_mode == "combined" %}
+                  <span class="badge bg-warning text-dark">combined</span>
+                {% elif t.pipeline_mode == "stream" %}
+                  <span class="badge bg-purple text-white" style="background:#6f42c1!important">stream</span>
+                {% elif t.pipeline_mode %}
+                  <span class="badge bg-primary bg-opacity-25 text-primary">{{ t.pipeline_mode }}</span>
+                {% else %}—{% endif %}
+              </td>
+
+              <td class="text-muted">{{ session.created_at|date:"M d, H:i" }}</td>
+            </tr>
+            {% endwith %}
+            {% empty %}
+            <tr>
+              <td colspan="10" class="text-center py-5 text-muted">
+                <iconify-icon icon="iconamoon:clock-duotone" style="font-size:2rem;opacity:0.3"></iconify-icon>
+                <p class="mt-2 mb-0">No timing data yet. Generate a note to populate this log.</p>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    var rows = document.querySelectorAll('#latTable tbody tr[data-mode]');
+    function filter() {
+      var q = (document.getElementById('latSearch').value || '').toLowerCase();
+      var mf = document.getElementById('latModeFilter').value;
+      rows.forEach(function (r) {
+        var show = (!q || r.textContent.toLowerCase().includes(q))
+                 && (!mf || r.dataset.mode === mf);
+        r.style.display = show ? '' : 'none';
+      });
+    }
+    document.getElementById('latSearch').addEventListener('input', filter);
+    document.getElementById('latModeFilter').addEventListener('change', filter);
+  })();
+  </script>
+
+  {# Legend #}
+  <div class="mt-3 d-flex gap-3 flex-wrap" style="font-size:0.78rem;color:var(--bs-secondary-color)">
+    <span><span class="badge bg-success bg-opacity-25 text-success">green</span> fast</span>
+    <span><span class="badge bg-warning bg-opacity-25 text-warning">yellow</span> moderate</span>
+    <span><span class="badge bg-danger bg-opacity-25 text-danger">red</span> slow</span>
+    <span class="ms-auto">RTFx = audio seconds ÷ transcription seconds. Higher = faster GPU.</span>
+  </div>
+</div>
+{% endblock %}

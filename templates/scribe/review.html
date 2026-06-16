@@ -326,6 +326,15 @@
                                 <iconify-icon icon="iconamoon:edit-duotone"></iconify-icon>
                                 click title to rename
                             </span>
+                            {% if session.timings.total_generation_ms %}
+                            <span class="badge bg-info bg-opacity-25 text-info d-inline-flex align-items-center gap-1" title="Interpret + SOAP generation time (transcription not included)">
+                                <iconify-icon icon="iconamoon:clock-duotone"></iconify-icon>
+                                Generated in {% widthratio session.timings.total_generation_ms 1000 1 %}s
+                                {% if session.timings.interpret_ms and session.timings.generation_ms %}
+                                <span class="text-muted fw-normal" style="font-size:0.7rem;">(interpret {% widthratio session.timings.interpret_ms 1000 1 %}s · soap {% widthratio session.timings.generation_ms 1000 1 %}s)</span>
+                                {% endif %}
+                            </span>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -763,6 +772,45 @@
 {% endif %}
 
 <!-- Share modal -->
+{# ── Note feedback modal (thumbs down → optional comment) ─────────────────── #}
+<div class="modal fade" id="feedbackModal" tabindex="-1" aria-labelledby="feedbackModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-0">
+                <h6 class="modal-title fw-semibold" id="feedbackModalLabel">
+                    <iconify-icon icon="iconamoon:dislike-duotone" class="me-1 align-middle" style="color:#dc3545"></iconify-icon>
+                    What could be better?
+                </h6>
+                <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body pt-2">
+                <p class="text-muted small mb-3">
+                    Optional — describe what was wrong or missing. This helps improve future notes.
+                    <span id="feedbackSectionLabel" class="fw-semibold text-primary"></span>
+                </p>
+                <textarea id="feedbackComment"
+                          class="form-control"
+                          rows="3"
+                          maxlength="600"
+                          placeholder="e.g. Plan was too vague, medication dosage missing, wrong diagnosis…"
+                          style="resize:vertical;font-size:0.9rem;"></textarea>
+                <div class="text-end mt-1" style="font-size:0.72rem;color:var(--bs-secondary-color);">
+                    <span id="feedbackCharCount">0</span>/600
+                </div>
+            </div>
+            <div class="modal-footer border-0 pt-0 gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="feedbackSkipBtn">
+                    Skip — just mark it
+                </button>
+                <button type="button" class="btn btn-danger btn-sm" id="feedbackSubmitBtn">
+                    <iconify-icon icon="iconamoon:send-duotone" class="me-1 align-middle"></iconify-icon>
+                    Submit feedback
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="shareModal" tabindex="-1" aria-labelledby="shareModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -2620,4 +2668,119 @@ function _suiteConfirm(title, text) {
   history.replaceState(null, '', window.location.pathname);
 })();
 </script>
+
+<script>
+/* ── Thumb ratings + optional feedback comment ─────────────────────────── */
+(function () {
+  var CSRF = window.WELLNEST && window.WELLNEST.getCsrf ? window.WELLNEST.getCsrf() : '{{ csrf_token }}';
+  var sessionId = document.querySelector('[data-session-id]')
+                    ? document.querySelector('[data-session-id]').dataset.sessionId : null;
+  if (!sessionId) return;
+
+  var feedbackModalEl = document.getElementById('feedbackModal');
+  var feedbackComment = document.getElementById('feedbackComment');
+  var feedbackCharCount = document.getElementById('feedbackCharCount');
+  var feedbackSectionLabel = document.getElementById('feedbackSectionLabel');
+  var feedbackSubmitBtn = document.getElementById('feedbackSubmitBtn');
+  var feedbackSkipBtn = document.getElementById('feedbackSkipBtn');
+
+  // Hidden trigger button — opens the modal using Bootstrap's own data-API
+  // instead of calling new bootstrap.Modal() which can fail on load order.
+  var _fbTrigger = document.createElement('button');
+  _fbTrigger.type = 'button';
+  _fbTrigger.hidden = true;
+  _fbTrigger.setAttribute('data-bs-toggle', 'modal');
+  _fbTrigger.setAttribute('data-bs-target', '#feedbackModal');
+  document.body.appendChild(_fbTrigger);
+
+  // Add data-bs-dismiss to submit/skip so Bootstrap handles closing automatically
+  if (feedbackSubmitBtn) feedbackSubmitBtn.setAttribute('data-bs-dismiss', 'modal');
+  if (feedbackSkipBtn)   feedbackSkipBtn.setAttribute('data-bs-dismiss', 'modal');
+
+  var _pendingSection = null;
+
+  if (feedbackComment) {
+    feedbackComment.addEventListener('input', function () {
+      if (feedbackCharCount) feedbackCharCount.textContent = feedbackComment.value.length;
+    });
+  }
+
+  function postRating(section, rating, comment) {
+    fetch('/scribe/api/sessions/' + sessionId + '/rate/', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify({ section: section, rating: rating, comment: comment || '' }),
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok) console.warn('Feedback save failed:', d.error);
+    });
+  }
+
+  function markBtn(btn, rating) {
+    var sec = btn.closest('.note-section');
+    if (!sec) return;
+    sec.querySelectorAll('[data-thumb]').forEach(function (b) {
+      b.classList.remove('thumb-active-up', 'thumb-active-down');
+    });
+    btn.classList.add(rating === 'up' ? 'thumb-active-up' : 'thumb-active-down');
+  }
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-thumb]');
+    if (!btn) return;
+    var rating = btn.dataset.thumb;
+    var section = btn.dataset.section;
+    if (!rating || !section) return;
+
+    if (rating === 'up') {
+      postRating(section, 'up', '');
+      markBtn(btn, 'up');
+    } else {
+      // thumbs down — show optional comment modal
+      _pendingSection = { section: section, btn: btn };
+      if (feedbackComment) feedbackComment.value = '';
+      if (feedbackCharCount) feedbackCharCount.textContent = '0';
+      if (feedbackSectionLabel) {
+        var labels = { subjective:'Subjective', objective:'Objective',
+                       assessment:'Assessment', plan:'Plan', overall:'Overall' };
+        feedbackSectionLabel.textContent = '(' + (labels[section] || section) + ')';
+      }
+      _fbTrigger.click(); // open modal via Bootstrap data-API
+    }
+  });
+
+  if (feedbackSubmitBtn) {
+    feedbackSubmitBtn.addEventListener('click', function () {
+      if (!_pendingSection) return;
+      var comment = feedbackComment ? feedbackComment.value.trim() : '';
+      postRating(_pendingSection.section, 'down', comment);
+      markBtn(_pendingSection.btn, 'down');
+      _pendingSection = null;
+    });
+  }
+
+  if (feedbackSkipBtn) {
+    feedbackSkipBtn.addEventListener('click', function () {
+      if (!_pendingSection) return;
+      postRating(_pendingSection.section, 'down', '');
+      markBtn(_pendingSection.btn, 'down');
+      _pendingSection = null;
+    });
+  }
+
+  if (feedbackModalEl) {
+    feedbackModalEl.addEventListener('hidden.bs.modal', function () { _pendingSection = null; });
+  }
+})();
+</script>
+
+<style>
+/* Thumb active states */
+[data-thumb].thumb-active-up   { color: #198754; }
+[data-thumb].thumb-active-down { color: #dc3545; }
+[data-thumb].thumb-active-up iconify-icon,
+[data-thumb].thumb-active-down iconify-icon { filter: drop-shadow(0 0 3px currentColor); }
+/* Bracket placeholders — visual cue that they're clickable */
+.bk-hl { cursor: pointer; text-decoration: underline dotted rgba(13,110,253,0.5); }
+</style>
 {% endblock %}

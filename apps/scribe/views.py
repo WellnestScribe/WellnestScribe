@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -23,13 +24,15 @@ from django.conf import settings as dj_settings
 
 from accounts.models import DoctorProfile
 
-from .models import NoteShare, ScribeSession, SessionEvent, SOAPNote
+from .models import NoteShare, NoteFeedback, ScribeSession, SessionEvent, SOAPNote
 from .services.export import make_share_token, qr_data_url, whatsapp_url
 from .services.pipeline import (
     run_extract_demographics,
+    run_interpret_and_generate_soap,
     run_interpret_patois,
     run_note_generation,
     run_polish_grammar,
+    run_stream_note_generation,
     run_suggest_improvements,
     run_transcription,
 )
@@ -136,6 +139,7 @@ class RecordView(LoginRequiredMixin, View):
                 "length_choices": ScribeSession.LENGTH_MODE_CHOICES,
                 # TEMPORARY — Modal GPU latency testing toggle
                 "ambient_backend": dj_settings.AMBIENT_BACKEND,
+                "stream_generation": dj_settings.SCRIBE_STREAM_GENERATION,
             },
         )
 
@@ -218,12 +222,25 @@ class ReviewView(LoginRequiredMixin, View):
                 session.doctor_id,
                 request.META.get("REMOTE_ADDR", "unknown"),
             )
+        note = getattr(session, "note", None)
+        # Re-run deterministic safety checks on every view so stale DB flags
+        # (from before validation logic was tightened) get corrected automatically.
+        if note and note.full_note:
+            from .services.soap_generator import validate_note_safety  # noqa: PLC0415
+            _SAFETY_PREFIXES = ("[RANGE ALERT]", "[CONFLICTING PAIN", "[NO VITALS]", "[MINIMISING")
+            ai_flags = [f for f in (note.flags or []) if not f.startswith(_SAFETY_PREFIXES)]
+            fresh_safety = validate_note_safety(note.full_note, session.raw_transcript or "")
+            fresh_flags = ai_flags + fresh_safety
+            if fresh_flags != list(note.flags or []):
+                note.flags = fresh_flags
+                note.save(update_fields=["flags", "updated_at"])
+
         return render(
             request,
             self.template_name,
             {
                 "session": session,
-                "note": getattr(session, "note", None),
+                "note": note,
                 "profile": _get_profile(request.user),
                 "doctor_profile": _get_profile(request.user),
                 # NATVNS Wound Management chart adaptation. Static list of
@@ -288,6 +305,71 @@ class AuditLogView(LoginRequiredMixin, View):
                 "event_choices": SessionEvent.EVENT_CHOICES,
             },
         )
+
+
+class FeedbackLogView(LoginRequiredMixin, View):
+    """Admin view: all thumbs-down (and up) note feedback with optional comments."""
+
+    template_name = "scribe/feedback_log.html"
+
+    def get(self, request):
+        import csv as _csv  # noqa: PLC0415
+        from django.http import HttpResponse  # noqa: PLC0415
+
+        profile = DoctorProfile.objects.filter(user=request.user).first()
+        is_admin = (profile and profile.is_admin) or request.user.is_staff or request.user.is_superuser
+        if not is_admin:
+            return redirect("scribe:record")
+
+        feedback = (
+            NoteFeedback.objects
+            .select_related("session", "doctor")
+            .order_by("-created_at")[:500]
+        )
+
+        if request.GET.get("export") == "csv":
+            response = HttpResponse(content_type="text/csv")
+            response["Content-Disposition"] = 'attachment; filename="wellnest_note_feedback.csv"'
+            writer = _csv.writer(response)
+            writer.writerow(["date", "doctor", "session_id", "session_title", "section", "rating", "comment"])
+            for fb in feedback:
+                writer.writerow([
+                    fb.created_at.strftime("%Y-%m-%d %H:%M"),
+                    fb.doctor.get_full_name() or fb.doctor.username,
+                    fb.session_id,
+                    fb.session.display_title,
+                    fb.section,
+                    fb.rating,
+                    fb.comment,
+                ])
+            return response
+
+        return render(request, self.template_name, {"feedback_list": feedback})
+
+
+class LatencyLogView(LoginRequiredMixin, View):
+    """Admin view: per-session pipeline timing breakdown.
+
+    Shows audio duration, Modal transcription time, GPT-5 interpret time,
+    GPT-5 SOAP generation time, and total — for every session that has
+    timing data recorded in ScribeSession.timings.
+    """
+
+    template_name = "scribe/latency_log.html"
+
+    def get(self, request):
+        profile = DoctorProfile.objects.filter(user=request.user).first()
+        is_admin = (profile and profile.is_admin) or request.user.is_staff or request.user.is_superuser
+        if not is_admin:
+            return redirect("scribe:record")
+
+        sessions = (
+            ScribeSession.objects
+            .select_related("doctor")
+            .exclude(timings={})
+            .order_by("-created_at")[:100]
+        )
+        return render(request, self.template_name, {"sessions": sessions})
 
 
 class ComplianceView(LoginRequiredMixin, View):
@@ -1086,73 +1168,111 @@ def generate_note_api(request, pk):
 
     is_first_generation = not SOAPNote.objects.filter(session=session).exists()
 
-    if (is_first_generation or force_reinterpret) and raw_source:
-        # First generation: always interpret raw Patois → Step 2 English.
-        # Explicit re-interpret: re-runs so prompt improvements take effect.
-        try:
-            fresh = run_interpret_patois(raw_source)
-            step2 = _extract_step2(fresh) or fresh.strip()
-            session.transcript = step2
-            transcript = step2
-        except Exception:  # noqa: BLE001
-            transcript = (session.transcript or "").strip()
-    else:
-        # Regeneration default: use cached Step 2 English — no extra LLM call.
-        transcript = (session.transcript or "").strip()
-        # If an old session still has full Step 1/2/3 block, strip to Step 2.
-        if transcript and "STEP 2" in transcript.upper():
-            step2 = _extract_step2(transcript)
-            if step2:
-                transcript = step2
-                session.transcript = step2
-
-    if not transcript or len(transcript.strip()) < 5:
-        return JsonResponse(
-            {
-                "ok": False,
-                "error": "Transcript came back empty. Try a longer recording or check your audio.",
-            },
-            status=400,
-        )
-
     profile = _get_profile(request.user)
     suggestive_assist = payload.get("suggestive_assist")
     if suggestive_assist is None:
         suggestive_assist = profile.suggestive_assist
     else:
         suggestive_assist = _coerce_bool(suggestive_assist)
-    session.transcript = transcript
-    session.note_format = note_format
-    session.length_mode = length_mode
-    session.status = "generating"
-    session.save(update_fields=[
-        "transcript", "note_format", "length_mode", "status", "updated_at"
-    ])
 
-    # Prepend patient sex so AI uses correct pronouns throughout the note.
     _gender_map = {"M": "Male", "F": "Female", "O": "Other"}
     _gender_label = _gender_map.get(session.patient_gender, "")
     _patient_ctx = f"Patient sex: {_gender_label}. Use correct pronouns throughout." if _gender_label else ""
     _custom = "\n".join(filter(None, [_patient_ctx, profile.custom_instructions])).strip()
 
-    try:
-        result = run_note_generation(
-            transcript=transcript,
-            note_format=note_format,
-            specialty=profile.specialty,
-            length_mode=length_mode,
-            custom_instructions=_custom,
-            custom_terms=profile.custom_terms,
-            suggestive_assist=suggestive_assist,
-            is_sensitive=session.is_sensitive,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("Note generation failed for session %s", pk)
-        session.status = "error"
-        session.error_message = str(exc)
-        session.save(update_fields=["status", "error_message", "updated_at"])
-        _log(session, "error", f"generate: {exc}")
-        return JsonResponse({"ok": False, "error": str(exc)}, status=500)
+    use_combined = dj_settings.SCRIBE_COMBINED_PIPELINE and (is_first_generation or force_reinterpret) and raw_source
+    result = None
+
+    _t_pipeline_start = time.monotonic()
+    _interpret_ms: int | None = None
+    _generation_ms: int | None = None
+
+    if use_combined:
+        # Option 2: single GPT-5 call — interpret Patois + generate SOAP together.
+        session.note_format = note_format
+        session.length_mode = length_mode
+        session.status = "generating"
+        session.save(update_fields=["note_format", "length_mode", "status", "updated_at"])
+        try:
+            _t0 = time.monotonic()
+            clinical_english, result = run_interpret_and_generate_soap(
+                raw_source,
+                note_format=note_format,
+                specialty=profile.specialty,
+                length_mode=length_mode,
+                custom_instructions=_custom,
+                custom_terms=profile.custom_terms,
+                suggestive_assist=suggestive_assist,
+                is_sensitive=session.is_sensitive,
+            )
+            # Combined: both phases in one call — store as generation_ms only
+            _generation_ms = int((time.monotonic() - _t0) * 1000)
+            transcript = clinical_english or raw_source
+            session.transcript = transcript
+            session.raw_transcript = session.raw_transcript or raw_source
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Combined pipeline failed for session %s; falling through to two-call path", pk)
+            result = None  # fall through to two-call path below
+            use_combined = False
+
+    if not use_combined:
+        # Two-call path (default): interpret first, then generate.
+        if (is_first_generation or force_reinterpret) and raw_source:
+            try:
+                _t0 = time.monotonic()
+                fresh = run_interpret_patois(raw_source)
+                _interpret_ms = int((time.monotonic() - _t0) * 1000)
+                step2 = _extract_step2(fresh) or fresh.strip()
+                session.transcript = step2
+                transcript = step2
+            except Exception:  # noqa: BLE001
+                transcript = (session.transcript or "").strip()
+        else:
+            # Regeneration: use cached Step 2 — no extra LLM call.
+            transcript = (session.transcript or "").strip()
+            if transcript and "STEP 2" in transcript.upper():
+                step2 = _extract_step2(transcript)
+                if step2:
+                    transcript = step2
+                    session.transcript = step2
+
+        if not transcript or len(transcript.strip()) < 5:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "error": "Transcript came back empty. Try a longer recording or check your audio.",
+                },
+                status=400,
+            )
+
+        session.transcript = transcript
+        session.note_format = note_format
+        session.length_mode = length_mode
+        session.status = "generating"
+        session.save(update_fields=[
+            "transcript", "note_format", "length_mode", "status", "updated_at"
+        ])
+
+        try:
+            _t0 = time.monotonic()
+            result = run_note_generation(
+                transcript=transcript,
+                note_format=note_format,
+                specialty=profile.specialty,
+                length_mode=length_mode,
+                custom_instructions=_custom,
+                custom_terms=profile.custom_terms,
+                suggestive_assist=suggestive_assist,
+                is_sensitive=session.is_sensitive,
+            )
+            _generation_ms = int((time.monotonic() - _t0) * 1000)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Note generation failed for session %s", pk)
+            session.status = "error"
+            session.error_message = str(exc)
+            session.save(update_fields=["status", "error_message", "updated_at"])
+            _log(session, "error", f"generate: {exc}")
+            return JsonResponse({"ok": False, "error": str(exc)}, status=500)
 
     if not (result.full_note or "").strip():
         msg = (
@@ -1187,9 +1307,25 @@ def generate_note_api(request, pk):
             "flags": all_flags,
         },
     )
+    # Persist pipeline timings — merge into existing dict so transcription
+    # timings (set during the ambient job) are not overwritten.
+    _total_ms = int((time.monotonic() - _t_pipeline_start) * 1000)
+    _new_timings: dict = {
+        "pipeline_mode": "combined" if use_combined else "two-call",
+        "generation_model": dj_settings.SCRIBE_AZURE_OPENAI_DEPLOYMENT,
+        "total_generation_ms": _total_ms,
+    }
+    if _interpret_ms is not None:
+        _new_timings["interpret_ms"] = _interpret_ms
+    if _generation_ms is not None:
+        _new_timings["generation_ms"] = _generation_ms
+    _merged_timings = dict(session.timings or {})
+    _merged_timings.update(_new_timings)
+    session.timings = _merged_timings
+
     session.status = "review"
-    session.save(update_fields=["status", "transcript", "raw_transcript", "updated_at"])
-    _log(session, "generated", f"format={result.note_format} flags={result.flags}")
+    session.save(update_fields=["status", "transcript", "raw_transcript", "timings", "updated_at"])
+    _log(session, "generated", f"format={result.note_format} flags={result.flags} interpret_ms={_interpret_ms} generation_ms={_generation_ms} total_ms={_total_ms}")
 
     return JsonResponse(
         {
@@ -1207,6 +1343,190 @@ def generate_note_api(request, pk):
             "review_url": f"/scribe/sessions/{session.pk}/review/",
         }
     )
+
+
+@login_required
+@require_POST
+@csrf_protect
+def generate_note_stream_api(request, pk):
+    """Option 3: stream SOAP generation tokens to the browser via SSE.
+
+    Phase 1 (interpret) still blocks synchronously — streaming isn't possible
+    there because we need the full output to extract Step 2.
+    Phase 2 (SOAP generation) streams token-by-token so the doctor sees text
+    appearing at ~2-3 s instead of waiting 15-20 s for the full response.
+
+    Client POSTs the same body as generate_note_api, then reads the response
+    body as a stream of SSE lines:
+      data: {"stage": "interpreting"}
+      data: {"stage": "generating"}
+      data: {"chunk": "S:\nCC: ..."}   ← repeated as tokens arrive
+      data: {"stage": "done", "session_id": 42, "review_url": "/scribe/..."}
+      data: {"error": "..."}           ← on failure
+    """
+    from django.http import StreamingHttpResponse
+
+    session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)
+    payload = _json_body(request)
+    note_format = payload.get("note_format", session.note_format)
+    length_mode = payload.get("length_mode", session.length_mode)
+    force_reinterpret = _coerce_bool(payload.get("force_reinterpret", False))
+
+    # --- resolve raw source (same logic as generate_note_api) ---
+    def _extract_step2_local(stored: str) -> str:
+        m = re.search(
+            r"STEP\s+2[^:]*:\s*\n+(.*?)(?=\n---|\nSTEP\s+3\b|\Z)",
+            stored, re.DOTALL | re.IGNORECASE,
+        )
+        return m.group(1).strip() if m else ""
+
+    raw_source = session.raw_transcript
+    if not raw_source and session.transcript:
+        raw_source = session.transcript
+    if not raw_source:
+        body_transcript = (payload.get("transcript") or "").strip()
+        if body_transcript:
+            raw_source = body_transcript
+            session.raw_transcript = body_transcript
+
+    is_first_generation = not SOAPNote.objects.filter(session=session).exists()
+
+    profile = _get_profile(request.user)
+    suggestive_assist = payload.get("suggestive_assist")
+    if suggestive_assist is None:
+        suggestive_assist = profile.suggestive_assist
+    else:
+        suggestive_assist = _coerce_bool(suggestive_assist)
+
+    _gender_map = {"M": "Male", "F": "Female", "O": "Other"}
+    _gender_label = _gender_map.get(session.patient_gender, "")
+    _patient_ctx = f"Patient sex: {_gender_label}. Use correct pronouns throughout." if _gender_label else ""
+    _custom = "\n".join(filter(None, [_patient_ctx, profile.custom_instructions])).strip()
+
+    import json as _json
+
+    def _event(data: dict) -> str:
+        return f"data: {_json.dumps(data)}\n\n"
+
+    def event_stream():
+        transcript = (session.transcript or "").strip()
+
+        # Phase 1 — Patois interpretation (blocking)
+        if (is_first_generation or force_reinterpret) and raw_source:
+            yield _event({"stage": "interpreting"})
+            try:
+                fresh = run_interpret_patois(raw_source)
+                step2 = _extract_step2_local(fresh) or fresh.strip()
+                transcript = step2
+                ScribeSession.objects.filter(pk=pk).update(
+                    transcript=step2,
+                    raw_transcript=raw_source,
+                    note_format=note_format,
+                    length_mode=length_mode,
+                    status="generating",
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Stream interpret failed session %s", pk)
+                yield _event({"error": str(exc)})
+                return
+        else:
+            # Cached transcript — skip interpret
+            if transcript and "STEP 2" in transcript.upper():
+                transcript = _extract_step2_local(transcript) or transcript
+            ScribeSession.objects.filter(pk=pk).update(
+                note_format=note_format,
+                length_mode=length_mode,
+                status="generating",
+            )
+
+        if not transcript or len(transcript.strip()) < 5:
+            yield _event({"error": "Transcript came back empty. Try a longer recording or check your audio."})
+            return
+
+        # Phase 2 — Stream SOAP generation
+        yield _event({"stage": "generating"})
+        full_text = ""
+        try:
+            for chunk in run_stream_note_generation(
+                transcript,
+                note_format=note_format,
+                specialty=profile.specialty,
+                length_mode=length_mode,
+                custom_instructions=_custom,
+                custom_terms=profile.custom_terms,
+                suggestive_assist=suggestive_assist,
+                is_sensitive=session.is_sensitive,
+            ):
+                full_text += chunk
+                yield _event({"chunk": chunk})
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Stream SOAP generation failed session %s", pk)
+            ScribeSession.objects.filter(pk=pk).update(status="error", error_message=str(exc))
+            yield _event({"error": str(exc)})
+            return
+
+        if not full_text.strip():
+            msg = "The AI returned an empty note. Increase SCRIBE_MAX_COMPLETION_TOKENS in .env."
+            ScribeSession.objects.filter(pk=pk).update(status="error", error_message=msg)
+            yield _event({"error": msg})
+            return
+
+        # Post-process and save (same as generate_note_api)
+        from .services.soap_generator import (  # noqa: PLC0415
+            GeneratedNote,
+            _extract_flags,
+            _split_soap,
+            _strip_ai_disclaimer,
+            validate_note_safety,
+        )
+        full_text = _strip_ai_disclaimer(full_text)
+        note_obj = GeneratedNote(note_format=note_format if note_format else "soap", full_note=full_text)
+        note_obj.flags = _extract_flags(full_text)
+        if note_obj.note_format == "soap":
+            secs = _split_soap(full_text)
+            note_obj.visit_summary = _strip_ai_disclaimer(secs["visit_summary"])
+            note_obj.subjective = _strip_ai_disclaimer(secs["subjective"])
+            note_obj.objective = _strip_ai_disclaimer(secs["objective"])
+            note_obj.assessment = _strip_ai_disclaimer(secs["assessment"])
+            note_obj.plan = _strip_ai_disclaimer(secs["plan"])
+
+        safety_warnings = validate_note_safety(full_text, raw_transcript=raw_source or "")
+        all_flags = note_obj.flags + safety_warnings
+
+        SOAPNote.objects.update_or_create(
+            session=session,
+            defaults={
+                "visit_summary": note_obj.visit_summary,
+                "subjective": note_obj.subjective,
+                "objective": note_obj.objective,
+                "assessment": note_obj.assessment,
+                "plan": note_obj.plan,
+                "narrative": note_obj.narrative,
+                "full_note": full_text,
+                "edited_note": full_text,
+                "flags": all_flags,
+            },
+        )
+        ScribeSession.objects.filter(pk=pk).update(
+            status="review",
+            transcript=transcript,
+            raw_transcript=raw_source or session.raw_transcript or "",
+        )
+        _log(session, "generated", f"stream format={note_obj.note_format} flags={all_flags}")
+        yield _event({
+            "stage": "done",
+            "session_id": pk,
+            "review_url": f"/scribe/sessions/{pk}/review/",
+            "flags": all_flags,
+        })
+
+    response = StreamingHttpResponse(
+        streaming_content=event_stream(),
+        content_type="text/event-stream",
+    )
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
 
 
 @login_required
@@ -1308,6 +1628,37 @@ def save_note_api(request, pk):
     session.save()
     _log(session, "edited", "doctor saved edits")
     return JsonResponse({"ok": True, "is_sensitive": session.is_sensitive})
+
+
+@login_required
+@require_POST
+@csrf_protect
+def rate_section_api(request, pk):
+    """Record a thumbs-up or thumbs-down rating for a SOAP section.
+
+    Body: { "section": "subjective"|"objective"|"assessment"|"plan"|"overall",
+            "rating": "up"|"down",
+            "comment": "optional free text" }
+    Upserts so clicking thumbs-down twice just overwrites the previous rating.
+    """
+    session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)
+    payload = _json_body(request)
+    section = payload.get("section", "")
+    rating = payload.get("rating", "")
+    comment = (payload.get("comment") or "").strip()
+
+    valid_sections = {c[0] for c in NoteFeedback.SECTION_CHOICES}
+    valid_ratings = {c[0] for c in NoteFeedback.RATING_CHOICES}
+    if section not in valid_sections or rating not in valid_ratings:
+        return JsonResponse({"ok": False, "error": "Invalid section or rating."}, status=400)
+
+    NoteFeedback.objects.update_or_create(
+        session=session,
+        doctor=request.user,
+        section=section,
+        defaults={"rating": rating, "comment": comment},
+    )
+    return JsonResponse({"ok": True})
 
 
 @login_required
@@ -1675,9 +2026,24 @@ def ambient_transcribe_api(request, pk):
             job.stage = "transcribing with MMS…"
             raw_text = transcribe_mms(str(audio_path), device="cpu", target_lang="jam")
             job.result = {"raw_text": raw_text, "session_id": pk, "backend": "local"}
-        # Persist raw ASR output to DB so generate can read it and regeneration works later.
+        # Persist raw ASR output + timing data to DB.
+        update_fields: dict = {}
         if raw_text:
-            ScribeSession.objects.filter(pk=pk).update(raw_transcript=raw_text)
+            update_fields["raw_transcript"] = raw_text
+        # Store transcription timings from Modal response so the latency log
+        # and review page can show audio_seconds, transcription RTT, etc.
+        transcription_timings: dict = {}
+        result = job.result or {}
+        for key in ("audio_seconds", "preprocessing_ms", "inference_ms", "total_ms", "realtime_factor"):
+            if result.get(key) is not None:
+                transcription_timings[key] = result[key]
+        if transcription_timings:
+            # Use F-expression-safe approach: read then update to avoid race.
+            existing = ScribeSession.objects.filter(pk=pk).values_list("timings", flat=True).first() or {}
+            existing.update(transcription_timings)
+            update_fields["timings"] = existing
+        if update_fields:
+            ScribeSession.objects.filter(pk=pk).update(**update_fields)
         job.stage = "done"
 
     job = submit_triage_job(f"asr-ambient-{backend}", "gpu" if backend != "local" else "cpu", _run)

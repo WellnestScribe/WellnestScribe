@@ -24,6 +24,11 @@ urlpatterns = [
         name="api_generate",
     ),
     path(
+        "api/sessions/<int:pk>/generate/stream/",
+        views.generate_note_stream_api,
+        name="api_generate_stream",
+    ),
+    path(
         "api/sessions/<int:pk>/save/",
         views.save_note_api,
         name="api_save",
@@ -57,6 +62,9 @@ urlpatterns = [
     path("api/drug-search/", views.drug_search_api, name="api_drug_search"),
     path("api/herb-search/", views.herb_search_api, name="api_herb_search"),
     path("audit/", views.AuditLogView.as_view(), name="audit_log"),
+    path("latency/", views.LatencyLogView.as_view(), name="latency_log"),
+    path("feedback/", views.FeedbackLogView.as_view(), name="feedback_log"),
+    path("api/sessions/<int:pk>/rate/", views.rate_section_api, name="api_rate_section"),
     path("compliance/", views.ComplianceView.as_view(), name="compliance"),
     path("api/triage/run/", views.triage_run_api, name="api_triage_run"),
     path("api/triage/jobs/<str:job_id>/", views.triage_job_status_api, name="api_triage_job"),

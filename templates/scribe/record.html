@@ -85,6 +85,42 @@
   from { transform: translateX(-100%); }
   to   { transform: translateX(250%); }
 }
+
+/* ── Stream preview (Option 3 live typing) ──────────────────────────────── */
+#streamPreview {
+  margin-top: 16px;
+  background: rgba(13,110,253,0.04);
+  border: 1px solid rgba(13,110,253,0.18);
+  border-radius: 12px;
+  overflow: hidden;
+  text-align: left;
+  animation: sp-fade 0.3s ease;
+}
+#streamPreviewHeader {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 14px;
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--wellnest-blue, #0d6efd);
+  border-bottom: 1px solid rgba(13,110,253,0.12);
+}
+#streamPreviewText {
+  padding: 12px 16px;
+  font-size: 0.88rem; line-height: 1.65;
+  color: var(--bs-body-color);
+  max-height: 280px; overflow-y: auto;
+  white-space: pre-wrap; word-break: break-word;
+}
+.stream-cursor {
+  display: inline-block; width: 2px; height: 1em;
+  background: var(--wellnest-blue, #0d6efd);
+  margin-left: 1px; vertical-align: text-bottom;
+  animation: sp-blink 0.9s step-end infinite;
+}
+@keyframes sp-blink { 0%,100%{opacity:1} 50%{opacity:0} }
+@keyframes sp-fade {
+  from { opacity:0; transform: translateY(6px); }
+  to   { opacity:1; transform: translateY(0); }
+}
 </style>
 {% endblock %}
 
@@ -364,6 +400,7 @@
                             <div class="recorder-timer" id="ambientTimer">0:00</div>
                             <div class="waveform-bars" id="ambientWaveform"></div>
                             <div id="ambientProgress"><div class="ap-fill"></div></div>
+                            <div id="scribeConfig" data-stream-gen="{% if stream_generation %}1{% else %}0{% endif %}" hidden></div>
                             <div class="d-flex justify-content-center align-items-center mt-3 gap-3">
                                 <button type="button" class="record-cta" id="ambientRecordBtn" aria-label="Start ambient recording">
                                     <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>
@@ -382,6 +419,17 @@
                                 <iconify-icon icon="iconamoon:refresh-duotone" class="me-1 align-middle"></iconify-icon>
                                 Retry — audio still saved
                             </button>
+
+                            {# Live streaming preview — Option 3 only, hidden until stream starts #}
+                            <div id="streamPreview" style="display:none;">
+                                <div id="streamPreviewHeader">
+                                    <iconify-icon icon="iconamoon:lightning-1-duotone"></iconify-icon>
+                                    <span id="streamPreviewLabel">Generating note</span>
+                                    <span class="ms-auto fw-normal" style="color:var(--bs-secondary-color);font-size:0.68rem;letter-spacing:0;text-transform:none;" id="streamPreviewHint">word-by-word</span>
+                                    <a href="#" id="streamPreviewViewBtn" class="btn btn-primary btn-sm py-0 ms-2" style="display:none;font-size:0.75rem;">View note →</a>
+                                </div>
+                                <div id="streamPreviewText"><span class="stream-cursor"></span></div>
+                            </div>
                         </div>
 
                         {# TEMPORARY timing card — shown after processing completes #}
@@ -1740,23 +1788,100 @@ document.addEventListener('DOMContentLoaded', function () {
       var tmplInstructions = document.getElementById('templateInstructions');
       var customInstructions = tmplInstructions ? (tmplInstructions.value || '') : '';
       var suggestToggle = document.getElementById('suggestiveAssistToggle');
-      var genResp = await fetch('/scribe/api/sessions/' + sessionId + '/generate/', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-        body: JSON.stringify({
-          transcript: transcript,
-          note_format: noteStyle,
-          length_mode: lengthMode,
-          custom_instructions: customInstructions,
-          suggestive_assist: suggestToggle ? suggestToggle.checked : undefined,
-        })
+      var genBody = JSON.stringify({
+        transcript: transcript,
+        note_format: noteStyle,
+        length_mode: lengthMode,
+        custom_instructions: customInstructions,
+        suggestive_assist: suggestToggle ? suggestToggle.checked : undefined,
       });
-      var genData = await safeJson(genResp, 'generate');
-      if (!genData.ok) throw new Error(genData.error || 'Note generation failed.');
 
-      // 5. Redirect to review
-      _lastAmbientSessionId = null; /* clear on success */
-      window.location.href = '/scribe/sessions/' + sessionId + '/review/';
+      var _cfg = document.getElementById('scribeConfig');
+      var USE_STREAM = _cfg && _cfg.dataset.streamGen === '1';
+
+      if (USE_STREAM) {
+        // Option 3: streaming path — text appears word-by-word while generating
+        var streamResp = await fetch('/scribe/api/sessions/' + sessionId + '/generate/stream/', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+          body: genBody,
+        });
+        if (!streamResp.ok) throw new Error('Stream request failed (' + streamResp.status + ')');
+
+        var reader = streamResp.body.getReader();
+        var decoder = new TextDecoder();
+        var sseBuffer = '';
+        var reviewUrl = null;
+        var spWrap = document.getElementById('streamPreview');
+        var spText = document.getElementById('streamPreviewText');
+        var spLabel = document.getElementById('streamPreviewLabel');
+        var spHint  = document.getElementById('streamPreviewHint');
+        var spViewBtn = document.getElementById('streamPreviewViewBtn');
+
+        while (true) {
+          var _r = await reader.read();
+          if (_r.done) break;
+          sseBuffer += decoder.decode(_r.value, { stream: true });
+          var lines = sseBuffer.split('\n');
+          sseBuffer = lines.pop(); // keep partial last line
+          for (var li = 0; li < lines.length; li++) {
+            var line = lines[li].trim();
+            if (!line.startsWith('data: ')) continue;
+            var evt;
+            try { evt = JSON.parse(line.slice(6)); } catch (e) { continue; }
+            if (evt.error) throw new Error(evt.error);
+            if (evt.stage === 'interpreting') {
+              ambientStatus.textContent = 'Interpreting transcript...';
+            } else if (evt.stage === 'generating') {
+              ambientStatus.textContent = 'Generating note...';
+              if (spWrap) {
+                spWrap.style.display = '';
+                spText.innerHTML = '<span class="stream-cursor"></span>';
+              }
+            } else if (evt.chunk && spText) {
+              // Insert chunk before the blinking cursor so it types in left-to-right
+              var _cursor = spText.querySelector('.stream-cursor');
+              var _tn = document.createTextNode(evt.chunk);
+              if (_cursor) spText.insertBefore(_tn, _cursor);
+              else spText.appendChild(_tn);
+              spText.scrollTop = spText.scrollHeight;
+            } else if (evt.stage === 'done') {
+              reviewUrl = evt.review_url || ('/scribe/sessions/' + sessionId + '/review/');
+              // Remove blinking cursor, update header
+              if (spText) {
+                var _cur = spText.querySelector('.stream-cursor');
+                if (_cur) _cur.remove();
+              }
+              if (spLabel) spLabel.textContent = 'Note ready';
+              if (spHint)  spHint.style.display = 'none';
+              if (spViewBtn) {
+                spViewBtn.style.display = '';
+                spViewBtn.href = reviewUrl;
+              }
+              ambientStatus.textContent = 'Done — redirecting in 3 s...';
+              // Give the user 3 s to read the preview before auto-navigating
+              await new Promise(function(res) { setTimeout(res, 3000); });
+            }
+          }
+        }
+        if (!reviewUrl) throw new Error('Stream ended without a done event.');
+        _lastAmbientSessionId = null;
+        window.location.href = reviewUrl;
+
+      } else {
+        // Default blocking path
+        var genResp = await fetch('/scribe/api/sessions/' + sessionId + '/generate/', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+          body: genBody,
+        });
+        var genData = await safeJson(genResp, 'generate');
+        if (!genData.ok) throw new Error(genData.error || 'Note generation failed.');
+        _lastAmbientSessionId = null;
+        window.location.href = '/scribe/sessions/' + sessionId + '/review/';
+      }
+
+      // 5. (redirect happens above inside each branch)
 
     } catch (err) {
       if (progressBar) progressBar.classList.remove('is-active');

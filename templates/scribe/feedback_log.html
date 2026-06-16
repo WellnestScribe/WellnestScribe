@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Note Feedback — WellNest Scribe{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <iconify-icon icon="iconamoon:comment-dots-duotone" style="font-size:1.6rem;color:var(--bs-primary)"></iconify-icon>
+    <div>
+      <h4 class="mb-0">Note Feedback</h4>
+      <p class="text-muted small mb-0">Thumbs-up / thumbs-down ratings from doctors, with optional comments</p>
+    </div>
+    <a href="?export=csv" class="btn btn-outline-secondary btn-sm ms-auto">
+      <iconify-icon icon="iconamoon:file-csv-duotone" class="me-1 align-middle"></iconify-icon>
+      Export CSV
+    </a>
+  </div>
+
+  {# Quick stats #}
+  {% if feedback_list %}
+  <div class="row g-3 mb-4">
+    <div class="col-auto">
+      <div class="card border-0 shadow-sm px-4 py-3 text-center">
+        <div class="fw-bold fs-4 text-success">{{ feedback_list|length }}</div>
+        <div class="small text-muted">Total ratings</div>
+      </div>
+    </div>
+    <div class="col-auto">
+      <div class="card border-0 shadow-sm px-4 py-3 text-center">
+        <div class="fw-bold fs-4 text-danger" id="downCount">—</div>
+        <div class="small text-muted">Needs improvement</div>
+      </div>
+    </div>
+    <div class="col-auto">
+      <div class="card border-0 shadow-sm px-4 py-3 text-center">
+        <div class="fw-bold fs-4 text-primary" id="commentCount">—</div>
+        <div class="small text-muted">With comments</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# Filter bar #}
+  <div class="d-flex gap-2 mb-3 flex-wrap">
+    <input type="search" id="fbSearch" class="form-control form-control-sm" style="max-width:280px;" placeholder="Search doctor, section, comment…">
+    <select id="fbRatingFilter" class="form-select form-select-sm" style="max-width:160px;">
+      <option value="">All ratings</option>
+      <option value="down">👎 Needs improvement</option>
+      <option value="up">👍 Good</option>
+    </select>
+    <select id="fbSectionFilter" class="form-select form-select-sm" style="max-width:160px;">
+      <option value="">All sections</option>
+      <option value="subjective">Subjective</option>
+      <option value="objective">Objective</option>
+      <option value="assessment">Assessment</option>
+      <option value="plan">Plan</option>
+      <option value="overall">Overall</option>
+    </select>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" style="font-size:0.84rem;" id="fbTable">
+          <thead class="table-dark">
+            <tr>
+              <th>Session</th>
+              <th>Doctor</th>
+              <th class="text-center">Section</th>
+              <th class="text-center">Rating</th>
+              <th>Comment</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for fb in feedback_list %}
+            <tr data-rating="{{ fb.rating }}" data-section="{{ fb.section }}">
+              <td>
+                <a href="{% url 'scribe:review' fb.session_id %}" class="text-decoration-none fw-semibold">
+                  {{ fb.session.display_title|truncatechars:28 }}
+                </a>
+              </td>
+              <td class="text-muted">{{ fb.doctor.get_full_name|default:fb.doctor.username }}</td>
+              <td class="text-center">
+                <span class="badge bg-secondary bg-opacity-25 text-body text-capitalize">{{ fb.section }}</span>
+              </td>
+              <td class="text-center">
+                {% if fb.rating == "up" %}
+                  <iconify-icon icon="iconamoon:like-duotone" style="color:#198754;font-size:1.2rem;" title="Good"></iconify-icon>
+                {% else %}
+                  <iconify-icon icon="iconamoon:dislike-duotone" style="color:#dc3545;font-size:1.2rem;" title="Needs improvement"></iconify-icon>
+                {% endif %}
+              </td>
+              <td>
+                {% if fb.comment %}
+                  <span style="white-space:pre-wrap;">{{ fb.comment }}</span>
+                {% else %}
+                  <span class="text-muted" style="font-style:italic;">—</span>
+                {% endif %}
+              </td>
+              <td class="text-muted text-nowrap">{{ fb.created_at|date:"M d, H:i" }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="6" class="text-center py-5 text-muted">
+                <iconify-icon icon="iconamoon:comment-dots-duotone" style="font-size:2rem;opacity:0.3"></iconify-icon>
+                <p class="mt-2 mb-0">No feedback yet. Doctors can rate sections on the review page.</p>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var rows = document.querySelectorAll('#fbTable tbody tr[data-rating]');
+  var downCount = 0, commentCount = 0;
+  rows.forEach(function (r) {
+    if (r.dataset.rating === 'down') downCount++;
+    var commentCell = r.cells[4];
+    if (commentCell && commentCell.querySelector('span:not(.text-muted)')) commentCount++;
+  });
+  var dc = document.getElementById('downCount');
+  var cc = document.getElementById('commentCount');
+  if (dc) dc.textContent = downCount;
+  if (cc) cc.textContent = commentCount;
+
+  function filterTable() {
+    var q = (document.getElementById('fbSearch').value || '').toLowerCase();
+    var ratingF = document.getElementById('fbRatingFilter').value;
+    var sectionF = document.getElementById('fbSectionFilter').value;
+    rows.forEach(function (r) {
+      var text = r.textContent.toLowerCase();
+      var rating = r.dataset.rating;
+      var section = r.dataset.section;
+      var show = (!q || text.includes(q))
+               && (!ratingF || rating === ratingF)
+               && (!sectionF || section === sectionF);
+      r.style.display = show ? '' : 'none';
+    });
+  }
+
+  document.getElementById('fbSearch').addEventListener('input', filterTable);
+  document.getElementById('fbRatingFilter').addEventListener('change', filterTable);
+  document.getElementById('fbSectionFilter').addEventListener('change', filterTable);
+})();
+</script>
+{% endblock %}
