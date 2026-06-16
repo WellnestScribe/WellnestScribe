@@ -323,6 +323,64 @@ class NoteFeedback(models.Model):
         return f"{self.rating} on {self.section} — session {self.session_id}"
 
 
+class ModalOmniEndpoint(models.Model):
+    """One Modal account for omniASR transcription.
+
+    Multiple accounts can be registered; the system cycles through active ones
+    in priority order and marks exhausted on HTTP 429. Enables free-tier
+    credit rotation without manual .env edits.
+    """
+
+    STATUS_ACTIVE = "active"
+    STATUS_EXHAUSTED = "exhausted"
+    STATUS_DISABLED = "disabled"
+    STATUS_CHOICES = [
+        ("active", "Active"),
+        ("exhausted", "Exhausted"),
+        ("disabled", "Disabled"),
+    ]
+
+    label = models.CharField(max_length=100, blank=True)
+    base_url = models.URLField(max_length=300)
+    api_key = models.CharField(max_length=200)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active")
+    priority = models.PositiveIntegerField(default=0, help_text="Lower = used first")
+
+    call_count = models.PositiveIntegerField(default=0)
+    audio_seconds_used = models.FloatField(default=0.0)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    exhausted_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["priority", "created_at"]
+        verbose_name = "Modal Omni endpoint"
+
+    def __str__(self) -> str:
+        return self.label or self.base_url
+
+    @property
+    def transcribe_url(self) -> str:
+        return self.base_url.rstrip("/") + "/transcribe/omni/file"
+
+    @property
+    def health_url(self) -> str:
+        return self.base_url.rstrip("/") + "/health"
+
+    @property
+    def audio_minutes_used(self) -> float:
+        return round(self.audio_seconds_used / 60, 1)
+
+    @property
+    def estimated_cost_usd(self) -> float:
+        return round(self.call_count * 0.03, 2)
+
+    @property
+    def estimated_remaining_usd(self) -> float:
+        return max(0.0, round(1.00 - self.estimated_cost_usd, 2))
+
+
 class SessionEvent(models.Model):
     """Lightweight audit log entry per session. Useful for debugging + pilot."""
 

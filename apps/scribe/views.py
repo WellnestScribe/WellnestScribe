@@ -24,7 +24,7 @@ from django.conf import settings as dj_settings
 
 from accounts.models import DoctorProfile
 
-from .models import NoteShare, NoteFeedback, ScribeSession, SessionEvent, SOAPNote
+from .models import ModalOmniEndpoint, NoteShare, NoteFeedback, ScribeSession, SessionEvent, SOAPNote
 from .services.export import make_share_token, qr_data_url, whatsapp_url
 from .services.pipeline import (
     run_extract_demographics,
@@ -370,6 +370,178 @@ class LatencyLogView(LoginRequiredMixin, View):
             .order_by("-created_at")[:100]
         )
         return render(request, self.template_name, {"sessions": sessions})
+
+
+class ModalEndpointsView(LoginRequiredMixin, View):
+    """Admin view: manage Modal Omni endpoint accounts (URL + API key cycling)."""
+
+    template_name = "scribe/modal_endpoints.html"
+
+    def _is_admin(self, request):
+        profile = DoctorProfile.objects.filter(user=request.user).first()
+        return (profile and profile.is_admin) or request.user.is_staff or request.user.is_superuser
+
+    def get(self, request):
+        if not self._is_admin(request):
+            return redirect("scribe:record")
+        endpoints = ModalOmniEndpoint.objects.all()
+        return render(request, self.template_name, {"endpoints": endpoints})
+
+
+@login_required
+@require_POST
+@csrf_protect
+def modal_endpoint_add_api(request):
+    """Add a new ModalOmniEndpoint (with optional pre-validation)."""
+    profile = DoctorProfile.objects.filter(user=request.user).first()
+    is_admin = (profile and profile.is_admin) or request.user.is_staff or request.user.is_superuser
+    if not is_admin:
+        return JsonResponse({"ok": False, "error": "Admin only"}, status=403)
+
+    payload = _json_body(request)
+    raw_url = (payload.get("base_url") or "").strip()
+    api_key = (payload.get("api_key") or "").strip()
+    label = (payload.get("label") or "").strip()
+    priority = int(payload.get("priority") or 0)
+    notes = (payload.get("notes") or "").strip()
+
+    if not raw_url:
+        return JsonResponse({"ok": False, "error": "base_url is required"}, status=400)
+    if not api_key:
+        return JsonResponse({"ok": False, "error": "api_key is required"}, status=400)
+
+    # Normalise: strip any path so we always store just the origin.
+    from urllib.parse import urlparse as _urlparse
+    parsed = _urlparse(raw_url)
+    base_url = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+    if not base_url or base_url == "://":
+        return JsonResponse({"ok": False, "error": "Invalid URL"}, status=400)
+
+    ep = ModalOmniEndpoint.objects.create(
+        label=label,
+        base_url=base_url,
+        api_key=api_key,
+        priority=priority,
+        notes=notes,
+        status="active",
+    )
+    return JsonResponse({
+        "ok": True,
+        "id": ep.pk,
+        "label": ep.label or ep.base_url,
+        "base_url": ep.base_url,
+        "status": ep.status,
+    })
+
+
+@login_required
+@require_POST
+@csrf_protect
+def modal_endpoint_delete_api(request, pk):
+    profile = DoctorProfile.objects.filter(user=request.user).first()
+    is_admin = (profile and profile.is_admin) or request.user.is_staff or request.user.is_superuser
+    if not is_admin:
+        return JsonResponse({"ok": False, "error": "Admin only"}, status=403)
+    ep = get_object_or_404(ModalOmniEndpoint, pk=pk)
+    ep.delete()
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@require_POST
+@csrf_protect
+def modal_endpoint_toggle_api(request, pk):
+    """Toggle between active ↔ disabled, or re-activate an exhausted endpoint."""
+    profile = DoctorProfile.objects.filter(user=request.user).first()
+    is_admin = (profile and profile.is_admin) or request.user.is_staff or request.user.is_superuser
+    if not is_admin:
+        return JsonResponse({"ok": False, "error": "Admin only"}, status=403)
+    ep = get_object_or_404(ModalOmniEndpoint, pk=pk)
+    payload = _json_body(request)
+    new_status = payload.get("status")
+    if new_status not in {"active", "disabled", "exhausted"}:
+        # If no explicit status, toggle active ↔ disabled (re-activate exhausted too)
+        new_status = "disabled" if ep.status == "active" else "active"
+    ep.status = new_status
+    if new_status == "active":
+        ep.exhausted_at = None
+    ep.save(update_fields=["status", "exhausted_at"])
+    return JsonResponse({"ok": True, "status": ep.status})
+
+
+@login_required
+@require_POST
+@csrf_protect
+def modal_endpoint_update_api(request, pk):
+    """Edit an existing ModalOmniEndpoint's fields."""
+    profile = DoctorProfile.objects.filter(user=request.user).first()
+    is_admin = (profile and profile.is_admin) or request.user.is_staff or request.user.is_superuser
+    if not is_admin:
+        return JsonResponse({"ok": False, "error": "Admin only"}, status=403)
+    ep = get_object_or_404(ModalOmniEndpoint, pk=pk)
+    payload = _json_body(request)
+
+    raw_url = (payload.get("base_url") or "").strip()
+    if raw_url:
+        from urllib.parse import urlparse as _urlparse
+        parsed = _urlparse(raw_url)
+        ep.base_url = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+
+    if "api_key" in payload and payload["api_key"].strip():
+        ep.api_key = payload["api_key"].strip()
+    if "label" in payload:
+        ep.label = payload["label"].strip()
+    if "priority" in payload:
+        ep.priority = int(payload.get("priority") or 0)
+    if "notes" in payload:
+        ep.notes = payload["notes"].strip()
+
+    ep.save()
+    return JsonResponse({"ok": True})
+
+
+@login_required
+def modal_endpoint_validate_api(request):
+    """GET/POST: hit the /health endpoint of a Modal URL + key and return result."""
+    profile = DoctorProfile.objects.filter(user=request.user).first()
+    is_admin = (profile and profile.is_admin) or request.user.is_staff or request.user.is_superuser
+    if not is_admin:
+        return JsonResponse({"ok": False, "error": "Admin only"}, status=403)
+
+    if request.method == "POST":
+        payload = _json_body(request)
+    else:
+        payload = request.GET
+
+    raw_url = (payload.get("base_url") or "").strip()
+    api_key = (payload.get("api_key") or "").strip()
+
+    if not raw_url:
+        return JsonResponse({"ok": False, "error": "base_url required"}, status=400)
+
+    from urllib.parse import urlparse as _urlparse
+    parsed = _urlparse(raw_url)
+    base_url = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+    health_url = base_url + "/health"
+
+    try:
+        import requests as _req
+        headers = {}
+        if api_key:
+            headers["X-API-Key"] = api_key
+        resp = _req.get(health_url, headers=headers, timeout=60)
+        if resp.status_code == 401:
+            return JsonResponse({"ok": False, "error": "Invalid API key (401)"})
+        if not resp.ok:
+            return JsonResponse({"ok": False, "error": f"HTTP {resp.status_code}"})
+        data = resp.json()
+        return JsonResponse({
+            "ok": True,
+            "base_url": base_url,
+            "health": data,
+        })
+    except Exception as exc:  # noqa: BLE001
+        return JsonResponse({"ok": False, "error": str(exc)})
 
 
 class ComplianceView(LoginRequiredMixin, View):

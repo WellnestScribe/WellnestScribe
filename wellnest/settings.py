@@ -343,15 +343,28 @@ TRIAGE_DEFAULT_DEVICE = config("TRIAGE_DEFAULT_DEVICE", default="cpu")  # cpu | 
 TRIAGE_AUDIO_DIR = BASE_DIR / "media" / "triage"
 TRIAGE_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
-# TEMPORARY — Modal L4 GPU endpoint for ambient-mode latency testing.
-# Set AMBIENT_BACKEND=local to fall back to on-device MMS (CPU).
-# Remove both lines after the testing phase.
+# Modal GPU endpoints — ambient transcription.
+# AMBIENT_BACKEND: modal-omni | modal | local
 MODAL_MMS_URL = config("MODAL_MMS_URL", default="")
 MODAL_MMS_API_KEY = config("MODAL_MMS_API_KEY", default="")
-MODAL_OMNI_URL = config("MODAL_OMNI_URL", default="")
 MODAL_OMNI_API_KEY = config("MODAL_OMNI_API_KEY", default="")
 AMBIENT_BACKEND = config("AMBIENT_BACKEND", default="local")  # modal-omni | modal | local
 OMNI_CACHE_DIR = config("OMNI_CACHE_DIR", default="")  # overrides FAIRSEQ2_CACHE_DIR for omniASR weights
+
+# Omni profile URLs — same API, different Modal autoscaler configs.
+# MODAL_OMNI_PROFILE selects which URL is used as MODAL_OMNI_URL.
+# Set MODAL_OMNI_URL directly to bypass profile selection (legacy / override).
+MODAL_OMNI_URL_LOW = config("MODAL_OMNI_URL_LOW", default="")   # cheap / dev / cold-starts OK
+MODAL_OMNI_URL_MID = config("MODAL_OMNI_URL_MID", default="")   # balanced — default for normal usage
+MODAL_OMNI_URL_HIGH = config("MODAL_OMNI_URL_HIGH", default="")  # clinic hours — always-warm container
+MODAL_OMNI_PROFILE = config("MODAL_OMNI_PROFILE", default="low")  # low | mid | high
+_OMNI_PROFILE_MAP = {
+    "low": MODAL_OMNI_URL_LOW,
+    "mid": MODAL_OMNI_URL_MID,
+    "high": MODAL_OMNI_URL_HIGH,
+}
+# Profile URL wins; explicit MODAL_OMNI_URL is the fallback for backwards compat.
+MODAL_OMNI_URL = _OMNI_PROFILE_MAP.get(MODAL_OMNI_PROFILE, "") or config("MODAL_OMNI_URL", default="")
 
 # ---- Logging ----
 LOG_DIR = BASE_DIR / "logs"
