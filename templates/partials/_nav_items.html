@@ -95,6 +95,7 @@ Sections are collapsible — state saved in localStorage.
 {% url 'scribe:compliance' as compliance_url %}
 {% url 'scribe:latency_log' as latency_url %}
 {% url 'scribe:feedback_log' as feedback_log_url %}
+{% url 'scribe:modal_endpoints' as modal_endpoints_url %}
 {% endif %}
 
 <li class="menu-title nav-section-toggle" data-section="nav-admin" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;">
@@ -137,6 +138,15 @@ Sections are collapsible — state saved in localStorage.
             <iconify-icon icon="iconamoon:comment-dots-duotone"></iconify-icon>
         </span>
         <span class="nav-text">Note feedback</span>
+    </a>
+</li>
+
+<li class="nav-item">
+    <a class="nav-link {% if request.path == modal_endpoints_url %}active{% endif %}" href="{{ modal_endpoints_url }}">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:cloud-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">Modal endpoints</span>
     </a>
 </li>
 {% endif %}

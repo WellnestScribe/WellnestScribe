@@ -1,0 +1,492 @@
+{% extends "base.html" %}
+{% block title %}Modal Endpoints — WellNest Scribe{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+  {# ── Header ── #}
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <iconify-icon icon="iconamoon:cloud-duotone" style="font-size:1.6rem;color:var(--bs-primary)"></iconify-icon>
+    <div>
+      <h4 class="mb-0">Modal Omni Endpoints</h4>
+      <p class="text-muted small mb-0">Manage the pool of Modal accounts used for ambient transcription. The system cycles through active ones automatically.</p>
+    </div>
+    <button class="btn btn-primary ms-auto" data-bs-toggle="modal" data-bs-target="#addEndpointModal">
+      <iconify-icon icon="iconamoon:add-duotone" class="me-1 align-middle"></iconify-icon>
+      Add endpoint
+    </button>
+  </div>
+
+  {# ── Quick stats ── #}
+  <div class="row g-3 mb-4" id="statsRow">
+    <div class="col-auto">
+      <div class="card border-0 shadow-sm px-4 py-3 text-center">
+        <div class="fw-bold fs-4 text-success" id="statActive">{{ endpoints|length }}</div>
+        <div class="small text-muted">Total</div>
+      </div>
+    </div>
+    <div class="col-auto">
+      <div class="card border-0 shadow-sm px-4 py-3 text-center">
+        <div class="fw-bold fs-4 text-success" id="statActiveCount">—</div>
+        <div class="small text-muted">Active</div>
+      </div>
+    </div>
+    <div class="col-auto">
+      <div class="card border-0 shadow-sm px-4 py-3 text-center">
+        <div class="fw-bold fs-4 text-danger" id="statExhausted">—</div>
+        <div class="small text-muted">Exhausted</div>
+      </div>
+    </div>
+    <div class="col-auto">
+      <div class="card border-0 shadow-sm px-4 py-3 text-center">
+        <div class="fw-bold fs-4 text-secondary" id="statDisabled">—</div>
+        <div class="small text-muted">Disabled</div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Instructions accordion ── #}
+  <div class="accordion mb-4" id="howToAccordion">
+    <div class="accordion-item border-0 shadow-sm">
+      <h2 class="accordion-header">
+        <button class="accordion-button collapsed fw-semibold" type="button" data-bs-toggle="collapse" data-bs-target="#howToBody">
+          <iconify-icon icon="iconamoon:information-circle-duotone" class="me-2" style="font-size:1.1rem;"></iconify-icon>
+          How to add a new Modal account (free tier rotation)
+        </button>
+      </h2>
+      <div id="howToBody" class="accordion-collapse collapse">
+        <div class="accordion-body" style="font-size:0.88rem;">
+          <p class="mb-2">Each new Modal account gets <strong>~$1 of free credits</strong>. At ~$0.03 per 5-minute note that's about <strong>33 notes per account</strong>. When one is exhausted the system automatically switches to the next.</p>
+          <ol class="mb-3">
+            <li>Go to <strong>modal.com</strong> and create a new account (use a new email).</li>
+            <li>Install the Modal CLI: <code>pip install modal</code></li>
+            <li>Authenticate: <code>modal token new</code></li>
+            <li>Deploy the Omni app from the <code>deploy/lightning_speech_api/</code> folder:<br>
+                <code>modal deploy modal_app_omni.py</code></li>
+            <li>Copy the URL printed after deploy — it looks like:<br>
+                <code>https://&lt;workspace&gt;--wellnest-speech-api-modal-omni-fastapi-app-omni.modal.run</code></li>
+            <li>Find your API key in Modal dashboard → <strong>Settings → API tokens</strong>, or create one.</li>
+            <li>Paste the URL and key into the <strong>Add endpoint</strong> form above and click <strong>Test endpoint</strong> first.</li>
+          </ol>
+          <p class="mb-0 text-muted">You can paste the full URL with any path (e.g. <code>/health</code>, <code>/transcribe/omni/file</code>) — we extract the base automatically.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Endpoints table ── #}
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" style="font-size:0.84rem;" id="epTable">
+          <thead class="table-dark">
+            <tr>
+              <th style="width:1%">#</th>
+              <th>Label / URL</th>
+              <th class="text-center">Status</th>
+              <th class="text-center">Priority</th>
+              <th class="text-center">Calls</th>
+              <th class="text-center">Audio used</th>
+              <th class="text-center">Est. cost</th>
+              <th class="text-center">Est. remaining</th>
+              <th>Last used</th>
+              <th class="text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="epTbody">
+            {% for ep in endpoints %}
+            <tr id="ep-row-{{ ep.pk }}" data-status="{{ ep.status }}">
+              <td class="text-muted">{{ forloop.counter }}</td>
+              <td>
+                <div class="fw-semibold">{{ ep.label|default:"(no label)" }}</div>
+                <div class="text-muted" style="font-size:0.75rem;word-break:break-all;">{{ ep.base_url }}</div>
+                {% if ep.notes %}
+                <div class="text-muted fst-italic" style="font-size:0.75rem;">{{ ep.notes }}</div>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                {% if ep.status == "active" %}
+                  <span class="badge bg-success">Active</span>
+                {% elif ep.status == "exhausted" %}
+                  <span class="badge bg-danger">Exhausted</span>
+                  {% if ep.exhausted_at %}<div class="text-muted" style="font-size:0.72rem;">{{ ep.exhausted_at|date:"M d, H:i" }}</div>{% endif %}
+                {% else %}
+                  <span class="badge bg-secondary">Disabled</span>
+                {% endif %}
+              </td>
+              <td class="text-center">{{ ep.priority }}</td>
+              <td class="text-center fw-semibold">{{ ep.call_count }}</td>
+              <td class="text-center">{{ ep.audio_minutes_used }} min</td>
+              <td class="text-center">
+                <span class="{% if ep.estimated_cost_usd > 0.80 %}text-danger fw-semibold{% elif ep.estimated_cost_usd > 0.50 %}text-warning fw-semibold{% endif %}">
+                  ${{ ep.estimated_cost_usd }}
+                </span>
+              </td>
+              <td class="text-center">
+                {% if ep.status == "exhausted" %}
+                  <span class="text-danger fw-semibold">$0.00</span>
+                {% else %}
+                  <span class="{% if ep.estimated_remaining_usd < 0.20 %}text-danger fw-semibold{% elif ep.estimated_remaining_usd < 0.50 %}text-warning{% else %}text-success{% endif %}">
+                    ~${{ ep.estimated_remaining_usd }}
+                  </span>
+                {% endif %}
+              </td>
+              <td class="text-muted text-nowrap">
+                {{ ep.last_used_at|date:"M d, H:i"|default:"Never" }}
+              </td>
+              <td class="text-center text-nowrap">
+                <button class="btn btn-outline-primary btn-sm px-2 ep-edit-btn me-1"
+                        data-pk="{{ ep.pk }}"
+                        data-label="{{ ep.label }}"
+                        data-base-url="{{ ep.base_url }}"
+                        data-api-key="{{ ep.api_key }}"
+                        data-priority="{{ ep.priority }}"
+                        data-notes="{{ ep.notes }}"
+                        title="Edit">
+                  <iconify-icon icon="iconamoon:edit-duotone" style="font-size:1rem;"></iconify-icon>
+                </button>
+                {% if ep.status == "active" %}
+                <button class="btn btn-outline-secondary btn-sm px-2 ep-toggle-btn"
+                        data-pk="{{ ep.pk }}" data-target-status="disabled"
+                        style="min-width:32px;" title="Disable">
+                  <iconify-icon icon="iconamoon:pause-circle-duotone" style="font-size:1rem;display:block;"></iconify-icon>
+                </button>
+                {% else %}
+                <button class="btn btn-outline-success btn-sm px-2 ep-toggle-btn"
+                        data-pk="{{ ep.pk }}" data-target-status="active"
+                        style="min-width:32px;" title="Re-activate">
+                  <iconify-icon icon="iconamoon:play-circle-duotone" style="font-size:1rem;display:block;"></iconify-icon>
+                </button>
+                {% endif %}
+                <button class="btn btn-outline-danger btn-sm px-2 ep-delete-btn ms-1"
+                        data-pk="{{ ep.pk }}" style="min-width:32px;" title="Delete">
+                  <iconify-icon icon="iconamoon:trash-duotone" style="font-size:1rem;display:block;"></iconify-icon>
+                </button>
+              </td>
+            </tr>
+            {% empty %}
+            <tr id="ep-empty-row">
+              <td colspan="10" class="text-center py-5 text-muted">
+                <iconify-icon icon="iconamoon:cloud-duotone" style="font-size:2rem;opacity:0.3"></iconify-icon>
+                <p class="mt-2 mb-0">No endpoints yet. Add one above to enable ambient transcription cycling.</p>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <p class="small text-muted mt-2">
+    <iconify-icon icon="iconamoon:information-circle-duotone" class="me-1"></iconify-icon>
+    Cost estimates assume ~$0.03 per transcription call and $1.00 total credit per account.
+    Actual cost varies with audio length and cold-start overhead.
+  </p>
+</div>
+
+{# Hidden trigger so Bootstrap data-API opens the edit modal (avoids bootstrap.Modal() at init time) #}
+<button type="button" id="_editModalTrigger" hidden
+        data-bs-toggle="modal" data-bs-target="#editEndpointModal"></button>
+
+{# ── Edit endpoint modal ── #}
+<div class="modal fade" id="editEndpointModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <iconify-icon icon="iconamoon:edit-duotone" class="me-2"></iconify-icon>
+          Edit endpoint
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editPk">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Modal URL</label>
+          <input type="url" id="editUrl" class="form-control" placeholder="https://workspace--app.modal.run">
+          <div class="form-text">Leave as-is to keep existing URL.</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">API Key</label>
+          <input type="text" id="editKey" class="form-control font-monospace" placeholder="ak-…">
+          <div class="form-text">Leave blank to keep existing key.</div>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-8">
+            <label class="form-label fw-semibold">Label</label>
+            <input type="text" id="editLabel" class="form-control">
+          </div>
+          <div class="col-4">
+            <label class="form-label fw-semibold">Priority</label>
+            <input type="number" id="editPriority" class="form-control" min="0">
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Notes</label>
+          <input type="text" id="editNotes" class="form-control">
+        </div>
+        <div id="editResult" class="alert d-none mb-0" role="alert"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="saveEditBtn">
+          <iconify-icon icon="iconamoon:check-circle-duotone" class="me-1 align-middle"></iconify-icon>
+          Save changes
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Add endpoint modal ── #}
+<div class="modal fade" id="addEndpointModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <iconify-icon icon="iconamoon:cloud-duotone" class="me-2"></iconify-icon>
+          Add Modal Omni endpoint
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Modal URL <span class="text-danger">*</span></label>
+          <input type="url" id="addUrl" class="form-control" placeholder="https://workspace--wellnest-speech-api-modal-omni-fastapi-app-omni.modal.run">
+          <div class="form-text">Paste any URL from the Modal deploy — we strip the path automatically.</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">API Key <span class="text-danger">*</span></label>
+          <input type="text" id="addKey" class="form-control font-monospace" placeholder="ak-…">
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-8">
+            <label class="form-label fw-semibold">Label</label>
+            <input type="text" id="addLabel" class="form-control" placeholder="e.g. Gary account 3">
+          </div>
+          <div class="col-4">
+            <label class="form-label fw-semibold">Priority</label>
+            <input type="number" id="addPriority" class="form-control" value="0" min="0">
+            <div class="form-text">0 = first</div>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Notes</label>
+          <input type="text" id="addNotes" class="form-control" placeholder="Optional — e.g. manidoncreed workspace">
+        </div>
+
+        {# Validation result area #}
+        <div id="validateResult" class="alert d-none mb-0" role="alert"></div>
+      </div>
+      <div class="modal-footer gap-2">
+        <button type="button" class="btn btn-outline-secondary" id="testEndpointBtn">
+          <iconify-icon icon="iconamoon:lightning-1-duotone" class="me-1 align-middle"></iconify-icon>
+          Test endpoint
+        </button>
+        <button type="button" class="btn btn-primary" id="saveEndpointBtn">
+          <iconify-icon icon="iconamoon:add-duotone" class="me-1 align-middle"></iconify-icon>
+          Save endpoint
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  function csrf() { return (window.WELLNEST && window.WELLNEST.getCsrf) ? window.WELLNEST.getCsrf() : ''; }
+
+  // ── Stats ──────────────────────────────────────────────────────────────────
+  (function () {
+    var rows = document.querySelectorAll('#epTbody tr[data-status]');
+    var active = 0, exhausted = 0, disabled = 0;
+    rows.forEach(function (r) {
+      if (r.dataset.status === 'active') active++;
+      else if (r.dataset.status === 'exhausted') exhausted++;
+      else disabled++;
+    });
+    document.getElementById('statActive').textContent = rows.length;
+    document.getElementById('statActiveCount').textContent = active;
+    document.getElementById('statExhausted').textContent = exhausted;
+    document.getElementById('statDisabled').textContent = disabled;
+  })();
+
+  // ── Validate (add modal) ───────────────────────────────────────────────────
+  function showValidateResult(ok, message, details) {
+    var el = document.getElementById('validateResult');
+    el.className = 'alert mb-0 ' + (ok ? 'alert-success' : 'alert-danger');
+    el.classList.remove('d-none');
+    var detailHtml = '';
+    if (details) {
+      var parts = [];
+      if (details.model_cached_omni !== undefined)
+        parts.push('<span class="me-3">Model cached: <strong>' + (details.model_cached_omni ? '✓' : '✗') + '</strong></span>');
+      if (details.model_loaded_omni !== undefined)
+        parts.push('<span class="me-3">Model loaded: <strong>' + (details.model_loaded_omni ? '✓ (warm)' : '✗ (cold)') + '</strong></span>');
+      if (details.cuda !== undefined)
+        parts.push('<span>GPU: <strong>' + (details.cuda ? (details.cuda_device || 'yes') : 'cpu') + '</strong></span>');
+      if (parts.length) detailHtml = '<div class="mt-1" style="font-size:0.82rem;">' + parts.join('') + '</div>';
+    }
+    el.innerHTML = '<strong>' + (ok ? '✓ ' : '✗ ') + message + '</strong>' + detailHtml;
+  }
+
+  document.getElementById('testEndpointBtn').addEventListener('click', function () {
+    var url = document.getElementById('addUrl').value.trim();
+    var key = document.getElementById('addKey').value.trim();
+    if (!url) { showValidateResult(false, 'Enter a URL first.'); return; }
+    var btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Testing…';
+    fetch('{% url "scribe:api_modal_endpoint_validate" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({ base_url: url, api_key: key }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      d.ok ? showValidateResult(true, 'Endpoint reachable — health check passed.', d.health)
+           : showValidateResult(false, d.error || 'Health check failed.');
+    })
+    .catch(function (e) { showValidateResult(false, 'Network error: ' + e.message); })
+    .finally(function () {
+      btn.disabled = false;
+      btn.innerHTML = '<iconify-icon icon="iconamoon:lightning-1-duotone" class="me-1 align-middle" style="font-size:1rem;"></iconify-icon> Test endpoint';
+    });
+  });
+
+  document.getElementById('saveEndpointBtn').addEventListener('click', function () {
+    var url = document.getElementById('addUrl').value.trim();
+    var key = document.getElementById('addKey').value.trim();
+    if (!url || !key) { showValidateResult(false, 'URL and API key are required.'); return; }
+    var btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+    fetch('{% url "scribe:api_modal_endpoint_add" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({
+        base_url: url, api_key: key,
+        label: document.getElementById('addLabel').value.trim(),
+        priority: parseInt(document.getElementById('addPriority').value) || 0,
+        notes: document.getElementById('addNotes').value.trim(),
+      }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d.ok) { window.location.reload(); }
+      else {
+        showValidateResult(false, d.error || 'Save failed.');
+        btn.disabled = false;
+        btn.innerHTML = '<iconify-icon icon="iconamoon:add-duotone" class="me-1 align-middle" style="font-size:1rem;"></iconify-icon> Save endpoint';
+      }
+    })
+    .catch(function (e) {
+      showValidateResult(false, 'Network error: ' + e.message);
+      btn.disabled = false;
+      btn.innerHTML = '<iconify-icon icon="iconamoon:add-duotone" class="me-1 align-middle" style="font-size:1rem;"></iconify-icon> Save endpoint';
+    });
+  });
+
+  // ── Edit ──────────────────────────────────────────────────────────────────
+  // Use hidden trigger button (Bootstrap data-API) instead of new bootstrap.Modal()
+  // to avoid calling it before vendor.js is fully initialised.
+  var _editTrigger = document.getElementById('_editModalTrigger');
+
+  document.querySelectorAll('.ep-edit-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.getElementById('editPk').value = this.dataset.pk;
+      document.getElementById('editUrl').value = this.dataset.baseUrl || '';
+      document.getElementById('editKey').value = '';   // never pre-fill key in DOM
+      document.getElementById('editLabel').value = this.dataset.label || '';
+      document.getElementById('editPriority').value = this.dataset.priority || '0';
+      document.getElementById('editNotes').value = this.dataset.notes || '';
+      document.getElementById('editResult').className = 'alert d-none mb-0';
+      _editTrigger.click();
+    });
+  });
+
+  document.getElementById('saveEditBtn').addEventListener('click', function () {
+    var pk = document.getElementById('editPk').value;
+    var btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+    fetch('{% url "scribe:api_modal_endpoint_update" pk=0 %}'.replace('/0/', '/' + pk + '/'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({
+        base_url: document.getElementById('editUrl').value.trim(),
+        api_key: document.getElementById('editKey').value.trim(),
+        label: document.getElementById('editLabel').value.trim(),
+        priority: parseInt(document.getElementById('editPriority').value) || 0,
+        notes: document.getElementById('editNotes').value.trim(),
+      }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d.ok) { window.location.reload(); }
+      else {
+        var el = document.getElementById('editResult');
+        el.className = 'alert alert-danger mb-0';
+        el.textContent = d.error || 'Save failed.';
+        btn.disabled = false;
+        btn.innerHTML = '<iconify-icon icon="iconamoon:check-circle-duotone" class="me-1 align-middle" style="font-size:1rem;"></iconify-icon> Save changes';
+      }
+    })
+    .catch(function (e) {
+      var el = document.getElementById('editResult');
+      el.className = 'alert alert-danger mb-0';
+      el.textContent = 'Network error: ' + e.message;
+      btn.disabled = false;
+      btn.innerHTML = '<iconify-icon icon="iconamoon:check-circle-duotone" class="me-1 align-middle" style="font-size:1rem;"></iconify-icon> Save changes';
+    });
+  });
+
+  // ── Toggle ─────────────────────────────────────────────────────────────────
+  document.querySelectorAll('.ep-toggle-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var pk = this.dataset.pk;
+      var targetStatus = this.dataset.targetStatus;
+      var origHtml = this.innerHTML;
+      this.disabled = true;
+      this.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:1rem;height:1rem;"></span>';
+      var self = this;
+      fetch('{% url "scribe:api_modal_endpoint_toggle" pk=0 %}'.replace('/0/', '/' + pk + '/'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: JSON.stringify({ status: targetStatus }),
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.ok) { window.location.reload(); }
+        else { alert(d.error || 'Toggle failed'); self.disabled = false; self.innerHTML = origHtml; }
+      })
+      .catch(function () { self.disabled = false; self.innerHTML = origHtml; });
+    });
+  });
+
+  // ── Delete ─────────────────────────────────────────────────────────────────
+  document.querySelectorAll('.ep-delete-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (!confirm('Delete this endpoint? This cannot be undone.')) return;
+      var pk = this.dataset.pk;
+      var self = this;
+      self.disabled = true;
+      fetch('{% url "scribe:api_modal_endpoint_delete" pk=0 %}'.replace('/0/', '/' + pk + '/'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: '{}',
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.ok) { window.location.reload(); }
+        else { alert(d.error || 'Delete failed'); self.disabled = false; }
+      })
+      .catch(function () { self.disabled = false; });
+    });
+  });
+})();
+</script>
+{% endblock %}

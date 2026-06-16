@@ -952,6 +952,41 @@ def transcribe_modal_mms(
     return data
 
 
+def _get_omni_candidates() -> list[tuple[str, dict, object]]:
+    """Return list of (transcribe_url, headers, endpoint_or_None) to try in order.
+
+    Checks the DB first (ModalOmniEndpoint table). Falls back to settings
+    if the table is empty, so the .env single-URL config still works.
+    """
+    try:
+        from ..models import ModalOmniEndpoint  # avoid circular at module load
+        endpoints = list(
+            ModalOmniEndpoint.objects.filter(status=ModalOmniEndpoint.STATUS_ACTIVE)
+            .order_by("priority", "created_at")
+        )
+    except Exception:  # DB not ready / migration not run yet
+        endpoints = []
+
+    if endpoints:
+        return [
+            (
+                ep.transcribe_url,
+                {"X-API-Key": ep.api_key} if ep.api_key else {},
+                ep,
+            )
+            for ep in endpoints
+        ]
+
+    # Fallback: settings-based single endpoint (legacy / .env-only mode)
+    url = settings.MODAL_OMNI_URL
+    if not url:
+        return []
+    headers: dict = {}
+    if settings.MODAL_OMNI_API_KEY:
+        headers["X-API-Key"] = settings.MODAL_OMNI_API_KEY
+    return [(url, headers, None)]
+
+
 def transcribe_modal_omni(
     audio_path: str | Path,
     *,
@@ -961,6 +996,12 @@ def transcribe_modal_omni(
 ) -> dict:
     """POST audio to the Modal-hosted omniASR endpoint.
 
+    Cycles through registered ModalOmniEndpoints in priority order.
+    On HTTP 429 (credits exhausted) the current endpoint is marked exhausted
+    and the next active one is tried immediately — no user-visible wait.
+
+    Falls back to settings.MODAL_OMNI_URL when no DB endpoints are registered.
+
     Response keys: ok, transcript, audio_seconds, chunk_count,
     inference_ms, realtime_factor, model_id, target_lang.
     """
@@ -969,16 +1010,12 @@ def transcribe_modal_omni(
     except ImportError as exc:
         raise TriageDependencyError("requests not installed. Run: pip install requests") from exc
 
-    url = settings.MODAL_OMNI_URL
-    if not url:
+    candidates = _get_omni_candidates()
+    if not candidates:
         raise TriageDependencyError(
-            "MODAL_OMNI_URL is not set in .env. "
-            "Add the endpoint URL from your friend's Modal deployment."
+            "No active Modal Omni endpoints configured. "
+            "Add one at Admin → Modal Endpoints, or set MODAL_OMNI_URL in .env."
         )
-
-    headers = {}
-    if settings.MODAL_OMNI_API_KEY:
-        headers["X-API-Key"] = settings.MODAL_OMNI_API_KEY
 
     src = Path(audio_path)
     tmp_wav: "Path | None" = None
@@ -989,38 +1026,67 @@ def transcribe_modal_omni(
 
     send_path = tmp_wav if tmp_wav else src
     mime = "audio/wav" if tmp_wav else "application/octet-stream"
+
+    last_error: str = ""
     try:
-        with open(send_path, "rb") as f:
-            resp = requests.post(
+        for url, headers, ep in candidates:
+            with open(send_path, "rb") as f:
+                resp = requests.post(
+                    url,
+                    headers=headers,
+                    files={"file": (send_path.name, f, mime)},
+                    data={
+                        "target_lang": target_lang,
+                        "model_id": model_id,
+                        "chunk_seconds": str(chunk_seconds),
+                    },
+                    timeout=600,
+                )
+
+            if resp.status_code == 429:
+                # Credits exhausted — mark DB endpoint and try next immediately.
+                if ep is not None:
+                    from django.utils import timezone as _tz
+                    ep.status = "exhausted"
+                    ep.exhausted_at = _tz.now()
+                    ep.save(update_fields=["status", "exhausted_at"])
+                    logger.warning("Modal omniASR endpoint exhausted (429): %s — cycling to next", url)
+                last_error = f"429 credits exhausted on {url}"
+                continue
+
+            if not resp.ok:
+                body = ""
+                try:
+                    body = resp.json().get("detail") or resp.json().get("error") or resp.text[:300]
+                except Exception:  # noqa: BLE001
+                    body = resp.text[:300]
+                raise RuntimeError(f"Modal omniASR HTTP {resp.status_code}: {body}")
+
+            data = resp.json()
+            logger.info(
+                "Modal omniASR ok: transcript_len=%d audio_seconds=%s endpoint=%s",
+                len(data.get("transcript") or ""),
+                data.get("audio_seconds"),
                 url,
-                headers=headers,
-                files={"file": (send_path.name, f, mime)},
-                data={
-                    "target_lang": target_lang,
-                    "model_id": model_id,
-                    "chunk_seconds": str(chunk_seconds),
-                },
-                timeout=600,
             )
+            if not data.get("ok"):
+                raise RuntimeError(f"Modal omniASR error: {data.get('error') or data}")
+
+            # Update usage stats on the DB endpoint.
+            if ep is not None:
+                from django.utils import timezone as _tz
+                ep.call_count = (ep.call_count or 0) + 1
+                ep.audio_seconds_used = (ep.audio_seconds_used or 0.0) + float(data.get("audio_seconds") or 0)
+                ep.last_used_at = _tz.now()
+                ep.save(update_fields=["call_count", "audio_seconds_used", "last_used_at"])
+
+            return data
     finally:
         if tmp_wav:
             tmp_wav.unlink(missing_ok=True)
 
-    if not resp.ok:
-        body = ""
-        try:
-            body = resp.json().get("detail") or resp.json().get("error") or resp.text[:300]
-        except Exception:  # noqa: BLE001
-            body = resp.text[:300]
-        raise RuntimeError(f"Modal omniASR HTTP {resp.status_code}: {body}")
-
-    data = resp.json()
-    logger.warning(
-        "Modal omniASR response: ok=%s transcript_len=%d audio_seconds=%s",
-        data.get("ok"),
-        len(data.get("transcript") or ""),
-        data.get("audio_seconds"),
+    raise RuntimeError(
+        "All Modal Omni endpoints are exhausted (HTTP 429). "
+        "Add a new account at Admin → Modal Endpoints. "
+        f"Last error: {last_error}"
     )
-    if not data.get("ok"):
-        raise RuntimeError(f"Modal omniASR error: {data.get('error') or data}")
-    return data

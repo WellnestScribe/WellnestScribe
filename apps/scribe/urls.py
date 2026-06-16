@@ -78,6 +78,12 @@ urlpatterns = [
     path("api/triage/probe/", views.triage_probe_api, name="api_triage_probe"),
     path("api/triage/install/", views.triage_install_deps_api, name="api_triage_install"),
     path("api/triage/install-audio/", views.triage_install_audio_api, name="api_triage_install_audio"),
+    path("admin/modal-endpoints/", views.ModalEndpointsView.as_view(), name="modal_endpoints"),
+    path("api/admin/modal-endpoints/", views.modal_endpoint_add_api, name="api_modal_endpoint_add"),
+    path("api/admin/modal-endpoints/validate/", views.modal_endpoint_validate_api, name="api_modal_endpoint_validate"),
+    path("api/admin/modal-endpoints/<int:pk>/delete/", views.modal_endpoint_delete_api, name="api_modal_endpoint_delete"),
+    path("api/admin/modal-endpoints/<int:pk>/toggle/", views.modal_endpoint_toggle_api, name="api_modal_endpoint_toggle"),
+    path("api/admin/modal-endpoints/<int:pk>/update/", views.modal_endpoint_update_api, name="api_modal_endpoint_update"),
     path(
         "api/sessions/<int:pk>/improve/",
         views.suggest_improvements_api,
