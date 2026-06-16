@@ -18,16 +18,51 @@ SECRET_KEY = config(
 )
 DEBUG = config("DEBUG", default=True, cast=bool)
 
-ALLOWED_HOSTS = config(
-    "ALLOWED_HOSTS",
-    default="localhost,127.0.0.1,0.0.0.0,.ngrok-free.app, https://6d59-72-27-184-245.ngrok-free.app",
-    cast=Csv(),
+def _normalize_allowed_hosts(values: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for value in values:
+        item = (value or "").strip()
+        if not item:
+            continue
+        if "://" in item:
+            parsed = urlparse(item)
+            item = parsed.netloc or parsed.path or item
+        item = item.strip().strip("/")
+        if item.count(":") == 1 and not item.startswith("["):
+            item = item.split(":", 1)[0]
+        if item and item not in normalized:
+            normalized.append(item)
+    return normalized
+
+
+def _normalize_trusted_origins(values: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for value in values:
+        item = (value or "").strip()
+        if not item:
+            continue
+        if "://" not in item:
+            item = f"https://{item.lstrip('/')}"
+        item = item.rstrip("/")
+        if item not in normalized:
+            normalized.append(item)
+    return normalized
+
+
+ALLOWED_HOSTS = _normalize_allowed_hosts(
+    config(
+        "ALLOWED_HOSTS",
+        default="wellnestscribe.com,www.wellnestscribe.com,localhost,127.0.0.1,0.0.0.0,.ngrok-free.app,6d59-72-27-184-245.ngrok-free.app",
+        cast=Csv(),
+    )
 )
 
-CSRF_TRUSTED_ORIGINS = config(
-    "CSRF_TRUSTED_ORIGINS",
-    default="https://*.ngrok-free.app,http://localhost:9093,http://127.0.0.1:9093",
-    cast=Csv(),
+CSRF_TRUSTED_ORIGINS = _normalize_trusted_origins(
+    config(
+        "CSRF_TRUSTED_ORIGINS",
+        default="https://wellnestscribe.com,https://www.wellnestscribe.com,https://*.ngrok-free.app,http://localhost:9093,http://127.0.0.1:9093",
+        cast=Csv(),
+    )
 )
 
 
