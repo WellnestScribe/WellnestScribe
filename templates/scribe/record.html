@@ -786,22 +786,33 @@
         <div class="modal-content rounded-4 shadow-lg">
             <div class="modal-header border-0 pb-1">
                 <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="onboardLangLabel">
-                    <iconify-icon icon="iconamoon:earth-duotone" class="text-primary" style="font-size:1.3rem;"></iconify-icon>
+                    <iconify-icon icon="mdi:translate" class="text-primary" style="font-size:1.3rem;"></iconify-icon>
                     What language do you work in?
                 </h5>
             </div>
             <div class="modal-body pt-1 pb-2">
                 <p class="text-muted small mb-3">Select the language your patients mainly speak. The AI will transcribe in this language.</p>
-                <select id="onboardLangSelect" class="form-select">
-                    <option value="jam_Latn" {% if doctor_profile.preferred_language == "jam_Latn" or not doctor_profile.preferred_language %}selected{% endif %}>🇯🇲 Jamaican Creole (Patois)</option>
-                    <option value="eng_Latn" {% if doctor_profile.preferred_language == "eng_Latn" %}selected{% endif %}>🇬🇧 English</option>
-                    <option value="spa_Latn" {% if doctor_profile.preferred_language == "spa_Latn" %}selected{% endif %}>🇪🇸 Spanish</option>
-                    <option value="fra_Latn" {% if doctor_profile.preferred_language == "fra_Latn" %}selected{% endif %}>🇫🇷 French</option>
-                    <option value="hat_Latn" {% if doctor_profile.preferred_language == "hat_Latn" %}selected{% endif %}>🇭🇹 Haitian Creole</option>
-                    <option value="por_Latn" {% if doctor_profile.preferred_language == "por_Latn" %}selected{% endif %}>🇧🇷 Portuguese</option>
-                </select>
+                {% with lang=doctor_profile.preferred_language|default:"jam_Latn" %}
+                <div class="wn-lang-picker">
+                    <div class="input-group input-group-sm mb-2">
+                        <span class="input-group-text"><iconify-icon icon="mdi:magnify" style="font-size:1rem;"></iconify-icon></span>
+                        <input type="text" class="form-control form-control-sm wn-lang-search" placeholder="Search language…" autocomplete="off">
+                    </div>
+                    <div class="wn-lang-list" id="onboardLangList">
+                        <button type="button" class="wn-lang-item{% if lang == 'jam_Latn' %} wn-lang-active{% endif %}" data-lang="jam_Latn">🇯🇲 Jamaican Creole (Patois)</button>
+                        <button type="button" class="wn-lang-item{% if lang == 'eng_Latn' %} wn-lang-active{% endif %}" data-lang="eng_Latn">🇬🇧 English</button>
+                        <button type="button" class="wn-lang-item{% if lang == 'spa_Latn' %} wn-lang-active{% endif %}" data-lang="spa_Latn">🇪🇸 Spanish</button>
+                        <button type="button" class="wn-lang-item{% if lang == 'fra_Latn' %} wn-lang-active{% endif %}" data-lang="fra_Latn">🇫🇷 French</button>
+                        <button type="button" class="wn-lang-item{% if lang == 'hat_Latn' %} wn-lang-active{% endif %}" data-lang="hat_Latn">🇭🇹 Haitian Creole</button>
+                        <button type="button" class="wn-lang-item{% if lang == 'por_Latn' %} wn-lang-active{% endif %}" data-lang="por_Latn">🇧🇷 Portuguese</button>
+                        <button type="button" class="wn-lang-item{% if lang == 'wol_Latn' %} wn-lang-active{% endif %}" data-lang="wol_Latn">🇸🇳 Wolof</button>
+                        <button type="button" class="wn-lang-item{% if lang == 'kin_Latn' %} wn-lang-active{% endif %}" data-lang="kin_Latn">🇷🇼 Kinyarwanda</button>
+                    </div>
+                    <input type="hidden" id="onboardLangSelect" value="{{ lang }}">
+                </div>
+                {% endwith %}
                 <p class="small text-muted mt-3 mb-0">
-                    <iconify-icon icon="iconamoon:earth-duotone" class="me-1 align-middle"></iconify-icon>
+                    <iconify-icon icon="mdi:translate" class="me-1 align-middle"></iconify-icon>
                     Change anytime from the <strong>globe icon</strong> in the top bar.
                 </p>
             </div>
@@ -825,7 +836,7 @@
         <div class="modal-content rounded-4 shadow-lg">
             <div class="modal-header border-0 pb-1">
                 <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="onboardAiLabel">
-                    <iconify-icon icon="iconamoon:magic-wand-duotone" class="text-primary" style="font-size:1.3rem;"></iconify-icon>
+                    <iconify-icon icon="mdi:creation" class="text-primary" style="font-size:1.3rem;"></iconify-icon>
                     How should the AI write your notes?
                 </h5>
             </div>
@@ -836,8 +847,8 @@
                           rows="5"
                           placeholder="e.g. Always include medication doses. Keep the plan section brief. Use bullet points.">{{ doctor_profile.custom_instructions|default:'' }}</textarea>
                 <p class="small text-muted mt-3 mb-0">
-                    <iconify-icon icon="iconamoon:magic-wand-duotone" class="me-1 align-middle"></iconify-icon>
-                    Change anytime from the <strong>wand icon</strong> in the top bar.
+                    <iconify-icon icon="mdi:pill" class="me-1 align-middle"></iconify-icon>
+                    Change anytime from the <strong>pill icon</strong> in the top bar.
                 </p>
             </div>
             <div class="modal-footer border-0 pt-0 d-flex justify-content-between align-items-center">
@@ -2278,13 +2289,29 @@ document.addEventListener('DOMContentLoaded', function () {
     setTimeout(showLang, 600);
   }
 
+  /* Onboarding lang picker — item click */
+  document.addEventListener('click', function (e) {
+    var item = e.target.closest && e.target.closest('#onboardLangList .wn-lang-item');
+    if (!item) return;
+    var hidden = document.getElementById('onboardLangSelect');
+    if (hidden) hidden.value = item.dataset.lang;
+    document.querySelectorAll('#onboardLangList .wn-lang-item').forEach(function (b) {
+      b.classList.toggle('wn-lang-active', b === item);
+    });
+  });
+
   /* Lang step */
   document.getElementById('onboardLangNextBtn').addEventListener('click', function () {
     var sel = document.getElementById('onboardLangSelect');
     if (sel) savePrefs({ preferred_language: sel.value });
-    /* Sync topbar dropdown if present */
+    /* Sync topbar hidden input + active state */
     var topSel = document.getElementById('topbarLangSelect');
-    if (topSel && sel) topSel.value = sel.value;
+    if (topSel && sel) {
+      topSel.value = sel.value;
+      document.querySelectorAll('#topbarLangList .wn-lang-item').forEach(function (b) {
+        b.classList.toggle('wn-lang-active', b.dataset.lang === sel.value);
+      });
+    }
     bootstrap.Modal.getInstance(langModal).hide();
     setTimeout(showAi, 300);
   });

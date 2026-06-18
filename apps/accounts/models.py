@@ -79,6 +79,8 @@ class DoctorProfile(models.Model):
         ("fra_Latn", "French"),
         ("hat_Latn", "Haitian Creole"),
         ("por_Latn", "Portuguese"),
+        ("wol_Latn", "Wolof"),
+        ("kin_Latn", "Kinyarwanda"),
     ]
 
     preferred_language = models.CharField(
@@ -100,6 +102,12 @@ class DoctorProfile(models.Model):
     role = models.CharField(
         max_length=20, choices=ROLE_CHOICES, default=ROLE_CLINICIAN
     )
+
+    # Login tracking — shown on the dashboard so doctors can spot unexpected access
+    last_login_ip = models.GenericIPAddressField(null=True, blank=True)
+    last_login_at = models.DateTimeField(null=True, blank=True)
+    previous_login_ip = models.GenericIPAddressField(null=True, blank=True)
+    previous_login_at = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -664,9 +664,9 @@
                                 Send to EMR
                             </a>
                             <button type="button" class="btn btn-outline-secondary btn-sm" id="qrBtn"
-                                    data-bs-toggle="modal" data-bs-target="#shareModal" title="Share to desktop via QR">
+                                    data-bs-toggle="modal" data-bs-target="#shareModal" title="Transfer to another screen via QR">
                                 <iconify-icon icon="iconamoon:scan-duotone" class="me-1 align-middle"></iconify-icon>
-                                Share via QR
+                                Transfer to screen
                             </button>
                             <button type="button" class="btn btn-outline-secondary btn-sm" id="copyFhirBtn" title="Copy FHIR R4 bundle">
                                 <iconify-icon icon="iconamoon:code-duotone" class="me-1 align-middle"></iconify-icon>
@@ -675,10 +675,6 @@
                             <button type="button" class="btn btn-outline-secondary btn-sm" id="polishBtn">
                                 <iconify-icon icon="iconamoon:edit-duotone" class="me-1 align-middle"></iconify-icon>
                                 Polish grammar
-                            </button>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" id="whatsappBtn">
-                                <iconify-icon icon="iconamoon:send-duotone" class="me-1 align-middle"></iconify-icon>
-                                Share via WhatsApp
                             </button>
                             <button type="button" class="btn btn-outline-secondary btn-sm" id="printBtn">
                                 <iconify-icon icon="iconamoon:print-duotone" class="me-1 align-middle"></iconify-icon>
@@ -820,17 +816,18 @@
             </div>
             <div class="modal-body text-center">
                 <p class="text-muted small mb-3">
-                    Scan this QR code with your hospital computer&rsquo;s camera, or open the
-                    short link below. The link expires in 1 hour.
+                    Scan with your phone while logged in to WellNest. This screen
+                    will automatically display the note &mdash; no data is sent to your phone.
+                    Code expires in 30&nbsp;minutes.
                 </p>
                 <div id="qrLoader" class="py-4">
                     <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading…</span></div>
-                    <p class="text-muted small mt-2 mb-0">Building share link…</p>
+                    <p class="text-muted small mt-2 mb-0">Generating secure transfer code…</p>
                 </div>
                 <div id="qrCanvas" class="qr-canvas-wrap d-none mx-auto"></div>
-                <div class="input-group mt-3 d-none" id="qrLinkRow">
-                    <input type="text" class="form-control" id="qrLink" readonly>
-                    <button class="btn btn-outline-secondary" type="button" id="qrCopyLink">Copy link</button>
+                <div class="mt-2 d-none text-muted small" id="qrLinkRow">
+                    <iconify-icon icon="mdi:lock-check" class="me-1 text-success"></iconify-icon>
+                    Requires sign-in &mdash; patient data never leaves this device
                 </div>
             </div>
         </div>

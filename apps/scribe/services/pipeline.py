@@ -18,6 +18,7 @@ from .soap_generator import (
     generate_modular_soap,
     generate_note,
     interpret_and_generate_soap,
+    interpret_generalized,
     interpret_patois,
     polish_grammar,
     stream_note_generation,
@@ -25,6 +26,22 @@ from .soap_generator import (
 )
 from .stub import fake_generate_note, fake_transcribe
 from .transcription import transcribe_audio
+
+# ── v3: language tier routing ─────────────────────────────────────────────────
+# jam_Latn  → Patois interpreter → Jamaica-context SOAP (unchanged)
+# hat_Latn  → Generalized interpreter → generic-context SOAP   (low-resource)
+# all others → skip interpreter → generic-context SOAP         (high-resource)
+_LOW_RESOURCE_LANGS: frozenset[str] = frozenset({"hat_Latn", "wol_Latn", "kin_Latn"})
+_JAMAICA_LANGS: frozenset[str] = frozenset({"jam_Latn"})
+
+
+def _lang_tier(lang: str) -> str:
+    """Return 'jamaica' | 'low_resource' | 'high_resource'."""
+    if lang in _JAMAICA_LANGS:
+        return "jamaica"
+    if lang in _LOW_RESOURCE_LANGS:
+        return "low_resource"
+    return "high_resource"
 
 
 logger = logging.getLogger(__name__)
@@ -50,6 +67,7 @@ def run_note_generation(
     note_format: str,
     specialty: str,
     length_mode: str,
+    lang: str = "jam_Latn",
     custom_instructions: str = "",
     custom_terms: str = "",
     suggestive_assist: bool = False,
@@ -73,6 +91,7 @@ def run_note_generation(
                 transcript,
                 specialty=specialty,
                 length_mode=length_mode,
+                lang=lang,
                 custom_instructions=custom_instructions,
                 custom_terms=custom_terms,
                 suggestive_assist=suggestive_assist,
@@ -83,6 +102,7 @@ def run_note_generation(
             note_format=note_format,
             specialty=specialty,
             length_mode=length_mode,
+            lang=lang,
             custom_instructions=custom_instructions,
             custom_terms=custom_terms,
             suggestive_assist=suggestive_assist,
@@ -205,6 +225,7 @@ def run_stream_note_generation(
     note_format: str = "soap",
     specialty: str = "general",
     length_mode: str = "normal",
+    lang: str = "jam_Latn",
     custom_instructions: str = "",
     custom_terms: str = "",
     suggestive_assist: bool = False,
@@ -228,6 +249,7 @@ def run_stream_note_generation(
             note_format=note_format,
             specialty=specialty,
             length_mode=length_mode,
+            lang=lang,
             custom_instructions=custom_instructions,
             custom_terms=custom_terms,
             suggestive_assist=suggestive_assist,
@@ -259,3 +281,30 @@ def run_extract_demographics(transcript: str) -> dict:
     except AIConfigError as exc:
         logger.warning("Demographics extract stub: %s", exc)
         return dict(DEMOGRAPHICS_EMPTY)
+
+
+def run_interpret_generalized(raw_text: str) -> str:
+    """v3: low-resource tier — generalized raw-speech → clinical English."""
+    if not _use_real_ai():
+        return raw_text
+    try:
+        return interpret_generalized(raw_text)
+    except AIConfigError as exc:
+        logger.warning("Interpret generalized stub: %s", exc)
+        return raw_text
+
+
+def run_interpret_for_lang(raw_text: str, lang: str = "jam_Latn") -> str:
+    """v3: route raw transcript through the correct interpreter tier.
+
+    jamaica      → Patois interpreter (existing pipeline, unchanged)
+    low_resource → Generalized interpreter (hat_Latn etc.)
+    high_resource → pass-through (eng/spa/fra/por — GPT handles natively)
+    """
+    tier = _lang_tier(lang)
+    if tier == "jamaica":
+        return run_interpret_patois(raw_text)
+    if tier == "low_resource":
+        return run_interpret_generalized(raw_text)
+    # high_resource: transcript goes straight to note generation
+    return raw_text

@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Privacy Policy — WellNest Scribe{% endblock %}
+
+{% block content %}
+<div class="container py-5" style="max-width:780px;">
+  <h1 class="fw-bold mb-1">Privacy Policy</h1>
+  <p class="text-muted small mb-5">Effective date: June 2026 &mdash; WellNest Scribe</p>
+
+  <section class="mb-5">
+    <h5 class="fw-semibold">1. Who We Are</h5>
+    <p>WellNest Scribe is a clinical AI documentation platform operated for use in
+    Caribbean healthcare facilities. This policy explains what data we collect, why
+    we collect it, and how we protect it.</p>
+  </section>
+
+  <section class="mb-5">
+    <h5 class="fw-semibold">2. Data We Collect</h5>
+    <h6 class="fw-semibold mt-3 mb-1">Account data</h6>
+    <ul>
+      <li>Name, email address, and password (hashed — we never store plaintext passwords).</li>
+      <li>Specialty, facility name, and clinical role.</li>
+      <li>Login timestamps and IP addresses (retained for 90 days for security audit purposes).</li>
+    </ul>
+    <h6 class="fw-semibold mt-3 mb-1">Patient session data</h6>
+    <ul>
+      <li>Audio recordings of consultations (encrypted at rest; auto-deleted after 30 days).</li>
+      <li>Patient name, identifier, and gender as entered by the clinician.</li>
+      <li>Transcripts and AI-generated SOAP notes (encrypted at rest using AES-256 Fernet).</li>
+      <li>Session metadata: date, duration, note format, and clinical flags.</li>
+    </ul>
+    <h6 class="fw-semibold mt-3 mb-1">Usage data</h6>
+    <ul>
+      <li>Feature usage logs for system performance and quality improvement.</li>
+      <li>Error logs (anonymised where possible).</li>
+    </ul>
+  </section>
+
+  <section class="mb-5">
+    <h5 class="fw-semibold">3. How We Use Your Data</h5>
+    <ul>
+      <li><strong>To provide the Service</strong> — transcribing audio and generating clinical notes.</li>
+      <li><strong>For security</strong> — detecting unauthorised access, brute-force attempts, and data breaches.</li>
+      <li><strong>For compliance</strong> — audit logs required under Caribbean data protection legislation.</li>
+      <li><strong>To improve the Service</strong> — aggregate, anonymised usage analytics only. We do not use
+          identifiable patient data to train AI models.</li>
+    </ul>
+  </section>
+
+  <section class="mb-5">
+    <h5 class="fw-semibold">4. Data Storage &amp; Security</h5>
+    <ul>
+      <li>All data is hosted on <strong>Microsoft Azure</strong> infrastructure in the nearest
+          available region. Azure applies AES-256 encryption at rest on all storage and
+          database services.</li>
+      <li>Patient-identifiable fields (names, transcripts, note content) are additionally
+          encrypted at the <strong>application layer</strong> using Fernet symmetric encryption
+          before being written to the database. The encryption key is stored separately in
+          Azure Key Vault, not in the database itself.</li>
+      <li>All connections are encrypted in transit using TLS 1.2 or higher.</li>
+      <li>The application enforces HTTPS, HSTS, and CSRF protection.</li>
+      <li>Login attempts are rate-limited; repeated failures trigger an account lockout and
+          an alert to the facility administrator.</li>
+    </ul>
+  </section>
+
+  <section class="mb-5">
+    <h5 class="fw-semibold">5. Data Sharing</h5>
+    <p>We do <strong>not</strong> sell, rent, or share patient data with third parties for
+    marketing purposes. Data is shared only with:</p>
+    <ul>
+      <li><strong>AI model providers</strong> (Microsoft Azure OpenAI Service) for the purpose
+          of generating transcriptions and notes. These providers are contractually bound to
+          process data only for the stated purpose and not to train models on your data.</li>
+      <li><strong>Your organisation&rsquo;s administrators</strong> who have legitimate access
+          under the role-based access control system.</li>
+      <li><strong>Law enforcement or regulators</strong> only when compelled by applicable law,
+          and only to the extent required.</li>
+    </ul>
+  </section>
+
+  <section class="mb-5">
+    <h5 class="fw-semibold">6. Data Retention</h5>
+    <ul>
+      <li><strong>Audio recordings</strong> — deleted automatically 30 days after creation (configurable by administrator).</li>
+      <li><strong>Session notes and transcripts</strong> — retained until the account administrator or the doctor deletes them.</li>
+      <li><strong>Login audit logs</strong> — retained for 90 days.</li>
+      <li><strong>Deleted sessions</strong> — permanently purged within 30 days of deletion.</li>
+    </ul>
+  </section>
+
+  <section class="mb-5">
+    <h5 class="fw-semibold">7. Your Rights</h5>
+    <p>Under applicable Caribbean data protection legislation, you and your patients have
+    the right to:</p>
+    <ul>
+      <li>Access personal data held about you.</li>
+      <li>Request correction of inaccurate data.</li>
+      <li>Request deletion (&ldquo;right to erasure&rdquo;) subject to legal retention requirements.</li>
+      <li>Object to specific processing activities.</li>
+      <li>Lodge a complaint with the relevant national data protection authority.</li>
+    </ul>
+    <p>To exercise these rights, contact your facility administrator or email
+    <a href="mailto:privacy@wellnestscribe.com">privacy@wellnestscribe.com</a>.</p>
+  </section>
+
+  <section class="mb-5">
+    <h5 class="fw-semibold">8. Cookies</h5>
+    <p>We use a single session cookie (HttpOnly, Secure in production) to maintain your
+    login state. We do not use third-party tracking cookies or analytics cookies.</p>
+  </section>
+
+  <section class="mb-5">
+    <h5 class="fw-semibold">9. Children</h5>
+    <p>The Service is not intended for use by individuals under 18. Patient data relating
+    to minors may only be processed by clinicians with appropriate guardian consent under
+    their applicable professional and legal obligations.</p>
+  </section>
+
+  <section class="mb-5">
+    <h5 class="fw-semibold">10. Changes to This Policy</h5>
+    <p>We will notify account administrators of material changes by email at least 30 days
+    before they take effect. Continued use after that date constitutes acceptance.</p>
+  </section>
+
+  <hr class="my-4">
+  <p class="text-muted small">
+    Privacy enquiries: <a href="mailto:privacy@wellnestscribe.com">privacy@wellnestscribe.com</a>
+  </p>
+</div>
+{% endblock %}

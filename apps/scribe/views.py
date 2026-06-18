@@ -25,10 +25,11 @@ from django.conf import settings as dj_settings
 from accounts.models import DoctorProfile
 
 from .models import ModalOmniEndpoint, NoteShare, NoteFeedback, ScribeSession, SessionEvent, SOAPNote
-from .services.export import make_share_token, qr_data_url, whatsapp_url
+from .services.export import make_share_token, qr_data_url
 from .services.pipeline import (
     run_extract_demographics,
     run_interpret_and_generate_soap,
+    run_interpret_for_lang,
     run_interpret_patois,
     run_note_generation,
     run_polish_grammar,
@@ -1342,6 +1343,7 @@ def generate_note_api(request, pk):
     is_first_generation = not SOAPNote.objects.filter(session=session).exists()
 
     profile = _get_profile(request.user)
+    _lang = getattr(profile, "preferred_language", None) or "jam_Latn"
     suggestive_assist = payload.get("suggestive_assist")
     if suggestive_assist is None:
         suggestive_assist = profile.suggestive_assist
@@ -1393,7 +1395,7 @@ def generate_note_api(request, pk):
         if (is_first_generation or force_reinterpret) and raw_source:
             try:
                 _t0 = time.monotonic()
-                fresh = run_interpret_patois(raw_source)
+                fresh = run_interpret_for_lang(raw_source, lang=_lang)
                 _interpret_ms = int((time.monotonic() - _t0) * 1000)
                 step2 = _extract_step2(fresh) or fresh.strip()
                 session.transcript = step2
@@ -1433,6 +1435,7 @@ def generate_note_api(request, pk):
                 note_format=note_format,
                 specialty=profile.specialty,
                 length_mode=length_mode,
+                lang=_lang,
                 custom_instructions=_custom,
                 custom_terms=profile.custom_terms,
                 suggestive_assist=suggestive_assist,
@@ -1565,6 +1568,7 @@ def generate_note_stream_api(request, pk):
     is_first_generation = not SOAPNote.objects.filter(session=session).exists()
 
     profile = _get_profile(request.user)
+    _lang = getattr(profile, "preferred_language", None) or "jam_Latn"
     suggestive_assist = payload.get("suggestive_assist")
     if suggestive_assist is None:
         suggestive_assist = profile.suggestive_assist
@@ -1584,11 +1588,11 @@ def generate_note_stream_api(request, pk):
     def event_stream():
         transcript = (session.transcript or "").strip()
 
-        # Phase 1 — Patois interpretation (blocking)
+        # Phase 1 — interpretation (language-tier routed)
         if (is_first_generation or force_reinterpret) and raw_source:
             yield _event({"stage": "interpreting"})
             try:
-                fresh = run_interpret_patois(raw_source)
+                fresh = run_interpret_for_lang(raw_source, lang=_lang)
                 step2 = _extract_step2_local(fresh) or fresh.strip()
                 transcript = step2
                 ScribeSession.objects.filter(pk=pk).update(
@@ -1625,6 +1629,7 @@ def generate_note_stream_api(request, pk):
                 note_format=note_format,
                 specialty=profile.specialty,
                 length_mode=length_mode,
+                lang=_lang,
                 custom_instructions=_custom,
                 custom_terms=profile.custom_terms,
                 suggestive_assist=suggestive_assist,
@@ -2063,7 +2068,13 @@ def resume_session_api(request, pk):
 @require_POST
 @csrf_protect
 def share_note_api(request, pk):
-    """Issue a 1-hour share link for the note + return WhatsApp + QR data URLs."""
+    """Issue a 30-min authenticated claim token for the QR → PC transfer flow.
+
+    No patient data leaves the server.  The QR code points to /scribe/claim/<token>/
+    which requires the SAME authenticated user — scanning on the phone tells the
+    PC browser to navigate to this session via SSE.  WhatsApp sharing has been
+    removed as it transmitted PHI outside the platform.
+    """
     session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)
     if session.is_sensitive:
         audit_log.info(
@@ -2076,56 +2087,120 @@ def share_note_api(request, pk):
             {
                 "ok": False,
                 "error": (
-                    "This session is marked as sensitive. Share links are disabled "
-                    "to protect the patient's data. Copy the note manually if "
-                    "transfer is clinically necessary."
+                    "This session is marked as sensitive. Transfer is disabled "
+                    "to protect the patient's data."
                 ),
             },
             status=403,
         )
-    note = getattr(session, "note", None)
-    if note is None:
-        return JsonResponse(
-            {"ok": False, "error": "No note to share yet."}, status=400
-        )
 
     token, expires_at = make_share_token()
     NoteShare.objects.create(session=session, token=token, expires_at=expires_at)
+    _log(session, "exported", "QR claim token issued")
 
-    text = note.edited_note or note.full_note or note.narrative or ""
-    public_url = request.build_absolute_uri(
-        f"/scribe/share/{token}/"
-    )
-
-    note.export_count = (note.export_count or 0) + 1
-    note.save(update_fields=["export_count", "updated_at"])
-    _log(session, "exported", "share link issued")
+    # The claim URL requires authentication — no patient data in the QR itself
+    claim_url = request.build_absolute_uri(f"/scribe/claim/{token}/")
 
     return JsonResponse(
         {
             "ok": True,
-            "share_url": public_url,
-            "qr_data_url": qr_data_url(public_url),
-            "whatsapp_url": whatsapp_url(text),
+            "claim_url": claim_url,
+            "qr_data_url": qr_data_url(claim_url),
             "expires_at": expires_at.isoformat(),
-            "text": text,
+            "session_id": session.pk,
         }
     )
 
 
+@login_required
 def share_view(request, token):
-    """Public view of a shared note. No auth required, but expires after 1h."""
+    """Authenticated view of a shared note (legacy share URL).
+
+    Now requires the viewing user to be the session's doctor — public
+    note URLs have been removed as a data-protection measure.
+    """
     share = get_object_or_404(NoteShare, token=token)
+    if share.session.doctor != request.user:
+        return render(request, "scribe/claim_wrong_account.html", status=403)
     if not share.is_valid():
         return render(request, "scribe/share_expired.html", status=410)
     share.opened_count += 1
     share.save(update_fields=["opened_count"])
     note = getattr(share.session, "note", None)
-    return render(
-        request,
-        "scribe/share.html",
-        {"session": share.session, "note": note},
-    )
+    return render(request, "scribe/share.html", {"session": share.session, "note": note})
+
+
+@login_required
+def phone_claim_view(request, token):
+    """Phone landing page after scanning the QR code.
+
+    Validates the token belongs to the current user, fires an SSE event to the
+    PC browser, and shows a confirmation page.  No patient data is rendered here.
+    """
+    share = get_object_or_404(NoteShare, token=token)
+    if share.session.doctor != request.user:
+        return render(request, "scribe/claim_wrong_account.html", status=403)
+    if not share.is_valid():
+        return render(request, "scribe/share_expired.html", status=410)
+
+    share.opened_count += 1
+    share.save(update_fields=["opened_count"])
+    _fire_scan_event(request.user.pk, share.session.pk)
+    return render(request, "scribe/phone_claim_success.html", {"session": share.session})
+
+
+# ── SSE scan event infrastructure ────────────────────────────────────────────
+# Each PC browser holds an open SSE connection; phone scans fire events into
+# a per-user slot.  Single-process in-memory dict — adequate for the pilot.
+
+import threading as _threading
+import time as _time
+
+_scan_lock = _threading.Lock()
+# {user_id: {"session_id": int, "at": float}}
+_pending_scans: dict[int, dict] = {}
+
+
+def _fire_scan_event(user_id: int, session_pk: int) -> None:
+    with _scan_lock:
+        _pending_scans[user_id] = {"session_id": session_pk, "at": _time.monotonic()}
+
+
+@login_required
+def scan_events_view(request):
+    """SSE stream — PC browser listens here for phone-scan events.
+
+    The generator polls the in-memory _pending_scans dict.  When a phone claim
+    fires, the PC receives {"event":"scan","session_id":42} and navigates to
+    that session with a glow highlight.  Connection auto-expires after 3 minutes;
+    the browser reconnects via standard SSE retry.
+    """
+    import json as _json
+    from django.http import StreamingHttpResponse
+
+    user_id = request.user.pk
+    last_seen: float = _time.monotonic()
+
+    def event_stream():
+        nonlocal last_seen
+        yield "data: {\"event\": \"connected\"}\n\n"
+        deadline = _time.monotonic() + 180  # 3-min window; browser will reconnect
+        while _time.monotonic() < deadline:
+            with _scan_lock:
+                pending = _pending_scans.get(user_id)
+            if pending and pending["at"] > last_seen:
+                last_seen = pending["at"]
+                yield f"data: {_json.dumps({'event': 'scan', 'session_id': pending['session_id']})}\n\n"
+                with _scan_lock:
+                    if _pending_scans.get(user_id) is pending:
+                        _pending_scans.pop(user_id, None)
+            _time.sleep(0.8)
+            yield ": hb\n\n"  # SSE comment keeps connection alive through proxies
+
+    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
 
 
 # In-memory ownership map for ambient jobs: job_id -> user.pk

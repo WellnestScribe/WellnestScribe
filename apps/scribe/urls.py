@@ -49,6 +49,10 @@ urlpatterns = [
         name="api_delete",
     ),
     path("share/<str:token>/", views.share_view, name="share"),
+    # QR claim — authenticated phone landing page (fires SSE event to PC)
+    path("claim/<str:token>/", views.phone_claim_view, name="phone_claim"),
+    # SSE stream — PC listens here for QR scan notifications
+    path("scan-events/", views.scan_events_view, name="scan_events"),
     path("api/patients/", views.patients_api, name="api_patients"),
     path("api/quick-transcribe/", views.quick_transcribe_api, name="api_quick_transcribe"),
     path(

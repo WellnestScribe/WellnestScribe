@@ -10,6 +10,8 @@ urlpatterns = [
     path("signout/", views.signout_view, name="signout"),
     path("profile/", views.profile_view, name="profile"),
     path("bootstrap-admin/", views.bootstrap_admin_view, name="bootstrap_admin"),
+    # Idle lock re-authentication
+    path("api/reauth/", views.reauth_api, name="reauth_api"),
     # Custom drugs API (DB-backed, per-doctor)
     path("api/custom-drugs/", views.custom_drugs_api, name="custom_drugs_api"),
     # Users & Organisations admin panel

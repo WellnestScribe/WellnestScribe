@@ -2,15 +2,16 @@
 
 ## Ambient Scribe Pipeline
 
-### Current state (as of June 2026)
+### Current state (as of June 2026) — v3 implemented
 
 ```
-Audio → OmniASR (target_lang) → raw_transcript → Patois interpreter → SOAP generator
-                                                   (Jamaica-specific)   (Jamaica context)
+Audio → OmniASR (target_lang) → raw_transcript → run_interpret_for_lang() → SOAP generator
+                                                   (language-tier routed)   (lang-aware context)
 ```
 
-All three stages are hardcoded for Jamaica regardless of `DoctorProfile.preferred_language`.
-The language field reaches the ASR model but nothing downstream.
+All three stages now respect `DoctorProfile.preferred_language`. The three-tier routing
+is live for both the two-call path (`generate_note_api`) and the streaming path
+(`generate_note_stream_api`).
 
 ---
 
@@ -38,19 +39,20 @@ French, Portuguese. No interpretation step needed; transcript goes directly to n
 
 ---
 
-### Implementation change points (not yet done)
+### Implementation change points — DONE (v3)
 
-1. `apps/scribe/services/pipeline.py` — pass `preferred_language` into the pipeline entry point;
-   add a routing check before `run_interpret_patois()`.
+1. **`apps/scribe/services/pipeline.py`** — `_lang_tier()` helper; `run_interpret_for_lang()`
+   routes to `run_interpret_patois` / `run_interpret_generalized` / pass-through;
+   `run_note_generation()`, `run_stream_note_generation()` accept `lang=` and forward it.
 
-2. `apps/scribe/services/soap_generator.py` — make `JAMAICAN_CONTEXT_ADDENDUM` conditional on
-   `lang == "jam_Latn"`; add a `GENERIC_CONTEXT_ADDENDUM` for other languages.
+2. **`apps/scribe/services/soap_generator.py`** — `_system_prompt()` accepts `lang=`;
+   uses `JAMAICAN_CONTEXT_ADDENDUM` for `jam_Latn`, `GENERIC_CONTEXT_ADDENDUM` for all others;
+   `generate_note()`, `generate_modular_soap()`, `stream_note_generation()` all thread `lang=` through;
+   `interpret_generalized()` / `_GENERALIZED_INTERPRETER_PROMPT` added for low-resource tier.
 
-3. `apps/scribe/services/triage.py` — write `run_interpret_generalized()` using a stripped-down
-   version of the Patois interpreter prompt with Jamaica-specific sections removed.
-
-4. `apps/scribe/views.py` — `ambient_transcribe_api` already reads `preferred_language` from the
-   doctor profile for ASR; extend this to pass it into the note generation call.
+3. **`apps/scribe/views.py`** — both `generate_note_api` and `generate_note_stream_api` read
+   `profile.preferred_language` into `_lang`, pass it to `run_interpret_for_lang()` and note
+   generation calls.
 
 ---
 
@@ -68,14 +70,11 @@ Do NOT add language routing to dictation until the GPT-4o Transcribe integration
 | Code      | Language          | ASR model  | Interpreter     | Note context     | Status       |
 |-----------|-------------------|------------|-----------------|------------------|--------------|
 | jam_Latn  | Jamaican Creole   | OmniASR    | Patois pipeline | Jamaica addendum | Live         |
-| eng_Latn  | English           | OmniASR    | None (skip)     | Generic          | ASR only     |
-| spa_Latn  | Spanish           | OmniASR    | None (skip)     | Generic          | ASR only     |
-| fra_Latn  | French            | OmniASR    | None (skip)     | Generic          | ASR only     |
-| hat_Latn  | Haitian Creole    | OmniASR    | Generalized     | Generic          | ASR only     |
-| por_Latn  | Portuguese        | OmniASR    | None (skip)     | Generic          | ASR only     |
-
-"ASR only" = transcription works, but note generation still uses Jamaica context until the
-three-tier pipeline is implemented.
+| eng_Latn  | English           | OmniASR    | None (skip)     | Generic          | Live (v3)    |
+| spa_Latn  | Spanish           | OmniASR    | None (skip)     | Generic          | Live (v3)    |
+| fra_Latn  | French            | OmniASR    | None (skip)     | Generic          | Live (v3)    |
+| hat_Latn  | Haitian Creole    | OmniASR    | Generalized     | Generic          | Live (v3)    |
+| por_Latn  | Portuguese        | OmniASR    | None (skip)     | Generic          | Live (v3)    |
 
 ---
 
@@ -91,4 +90,4 @@ The current 6-language picker in the UI is a placeholder. When expanding:
 
 ---
 
-*Last updated: June 2026. Update this file when pipeline tiers are implemented.*
+*Last updated: June 2026. v3 three-tier pipeline implemented.*

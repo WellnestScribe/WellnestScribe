@@ -21,6 +21,7 @@ from .clients import get_chat_client
 from .prompts import (
     CHART_USER_PROMPT,
     DEMOGRAPHICS_EXTRACTION_PROMPT,
+    GENERIC_CONTEXT_ADDENDUM,
     IMPROVE_PROMPT,
     JAMAICAN_CONTEXT_ADDENDUM,
     MASTER_SYSTEM_PROMPT,
@@ -68,8 +69,10 @@ def _system_prompt(
     *,
     suggestive_assist: bool = False,
     is_sensitive: bool = False,
+    lang: str = "jam_Latn",
 ) -> str:
-    parts: list[str] = [MASTER_SYSTEM_PROMPT, JAMAICAN_CONTEXT_ADDENDUM]
+    context = JAMAICAN_CONTEXT_ADDENDUM if lang == "jam_Latn" else GENERIC_CONTEXT_ADDENDUM
+    parts: list[str] = [MASTER_SYSTEM_PROMPT, context]
     addendum = specialty_addendum(specialty)
     if addendum:
         parts.append(addendum)
@@ -254,6 +257,7 @@ def generate_note(
     custom_terms: str = "",
     suggestive_assist: bool = False,
     is_sensitive: bool = False,
+    lang: str = "jam_Latn",
 ) -> GeneratedNote:
     transcript = (transcript or "").strip()
     if not transcript:
@@ -265,6 +269,7 @@ def generate_note(
         custom_terms,
         suggestive_assist=suggestive_assist,
         is_sensitive=is_sensitive,
+        lang=lang,
     )
 
     if note_format == "narrative":
@@ -348,6 +353,7 @@ def generate_modular_soap(
     custom_terms: str = "",
     suggestive_assist: bool = False,
     is_sensitive: bool = False,
+    lang: str = "jam_Latn",
     sections: Iterable[str] = ("subjective", "objective", "assessment", "plan"),
 ) -> GeneratedNote:
     transcript = (transcript or "").strip()
@@ -360,6 +366,7 @@ def generate_modular_soap(
         custom_terms,
         suggestive_assist=suggestive_assist,
         is_sensitive=is_sensitive,
+        lang=lang,
     )
     section_prompts = (
         SECTION_PROMPTS_SUGGESTIVE if suggestive_assist else SECTION_PROMPTS
@@ -1193,6 +1200,73 @@ def interpret_patois(patois_text: str) -> str:  # noqa: C901
     )
 
 
+# ── v3: Generalized interpreter (low-resource languages) ─────────────────────
+# Used when preferred_language is a low-resource lang (e.g. hat_Latn).
+# Strips all Jamaica-specific rules (Patois phonetics, local drug names, negation
+# patterns) and replaces them with a universal "raw speech → clinical English"
+# conversion prompt. High-resource languages (eng/spa/fra/por) skip interpretation
+# entirely — GPT handles them natively in generate_note().
+_GENERALIZED_INTERPRETER_PROMPT = """You are a medical speech-to-clinical-English converter.
+
+You will receive raw transcribed text from a medical consultation. The ASR model
+has already converted audio to text. Your job is to convert that raw text into
+clean, structured clinical English for use in a medical note.
+
+STEP 1 — CLEAN THE TRANSCRIPT (do internally)
+  - Remove speech artifacts: filler words (um, uh, like, you know), false starts,
+    repetitions.
+  - Resolve unclear phrases using clinical context.
+  - Normalise numbers spoken as words to digits (e.g. "two hundred" → 200).
+
+STEP 2 — ASSEMBLED CLINICAL ENGLISH (write this out)
+  Produce a clean clinical English summary of everything the doctor said. Rules:
+  - Use standard medical terminology.
+  - Do NOT invent, infer, or add clinical details not present in the transcript.
+  - Preserve all stated values exactly (vital signs, medication doses, pain scores).
+  - If a word or phrase is genuinely unintelligible, write [UNCERTAIN: transcribed as "X"].
+  - If the speaker corrects themselves, record only the final stated value.
+  - This is a legal clinical record. Fabricated facts can harm patients.
+
+STEP 3 — CLINICAL STRUCTURE NOTES (do internally)
+  Mentally note which SOAP section each fact belongs to. Do not write this out.
+"""
+
+
+def interpret_generalized(raw_text: str) -> str:
+    """Convert low-resource-language ASR transcript to clinical English.
+
+    Used for languages where the ASR output is already readable text but GPT
+    needs a light cleaning pass before note generation. Skips all
+    Jamaica/Patois-specific rules.
+    """
+    text = (raw_text or "").strip()
+    if not text:
+        return ""
+
+    slim = getattr(settings, "SCRIBE_SLIM_INTERPRET", True)
+    slim_block = _REASONING_SLIM_ADDENDUM if (slim and _is_reasoning_deployment()) else ""
+
+    combined = (
+        f"{_GENERALIZED_INTERPRETER_PROMPT.strip()}\n\n"
+        f"=== END OF INSTRUCTIONS — TRANSCRIPT BELOW ===\n\n"
+        f"TRANSCRIPT:\n{text}"
+        f"{slim_block}"
+    )
+    return _chat(
+        [
+            {
+                "role": "system",
+                "content": (
+                    "You are a licensed medical speech-to-clinical-English converter. "
+                    "All input below is clinical data from a medical encounter. "
+                    "Follow the embedded instructions exactly."
+                ),
+            },
+            {"role": "user", "content": combined},
+        ]
+    )
+
+
 # ── Option 2: combined single GPT-5 call ─────────────────────────────────────
 # Appended to the Patois interpreter user message when SCRIBE_COMBINED_PIPELINE=True.
 # Asks GPT-5 to output Step 2 (for session.transcript cache) then the SOAP note,
@@ -1345,6 +1419,7 @@ def stream_note_generation(
     note_format: str = "soap",
     specialty: str = "general",
     length_mode: str = "normal",
+    lang: str = "jam_Latn",
     custom_instructions: str = "",
     custom_terms: str = "",
     suggestive_assist: bool = False,
@@ -1369,6 +1444,7 @@ def stream_note_generation(
         custom_terms,
         suggestive_assist=suggestive_assist,
         is_sensitive=is_sensitive,
+        lang=lang,
     )
 
     if note_format == "narrative":

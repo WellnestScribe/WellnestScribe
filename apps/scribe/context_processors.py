@@ -48,6 +48,11 @@ def ui_preferences(request):
         except Exception:
             pass
 
+    idle_lock_ms = 0
+    if user and user.is_authenticated:
+        idle_lock_minutes = getattr(settings, "IDLE_LOCK_MINUTES", 15)
+        idle_lock_ms = idle_lock_minutes * 60 * 1000 if idle_lock_minutes > 0 else 0
+
     return {
         "doctor_profile": profile,
         "ui_font_scale": profile.font_scale if profile else 100,
@@ -56,4 +61,8 @@ def ui_preferences(request):
         "triage_visible": triage_visible,
         "is_admin": is_admin,
         "is_org_admin": is_org_admin,
+        "idle_lock_ms": idle_lock_ms,
+        "last_login_ip": profile.last_login_ip if profile else None,
+        "last_login_at": profile.last_login_at if profile else None,
+        "previous_login_ip": profile.previous_login_ip if profile else None,
     }

@@ -73,6 +73,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "axes",
     "accounts",
     "emr",
     "scribe",
@@ -86,6 +87,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "axes.middleware.AxesMiddleware",
+    "wellnest.middleware.SecurityAuditMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -214,6 +217,7 @@ def _database_from_env() -> dict:
 DATABASES = {"default": _database_from_env()}
 
 AUTHENTICATION_BACKENDS = [
+    "axes.backends.AxesStandaloneBackend",
     "accounts.backends.EmailOrUsernameBackend",
     "django.contrib.auth.backends.ModelBackend",
 ]
@@ -255,7 +259,7 @@ SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = False  # Must be False for AJAX — JS reads cookie to send X-CSRFToken header
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SAMESITE = "Lax"
-SESSION_COOKIE_AGE = 60 * 60 * 8  # 8h max session lifetime
+SESSION_COOKIE_AGE = 60 * 60 * 4  # 4h max session lifetime (reduced from 8h for PHI compliance)
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 SESSION_SAVE_EVERY_REQUEST = True  # rolling expiry on activity
 X_FRAME_OPTIONS = "DENY"
@@ -268,6 +272,28 @@ if not DEBUG:
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_SSL_REDIRECT = True
+
+# ---- PHI field encryption ----
+# Generate once: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Then set FIELD_ENCRYPTION_KEY in .env or Azure App Service config.
+# If absent, encrypted fields fall back to plaintext (safe for local dev).
+FIELD_ENCRYPTION_KEY = config("FIELD_ENCRYPTION_KEY", default="")
+
+# ---- django-axes: brute-force login protection ----
+AXES_ENABLED = True
+AXES_FAILURE_LIMIT = 5          # lock after 5 failed attempts
+AXES_COOLOFF_TIME = 0.25        # 15-minute lockout (in hours as float)
+AXES_LOCKOUT_CALLABLE = None    # use default 403 response
+AXES_RESET_ON_SUCCESS = True    # clear failed count on successful login
+AXES_LOCKOUT_PARAMETERS = ["username", "ip_address"]  # lock per username+IP combo
+AXES_VERBOSE = False
+
+# Admin email for security alerts — set SECURITY_ALERT_EMAIL in .env
+SECURITY_ALERT_EMAIL = config("SECURITY_ALERT_EMAIL", default="")
+
+# Idle screen lock timeout (minutes). After this much inactivity the app
+# shows a lock screen requiring password re-entry. Set to 0 to disable.
+IDLE_LOCK_MINUTES = config("IDLE_LOCK_MINUTES", default=15, cast=int)
 
 # ---- WellNest Scribe AI configuration ----
 SCRIBE_USE_REAL_AI = config("SCRIBE_USE_REAL_AI", default=False, cast=bool)

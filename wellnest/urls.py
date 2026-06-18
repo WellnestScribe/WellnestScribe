@@ -14,8 +14,18 @@ def root_view(request):
     return render(request, "landing.html")
 
 
+def tos_view(request):
+    return render(request, "legal/tos.html")
+
+
+def privacy_view(request):
+    return render(request, "legal/privacy.html")
+
+
 urlpatterns = [
     path("", root_view, name="root"),
+    path("legal/terms/", tos_view, name="tos"),
+    path("legal/privacy/", privacy_view, name="privacy"),
     path("manifest.webmanifest", manifest_view, name="manifest"),
     path("service-worker.js", service_worker_view, name="service_worker"),
     path("admin/", admin.site.urls),

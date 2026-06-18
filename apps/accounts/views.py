@@ -1,15 +1,23 @@
 import json
 
-from django.contrib.auth import get_user_model, login, logout
+from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods, require_POST
 
 from .forms import DoctorProfileForm, WellnestSignInForm, WellnestSignUpForm
 from .models import DoctorProfile
+
+
+def _get_client_ip(request) -> str:
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "")
 
 
 def _no_admins_exist() -> bool:
@@ -35,7 +43,23 @@ def signin_view(request):
 
     form = WellnestSignInForm(request, data=request.POST or None)
     if request.method == "POST" and form.is_valid():
-        login(request, form.get_user())
+        user = form.get_user()
+        login(request, user)
+        # Record login IP so the doctor can see it on the dashboard
+        try:
+            profile, _ = DoctorProfile.objects.get_or_create(user=user)
+            ip = _get_client_ip(request)
+            # Shift current → previous before overwriting
+            profile.previous_login_ip = profile.last_login_ip
+            profile.previous_login_at = profile.last_login_at
+            profile.last_login_ip = ip or None
+            profile.last_login_at = timezone.now()
+            profile.save(update_fields=[
+                "last_login_ip", "last_login_at",
+                "previous_login_ip", "previous_login_at",
+            ])
+        except Exception:  # noqa: BLE001
+            pass
         return redirect(request.GET.get("next") or reverse("scribe:record"))
 
     return render(request, "accounts/signin.html", {"form": form})
@@ -70,6 +94,31 @@ def signup_view(request):
 def signout_view(request):
     logout(request)
     return redirect("accounts:signin")
+
+
+@login_required
+@require_POST
+@csrf_protect
+def reauth_api(request):
+    """Validate the current user's password without altering the session.
+
+    Used by the client-side idle lock screen so the doctor can unlock the app
+    without a full sign-out / sign-in cycle.  Returns 200 {"ok": true} on
+    success, 401 {"ok": false} on wrong password.
+    """
+    try:
+        payload = json.loads(request.body)
+    except Exception:  # noqa: BLE001
+        return JsonResponse({"ok": False, "error": "Bad request."}, status=400)
+
+    password = (payload.get("password") or "").strip()
+    if not password:
+        return JsonResponse({"ok": False, "error": "Password required."}, status=400)
+
+    user = authenticate(request, username=request.user.username, password=password)
+    if user is not None and user.pk == request.user.pk:
+        return JsonResponse({"ok": True})
+    return JsonResponse({"ok": False, "error": "Incorrect password."}, status=401)
 
 
 @login_required

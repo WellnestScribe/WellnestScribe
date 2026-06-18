@@ -123,12 +123,14 @@
           updatePreferences: "{% url 'scribe:api_preferences' %}",
           quickTranscribe: "{% url 'scribe:api_quick_transcribe' %}",
           signout: "{% url 'accounts:signout' %}",
+          reauth: "{% url 'accounts:reauth_api' %}",
+          scanEvents: "{% url 'scribe:scan_events' %}",
         },
         preferences: {
           theme: "{{ ui_theme|default:'light' }}",
           fontScale: {{ ui_font_scale|default:100 }},
         },
-        idleTimeoutMs: {% if user.is_authenticated %}900000{% else %}0{% endif %},
+        idleTimeoutMs: {{ idle_lock_ms|default:0 }},
       };
     </script>
     <script src="https://code.iconify.design/iconify-icon/2.3.0/iconify-icon.min.js"></script>

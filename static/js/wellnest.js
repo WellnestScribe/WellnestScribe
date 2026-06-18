@@ -224,27 +224,151 @@
     input.addEventListener("input", applyFilter);
   });
 
+  // ---------- QR scan → PC highlight (SSE) ----------
+  if (W.endpoints && W.endpoints.scanEvents) initScanEvents();
+
+  function initScanEvents() {
+    let es = null;
+    function connect() {
+      if (es) { try { es.close(); } catch(e) {} }
+      es = new EventSource(W.endpoints.scanEvents);
+      es.onmessage = function(ev) {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data.event === "scan" && data.session_id) {
+            handleScanEvent(data.session_id);
+          }
+        } catch(e) {}
+      };
+      es.onerror = function() {
+        // SSE auto-reconnects; also schedule a manual reconnect as fallback
+        setTimeout(connect, 5000);
+      };
+    }
+    connect();
+
+    function handleScanEvent(sessionId) {
+      // Close QR modal if open
+      const shareModalEl = document.getElementById("shareModal");
+      if (shareModalEl) {
+        try { bootstrap.Modal.getInstance(shareModalEl) && bootstrap.Modal.getInstance(shareModalEl).hide(); } catch(e) {}
+      }
+      showToast("Note ready — navigating…");
+      const reviewUrl = "/scribe/sessions/" + sessionId + "/review/";
+      // If we're on the record/history page, navigate to the review
+      if (!window.location.pathname.includes("/review/")) {
+        window.location.href = reviewUrl;
+        return;
+      }
+      // If we're already on this session's review, just glow the header
+      glowElement(document.querySelector(".wn-note-card, .card-body, main"));
+    }
+
+    function glowElement(el) {
+      if (!el) return;
+      el.classList.remove("wn-session-glow");
+      void el.offsetWidth; // reflow to restart animation
+      el.classList.add("wn-session-glow");
+      setTimeout(function() { el.classList.remove("wn-session-glow"); }, 8000);
+    }
+  }
+
   // ---------- idle timeout ----------
   if (W.idleTimeoutMs && W.idleTimeoutMs > 0) initIdleTimeout(W.idleTimeoutMs);
 
   function initIdleTimeout(timeoutMs) {
-    const warningMs = Math.max(30000, timeoutMs - 60000);
-    let timerWarn = 0;
-    let timerLogout = 0;
-    let modal = null;
+    // Phase 1: warn at (timeout - 60s). Phase 2: lock screen at timeout.
+    // Phase 3: force signout at (timeout + 10 min) if still locked.
+    const warningMs  = Math.max(30000, timeoutMs - 60000);
+    const signoutMs  = timeoutMs + 10 * 60 * 1000;
+    let timerWarn    = 0;
+    let timerLock    = 0;
+    let timerSignout = 0;
+    let locked       = false;
+    let bsWarnModal  = null;
 
     function reset() {
+      if (locked) return; // don't reset while lock screen is showing
       clearTimeout(timerWarn);
-      clearTimeout(timerLogout);
-      timerWarn = setTimeout(showWarning, warningMs);
-      timerLogout = setTimeout(forceSignout, timeoutMs);
+      clearTimeout(timerLock);
+      clearTimeout(timerSignout);
+      timerWarn    = setTimeout(showWarning, warningMs);
+      timerLock    = setTimeout(showLockScreen, timeoutMs);
+      timerSignout = setTimeout(forceSignout,  signoutMs);
     }
+
     function showWarning() {
       const el = document.getElementById("idleModal");
       if (!el || typeof bootstrap === "undefined") return;
-      modal = bootstrap.Modal.getOrCreateInstance(el);
-      modal.show();
+      bsWarnModal = bootstrap.Modal.getOrCreateInstance(el);
+      bsWarnModal.show();
     }
+
+    function showLockScreen() {
+      if (bsWarnModal) { try { bsWarnModal.hide(); } catch(e) {} }
+      locked = true;
+      let overlay = document.getElementById("wn-lock-overlay");
+      if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "wn-lock-overlay";
+        overlay.innerHTML = [
+          '<div class="wn-lock-inner card border shadow-lg">',
+          '<div class="card-body p-4 text-center">',
+          '<p class="wn-lock-logo mb-0">WellNest</p>',
+          '<p class="text-secondary small mb-4">Session locked for patient privacy</p>',
+          '<div class="d-flex flex-column gap-2 text-start">',
+          '<label class="form-label small fw-semibold mb-0">Enter your password to continue</label>',
+          '<input type="password" id="wn-lock-pw" class="form-control" placeholder="Password" autocomplete="current-password">',
+          '<button id="wn-lock-btn" class="btn btn-primary w-100 mt-1">Unlock</button>',
+          '<p id="wn-lock-err" class="text-danger small mb-0" style="display:none">Incorrect password</p>',
+          '</div>',
+          '<a href="' + W.endpoints.signout + '" class="d-inline-block mt-3 link-secondary text-decoration-none" style="font-size:0.78rem;">Sign out instead</a>',
+          '</div>',
+          '</div>',
+        ].join("");
+        document.body.appendChild(overlay);
+        // Prevent background scroll / interaction
+        document.body.style.overflow = "hidden";
+        const pw = document.getElementById("wn-lock-pw");
+        if (pw) setTimeout(function() { pw.focus(); }, 100);
+        document.getElementById("wn-lock-btn").addEventListener("click", tryUnlock);
+        document.getElementById("wn-lock-pw").addEventListener("keydown", function(e) {
+          if (e.key === "Enter") tryUnlock();
+        });
+      }
+      overlay.style.display = "flex";
+    }
+
+    async function tryUnlock() {
+      const pw = document.getElementById("wn-lock-pw");
+      const btn = document.getElementById("wn-lock-btn");
+      const errEl = document.getElementById("wn-lock-err");
+      if (!pw || !pw.value.trim()) return;
+      btn.disabled = true;
+      btn.textContent = "Checking…";
+      try {
+        const r = await postJSON(W.endpoints.reauth, { password: pw.value });
+        if (r.ok && r.body && r.body.ok) {
+          // Unlock
+          locked = false;
+          document.body.style.overflow = "";
+          const overlay = document.getElementById("wn-lock-overlay");
+          if (overlay) overlay.style.display = "none";
+          pw.value = "";
+          if (errEl) errEl.style.display = "none";
+          reset();
+        } else {
+          if (errEl) { errEl.textContent = (r.body && r.body.error) || "Incorrect password"; errEl.style.display = "block"; }
+          pw.value = "";
+          pw.focus();
+        }
+      } catch (err) {
+        if (errEl) { errEl.textContent = "Network error — please try again"; errEl.style.display = "block"; }
+      }
+      btn.disabled = false;
+      btn.textContent = "Unlock";
+    }
+
     function forceSignout() {
       const form = document.createElement("form");
       form.method = "POST";
@@ -255,6 +379,7 @@
       document.body.appendChild(form);
       form.submit();
     }
+
     ["mousemove", "keydown", "click", "touchstart", "scroll"].forEach(function (e) {
       document.addEventListener(e, reset, { passive: true });
     });
@@ -2181,26 +2306,19 @@
       if (r.ok && r.body.ok) window.location.reload();
       else setStatus(statusEl, (r.body && r.body.error) || "Regeneration failed.", "error");
     });
-    if (whatsappBtn) whatsappBtn.addEventListener("click", async function () {
-      await autosave();
-      const r = await postJSON("/scribe/api/sessions/" + sessionId + "/share/", {});
-      if (!r.ok || !r.body.ok) { setStatus(statusEl, (r.body && r.body.error) || "Could not build link.", "error"); return; }
-      window.open(r.body.whatsapp_url, "_blank");
-      showToast("Opened WhatsApp share");
-    });
+    // WhatsApp sharing removed — patient data must not leave the platform.
 
-    // QR — pre-fetch as soon as the modal starts to open, not after
+    // QR — generates an authenticated claim token (no patient data in the QR).
+    // Scanning on the phone notifies this PC via SSE and highlights the session.
     const shareModalEl = document.getElementById("shareModal");
     const qrLoader = $("#qrLoader");
     const qrCanvas = $("#qrCanvas");
-    const qrLink = $("#qrLink");
     const qrLinkRow = $("#qrLinkRow");
-    const qrCopyLink = $("#qrCopyLink");
     function resetQrModal() {
       if (qrLoader) {
         qrLoader.classList.remove("d-none");
         qrLoader.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading…</span></div>'
-                          + '<p class="text-muted small mt-2 mb-0">Building share link…</p>';
+                          + '<p class="text-muted small mt-2 mb-0">Generating secure transfer code…</p>';
       }
       if (qrCanvas) { qrCanvas.classList.add("d-none"); qrCanvas.innerHTML = ""; }
       if (qrLinkRow) qrLinkRow.classList.add("d-none");
@@ -2217,32 +2335,27 @@
       try {
         r = await postJSON("/scribe/api/sessions/" + sessionId + "/share/", {});
       } catch (err) {
-        console.error("share fetch failed", err);
         showQrError("Network error: " + err.message);
         return;
       }
       if (!r.ok || !r.body || !r.body.ok) {
-        showQrError((r.body && r.body.error) || "Could not build share link.");
+        showQrError((r.body && r.body.error) || "Could not build transfer code.");
         return;
       }
       if (qrLoader) qrLoader.classList.add("d-none");
       if (qrCanvas) {
         const img = document.createElement("img");
         img.src = r.body.qr_data_url;
-        img.alt = "QR code for share link";
+        img.alt = "QR code — scan with your phone to view on this screen";
+        img.style.maxWidth = "180px";
         qrCanvas.appendChild(img);
         qrCanvas.classList.remove("d-none");
       }
-      if (qrLink) qrLink.value = r.body.share_url;
       if (qrLinkRow) qrLinkRow.classList.remove("d-none");
     }
     if (shareModalEl) {
       shareModalEl.addEventListener("show.bs.modal", loadShareLink);
     }
-    if (qrCopyLink) qrCopyLink.addEventListener("click", async function () {
-      try { await navigator.clipboard.writeText(qrLink.value); showToast("Link copied"); }
-      catch (e) { qrLink.select(); document.execCommand("copy"); }
-    });
 
     // Suggest improvements
     const improveBtn = $("#improveBtn", root);

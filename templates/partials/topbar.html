@@ -41,19 +41,28 @@
                             id="topbarLangBtn">
                         <iconify-icon icon="mdi:translate" class="fs-22 align-middle"></iconify-icon>
                     </button>
-                    <div class="dropdown-menu dropdown-menu-end p-3" style="min-width:220px;">
-                        <h6 class="mb-2 fw-semibold">Transcription language</h6>
+                    <div class="dropdown-menu dropdown-menu-end p-3" style="min-width:240px;">
+                        <h6 class="mb-1 fw-semibold">Transcription language</h6>
                         <p class="small text-muted mb-2">Language spoken in your consultations.</p>
-                        <select id="topbarLangSelect" class="form-select form-select-sm">
-                            {% with lang=doctor_profile.preferred_language|default:"jam_Latn" %}
-                            <option value="jam_Latn" {% if lang == "jam_Latn" %}selected{% endif %}>🇯🇲 Jamaican Creole (Patois)</option>
-                            <option value="eng_Latn" {% if lang == "eng_Latn" %}selected{% endif %}>🇬🇧 English</option>
-                            <option value="spa_Latn" {% if lang == "spa_Latn" %}selected{% endif %}>🇪🇸 Spanish</option>
-                            <option value="fra_Latn" {% if lang == "fra_Latn" %}selected{% endif %}>🇫🇷 French</option>
-                            <option value="hat_Latn" {% if lang == "hat_Latn" %}selected{% endif %}>🇭🇹 Haitian Creole</option>
-                            <option value="por_Latn" {% if lang == "por_Latn" %}selected{% endif %}>🇧🇷 Portuguese</option>
-                            {% endwith %}
-                        </select>
+                        {% with lang=doctor_profile.preferred_language|default:"jam_Latn" %}
+                        <div class="wn-lang-picker">
+                            <div class="input-group input-group-sm mb-2">
+                                <span class="input-group-text"><iconify-icon icon="mdi:magnify" style="font-size:1rem;"></iconify-icon></span>
+                                <input type="text" class="form-control form-control-sm wn-lang-search" placeholder="Search language…" autocomplete="off">
+                            </div>
+                            <div class="wn-lang-list" id="topbarLangList">
+                                <button type="button" class="wn-lang-item{% if lang == 'jam_Latn' %} wn-lang-active{% endif %}" data-lang="jam_Latn">🇯🇲 Jamaican Creole (Patois)</button>
+                                <button type="button" class="wn-lang-item{% if lang == 'eng_Latn' %} wn-lang-active{% endif %}" data-lang="eng_Latn">🇬🇧 English</button>
+                                <button type="button" class="wn-lang-item{% if lang == 'spa_Latn' %} wn-lang-active{% endif %}" data-lang="spa_Latn">🇪🇸 Spanish</button>
+                                <button type="button" class="wn-lang-item{% if lang == 'fra_Latn' %} wn-lang-active{% endif %}" data-lang="fra_Latn">🇫🇷 French</button>
+                                <button type="button" class="wn-lang-item{% if lang == 'hat_Latn' %} wn-lang-active{% endif %}" data-lang="hat_Latn">🇭🇹 Haitian Creole</button>
+                                <button type="button" class="wn-lang-item{% if lang == 'por_Latn' %} wn-lang-active{% endif %}" data-lang="por_Latn">🇧🇷 Portuguese</button>
+                                <button type="button" class="wn-lang-item{% if lang == 'wol_Latn' %} wn-lang-active{% endif %}" data-lang="wol_Latn">🇸🇳 Wolof</button>
+                                <button type="button" class="wn-lang-item{% if lang == 'kin_Latn' %} wn-lang-active{% endif %}" data-lang="kin_Latn">🇷🇼 Kinyarwanda</button>
+                            </div>
+                            <input type="hidden" id="topbarLangSelect" value="{{ lang }}">
+                        </div>
+                        {% endwith %}
                         <div id="topbarLangStatus" class="small text-success mt-2" style="min-height:1.2em;"></div>
                     </div>
                 </div>
@@ -223,7 +232,45 @@ document.addEventListener('DOMContentLoaded', function () {
 {% if user.is_authenticated %}
 <script>
 (function () {
-    /* Language picker — save on change */
+    /* Searchable lang picker — filter list as user types */
+    document.addEventListener('input', function (e) {
+        if (!e.target.classList.contains('wn-lang-search')) return;
+        var q = e.target.value.toLowerCase();
+        var list = e.target.closest('.wn-lang-picker').querySelector('.wn-lang-list');
+        if (!list) return;
+        list.querySelectorAll('.wn-lang-item').forEach(function (btn) {
+            btn.style.display = btn.textContent.toLowerCase().includes(q) ? '' : 'none';
+        });
+    });
+
+    /* Searchable lang picker — select an item */
+    document.addEventListener('click', function (e) {
+        var item = e.target.closest && e.target.closest('#topbarLangList .wn-lang-item');
+        if (!item) return;
+        var picker = item.closest('.wn-lang-picker');
+        var hidden = picker && picker.querySelector('#topbarLangSelect');
+        if (!hidden) return;
+        hidden.value = item.dataset.lang;
+        picker.querySelectorAll('.wn-lang-item').forEach(function (b) {
+            b.classList.toggle('wn-lang-active', b === item);
+        });
+        hidden.dispatchEvent(new Event('change'));
+    });
+
+    /* Reset search input when dropdown closes */
+    var langDropdown = document.getElementById('topbarLangBtn');
+    if (langDropdown) {
+        langDropdown.closest('.dropdown').addEventListener('hidden.bs.dropdown', function () {
+            var inp = document.querySelector('#topbarLangList')
+                        && document.querySelector('.wn-lang-search');
+            if (inp) { inp.value = ''; }
+            document.querySelectorAll('#topbarLangList .wn-lang-item').forEach(function (b) {
+                b.style.display = '';
+            });
+        });
+    }
+
+    /* Save on change (hidden input fires this) */
     document.addEventListener('change', function (e) {
         if (e.target.id !== 'topbarLangSelect') return;
         var status = document.getElementById('topbarLangStatus');

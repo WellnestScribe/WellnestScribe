@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Note ready — WellNest{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-center" style="min-height:70vh;">
+  <div class="text-center px-3" style="max-width:340px;">
+    <div style="font-size:3.5rem;margin-bottom:1rem;">
+      <iconify-icon icon="mdi:monitor-check" style="color:#22c55e;"></iconify-icon>
+    </div>
+    <h4 class="fw-bold mb-2">Check your PC</h4>
+    <p class="text-muted mb-4">
+      Your desktop screen is now displaying this note.<br>
+      No patient data was sent to this device.
+    </p>
+    <a href="{% url 'scribe:record' %}" class="btn btn-outline-primary btn-sm">
+      Go to dashboard
+    </a>
+  </div>
+</div>
+{% endblock %}

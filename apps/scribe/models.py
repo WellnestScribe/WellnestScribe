@@ -1,6 +1,8 @@
 from django.conf import settings
 from django.db import models
 
+from .fields import EncryptedCharField, EncryptedTextField
+
 
 class ScribeSession(models.Model):
     """One audio capture + the resulting note. Lifecycle owner of a recording."""
@@ -35,8 +37,8 @@ class ScribeSession(models.Model):
         on_delete=models.CASCADE,
         related_name="scribe_sessions",
     )
-    title = models.CharField(max_length=160, blank=True)
-    chief_complaint = models.CharField(max_length=200, blank=True)
+    title = EncryptedCharField(max_length=160, blank=True)
+    chief_complaint = EncryptedCharField(max_length=200, blank=True)
 
     # Patient identity capture (Dr Elizabeth feedback — avoid mix-ups when
     # seeing many patients per day). Identifier can be DOB, hospital number,
@@ -49,8 +51,8 @@ class ScribeSession(models.Model):
         ("O", "Other"),
     ]
 
-    patient_name = models.CharField(max_length=120, blank=True)
-    patient_identifier = models.CharField(max_length=120, blank=True)
+    patient_name = EncryptedCharField(max_length=120, blank=True)
+    patient_identifier = EncryptedCharField(max_length=120, blank=True)
     patient_gender = models.CharField(max_length=1, choices=GENDER_CHOICES, blank=True, default="")
 
     # Active conditions (multi-select checklist on record screen). Stored
@@ -77,10 +79,10 @@ class ScribeSession(models.Model):
     )
     error_message = models.TextField(blank=True)
 
-    transcript = models.TextField(blank=True)
+    transcript = EncryptedTextField(blank=True)
     # Original ASR output — never overwritten. Used to re-run the Patois
     # interpreter on regeneration so prompt improvements take effect.
-    raw_transcript = models.TextField(blank=True)
+    raw_transcript = EncryptedTextField(blank=True)
 
     # Sensitive-encounter flag — set by the doctor for HIV, mental health,
     # reproductive health, substance use, or any encounter they judge as
@@ -154,15 +156,15 @@ class SOAPNote(models.Model):
         ScribeSession, on_delete=models.CASCADE, related_name="note"
     )
 
-    visit_summary = models.TextField(blank=True)
-    subjective = models.TextField(blank=True)
-    objective = models.TextField(blank=True)
-    assessment = models.TextField(blank=True)
-    plan = models.TextField(blank=True)
+    visit_summary = EncryptedTextField(blank=True)
+    subjective = EncryptedTextField(blank=True)
+    objective = EncryptedTextField(blank=True)
+    assessment = EncryptedTextField(blank=True)
+    plan = EncryptedTextField(blank=True)
 
-    narrative = models.TextField(blank=True)
-    full_note = models.TextField(blank=True)
-    edited_note = models.TextField(blank=True)
+    narrative = EncryptedTextField(blank=True)
+    full_note = EncryptedTextField(blank=True)
+    edited_note = EncryptedTextField(blank=True)
 
     flags = models.JSONField(default=list, blank=True)
 

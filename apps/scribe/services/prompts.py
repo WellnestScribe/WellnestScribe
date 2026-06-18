@@ -209,6 +209,31 @@ inserted by the pre-processing layer. Rules:
 """
 
 
+# ── v3: Generic context addendum ─────────────────────────────────────────────
+# Used for non-Jamaican languages. Replaces JAMAICAN_CONTEXT_ADDENDUM when
+# preferred_language is not jam_Latn.  No region-specific drug names, herbs,
+# or dialect rules — just universal clinical documentation guidance.
+GENERIC_CONTEXT_ADDENDUM = """GENERAL CLINICAL CONTEXT (apply silently when relevant):
+
+Common encounter types: acute illness, chronic disease follow-up (hypertension,
+diabetes, asthma, COPD), antenatal, paediatric, mental health, wound care,
+post-operative review, preventive health.
+
+Medication recognition: recognise both brand and generic names for common drug
+classes (antihypertensives, antidiabetics, antibiotics, analgesics, inhalers,
+antiretrovirals, anticoagulants). If a name is unclear, flag it:
+[MEDICATION NAME UNCLEAR: transcribed as "X"] and preserve the phonetic form.
+
+Allergy phrases to watch for — extract to Allergies field:
+"allergic to X", "can't take X", "X makes me react", "X gives me a rash/swelling".
+If no allergy confirmed by doctor, write NKA only if explicitly stated.
+
+Uncertainty flags — preserve all [UNCERTAIN: ...], [SELF-CORRECTION: ...],
+[CONDITIONAL-not-definite: ...], [APPROXIMATE VALUE ~X: ...],
+[BLOOD PRESSURE READING: X over Y: ...], and [CANNOT: ...] annotations verbatim.
+"""
+
+
 # ---------------------------------------------------------------------------
 # Layer 2 - User prompts (one-shot for small reasoning models)
 # ---------------------------------------------------------------------------

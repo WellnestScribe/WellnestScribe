@@ -1749,3 +1749,81 @@ kbd {
   text-transform: uppercase;
   color: var(--bs-secondary-color);
 }
+
+/* ── Idle lock screen overlay ──────────────────────────────────────────────── */
+#wn-lock-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+/* Inner card inherits Bootstrap card styles (light/dark mode aware) */
+.wn-lock-inner {
+  max-width: 360px;
+  width: calc(100% - 2rem);
+}
+.wn-lock-logo {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--wellnest-blue);
+  letter-spacing: -0.02em;
+}
+
+/* ── Searchable language picker ─────────────────────────────────────────────── */
+.wn-lang-list {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 6px;
+  background: var(--bs-body-bg);
+}
+.wn-lang-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--bs-border-color);
+  padding: 0.42rem 0.75rem;
+  font-size: 0.83rem;
+  color: var(--bs-body-color);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.wn-lang-item:last-child { border-bottom: none; }
+.wn-lang-item:hover { background: var(--bs-tertiary-bg); }
+.wn-lang-item.wn-lang-active {
+  background: var(--wellnest-blue-soft);
+  color: var(--wellnest-blue);
+  font-weight: 600;
+}
+
+/* ── Session glow — highlights most recently QR-claimed note ── */
+@keyframes wn-session-glow {
+  0%   { box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.0); }
+  30%  { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.5); }
+  100% { box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.0); }
+}
+.wn-session-glow {
+  animation: wn-session-glow 2.4s ease-in-out 3;
+  border-radius: 8px;
+}
+
+/* ── Last login chip in topbar ── */
+.wn-last-login-chip {
+  font-size: 0.7rem;
+  color: var(--bs-secondary-color);
+  padding: 2px 8px;
+  border-radius: 20px;
+  border: 1px solid var(--bs-border-color);
+  white-space: nowrap;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: none;
+}
+@media (min-width: 992px) { .wn-last-login-chip { display: inline-block; } }
