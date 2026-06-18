@@ -780,6 +780,80 @@
     </div>
 </div>
 
+{# ---- Onboarding step 2: Language ---- #}
+<div class="modal fade" id="onboardLangModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-labelledby="onboardLangLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:380px;">
+        <div class="modal-content rounded-4 shadow-lg">
+            <div class="modal-header border-0 pb-1">
+                <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="onboardLangLabel">
+                    <iconify-icon icon="iconamoon:earth-duotone" class="text-primary" style="font-size:1.3rem;"></iconify-icon>
+                    What language do you work in?
+                </h5>
+            </div>
+            <div class="modal-body pt-1 pb-2">
+                <p class="text-muted small mb-3">Select the language your patients mainly speak. The AI will transcribe in this language.</p>
+                <select id="onboardLangSelect" class="form-select">
+                    <option value="jam_Latn" {% if doctor_profile.preferred_language == "jam_Latn" or not doctor_profile.preferred_language %}selected{% endif %}>🇯🇲 Jamaican Creole (Patois)</option>
+                    <option value="eng_Latn" {% if doctor_profile.preferred_language == "eng_Latn" %}selected{% endif %}>🇬🇧 English</option>
+                    <option value="spa_Latn" {% if doctor_profile.preferred_language == "spa_Latn" %}selected{% endif %}>🇪🇸 Spanish</option>
+                    <option value="fra_Latn" {% if doctor_profile.preferred_language == "fra_Latn" %}selected{% endif %}>🇫🇷 French</option>
+                    <option value="hat_Latn" {% if doctor_profile.preferred_language == "hat_Latn" %}selected{% endif %}>🇭🇹 Haitian Creole</option>
+                    <option value="por_Latn" {% if doctor_profile.preferred_language == "por_Latn" %}selected{% endif %}>🇧🇷 Portuguese</option>
+                </select>
+                <p class="small text-muted mt-3 mb-0">
+                    <iconify-icon icon="iconamoon:earth-duotone" class="me-1 align-middle"></iconify-icon>
+                    Change anytime from the <strong>globe icon</strong> in the top bar.
+                </p>
+            </div>
+            <div class="modal-footer border-0 pt-0 d-flex justify-content-between align-items-center">
+                <span class="small text-muted">Step 2 of 3</span>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-link text-muted" id="onboardLangSkipBtn">Skip</button>
+                    <button type="button" class="btn btn-primary" id="onboardLangNextBtn">
+                        Next
+                        <iconify-icon icon="iconamoon:arrow-right-2-duotone" class="ms-1 align-middle"></iconify-icon>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ---- Onboarding step 3: AI instructions ---- #}
+<div class="modal fade" id="onboardAiModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-labelledby="onboardAiLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:400px;">
+        <div class="modal-content rounded-4 shadow-lg">
+            <div class="modal-header border-0 pb-1">
+                <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="onboardAiLabel">
+                    <iconify-icon icon="iconamoon:magic-wand-duotone" class="text-primary" style="font-size:1.3rem;"></iconify-icon>
+                    How should the AI write your notes?
+                </h5>
+            </div>
+            <div class="modal-body pt-1 pb-2">
+                <p class="text-muted small mb-2">Optional — give the AI custom instructions for note generation. You can always update this later.</p>
+                <textarea id="onboardAiTextarea"
+                          class="form-control"
+                          rows="5"
+                          placeholder="e.g. Always include medication doses. Keep the plan section brief. Use bullet points.">{{ doctor_profile.custom_instructions|default:'' }}</textarea>
+                <p class="small text-muted mt-3 mb-0">
+                    <iconify-icon icon="iconamoon:magic-wand-duotone" class="me-1 align-middle"></iconify-icon>
+                    Change anytime from the <strong>wand icon</strong> in the top bar.
+                </p>
+            </div>
+            <div class="modal-footer border-0 pt-0 d-flex justify-content-between align-items-center">
+                <span class="small text-muted">Step 3 of 3</span>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-link text-muted" id="onboardAiSkipBtn">Skip</button>
+                    <button type="button" class="btn btn-primary" id="onboardAiDoneBtn">
+                        <iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon>
+                        Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 {# ---- Mic test modal (first-time onboarding) ---- #}
 <div class="modal fade" id="micTestModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-labelledby="micTestModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered" style="max-width:380px;">
@@ -2158,6 +2232,78 @@ document.addEventListener('DOMContentLoaded', function () {
     var m = new bootstrap.Modal(modalEl);
     m.show();
   }, 600);
+}());
+
+/* ── Onboarding steps 2 & 3 (language + AI instructions) ── */
+(function () {
+  var ONBOARD_KEY = 'wn_onboarding_v2';
+  if (localStorage.getItem(ONBOARD_KEY)) return;
+
+  var langModal   = document.getElementById('onboardLangModal');
+  var aiModal     = document.getElementById('onboardAiModal');
+  var micModal    = document.getElementById('micTestModal');
+  if (!langModal || !aiModal) return;
+
+  var W = window.WELLNEST;
+  function prefsUrl() { return W && W.endpoints && W.endpoints.updatePreferences; }
+  function csrf() { return W && W.getCsrf ? W.getCsrf() : ''; }
+
+  function savePrefs(data) {
+    var url = prefsUrl();
+    if (!url) return;
+    fetch(url, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify(data)
+    });
+  }
+
+  function showLang() {
+    bootstrap.Modal.getOrCreateInstance(langModal).show();
+  }
+  function showAi() {
+    bootstrap.Modal.getOrCreateInstance(aiModal).show();
+  }
+  function finish() {
+    localStorage.setItem(ONBOARD_KEY, '1');
+  }
+
+  /* Chain: mic hidden → lang modal */
+  if (micModal) {
+    micModal.addEventListener('hidden.bs.modal', function () {
+      setTimeout(showLang, 300);
+    }, { once: true });
+  } else {
+    /* No mic modal (already tested) — but still first time on v2 */
+    setTimeout(showLang, 600);
+  }
+
+  /* Lang step */
+  document.getElementById('onboardLangNextBtn').addEventListener('click', function () {
+    var sel = document.getElementById('onboardLangSelect');
+    if (sel) savePrefs({ preferred_language: sel.value });
+    /* Sync topbar dropdown if present */
+    var topSel = document.getElementById('topbarLangSelect');
+    if (topSel && sel) topSel.value = sel.value;
+    bootstrap.Modal.getInstance(langModal).hide();
+    setTimeout(showAi, 300);
+  });
+  document.getElementById('onboardLangSkipBtn').addEventListener('click', function () {
+    bootstrap.Modal.getInstance(langModal).hide();
+    setTimeout(showAi, 300);
+  });
+
+  /* AI instructions step */
+  document.getElementById('onboardAiDoneBtn').addEventListener('click', function () {
+    var ta = document.getElementById('onboardAiTextarea');
+    if (ta && ta.value.trim()) savePrefs({ custom_instructions: ta.value.trim() });
+    bootstrap.Modal.getInstance(aiModal).hide();
+    finish();
+  });
+  document.getElementById('onboardAiSkipBtn').addEventListener('click', function () {
+    bootstrap.Modal.getInstance(aiModal).hide();
+    finish();
+  });
 }());
 </script>
 {% endblock %}

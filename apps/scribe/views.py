@@ -1272,7 +1272,8 @@ def transcribe_session_api(request, pk):
     session.save(update_fields=["status", "updated_at"])
     try:
         if dj_settings.MODAL_OMNI_URL:
-            resp = transcribe_modal_omni(str(session.audio_file.path), target_lang="jam_Latn")
+            _lang = getattr(getattr(request.user, "doctor_profile", None), "preferred_language", None) or "jam_Latn"
+            resp = transcribe_modal_omni(str(session.audio_file.path), target_lang=_lang)
             transcript = resp.get("transcript", "")
         else:
             transcript = run_transcription(session.audio_file.path)
@@ -2163,7 +2164,8 @@ def ambient_transcribe_api(request, pk):
     def _run(job):
         if backend == "modal-omni":
             job.stage = "sending to Modal omniASR GPU…"
-            resp = transcribe_modal_omni(str(audio_path), target_lang="jam_Latn")
+            _lang = getattr(getattr(request.user, "doctor_profile", None), "preferred_language", None) or "jam_Latn"
+            resp = transcribe_modal_omni(str(audio_path), target_lang=_lang)
             raw_text = resp.get("transcript", "")
             job.result = {
                 "raw_text": raw_text,
@@ -2258,6 +2260,10 @@ def update_preferences_api(request):
         profile.suggestive_assist = _coerce_bool(payload["suggestive_assist"])
     if payload.get("specialty") in dict(DoctorProfile.SPECIALTY_CHOICES):
         profile.specialty = payload["specialty"]
+    if payload.get("preferred_language") in dict(DoctorProfile.LANGUAGE_CHOICES):
+        profile.preferred_language = payload["preferred_language"]
+    if "custom_instructions" in payload:
+        profile.custom_instructions = (payload["custom_instructions"] or "").strip()
 
     profile.save()
     return JsonResponse(
@@ -2269,5 +2275,7 @@ def update_preferences_api(request):
             "long_form_default": profile.long_form_default,
             "suggestive_assist": profile.suggestive_assist,
             "specialty": profile.specialty,
+            "preferred_language": profile.preferred_language,
+            "custom_instructions": profile.custom_instructions,
         }
     )

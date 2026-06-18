@@ -72,6 +72,21 @@ class DoctorProfile(models.Model):
         blank=True,
         help_text="Doctor-specific medication names shown in the note editor picker.",
     )
+    LANGUAGE_CHOICES = [
+        ("jam_Latn", "Jamaican Creole (Patois)"),
+        ("eng_Latn", "English"),
+        ("spa_Latn", "Spanish"),
+        ("fra_Latn", "French"),
+        ("hat_Latn", "Haitian Creole"),
+        ("por_Latn", "Portuguese"),
+    ]
+
+    preferred_language = models.CharField(
+        max_length=20,
+        choices=LANGUAGE_CHOICES,
+        default="jam_Latn",
+        help_text="Language spoken during consultations — used by the ASR model.",
+    )
     custom_instructions = models.TextField(blank=True)
     custom_terms = models.TextField(
         blank=True,
