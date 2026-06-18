@@ -21,29 +21,16 @@
                 </div>
 
                 <a href="{% url 'scribe:record' %}" class="d-lg-none d-flex align-items-center text-decoration-none">
-                    <img src="{% static 'images/wellnest-logo.png' %}" alt="WellNest" height="28" class="me-2">
-                    <span class="fw-semibold text-body">WellNest Scribe</span>
+                    <img src="{% static 'images/wellnest-logo.png' %}" alt="WellNest" height="26" class="me-1">
+                    <span class="fw-semibold text-body d-none d-sm-inline">WellNest</span>
                 </a>
             </div>
 
             <div class="d-flex align-items-center gap-1 ms-auto">
-                <div class="topbar-item">
-                    <button type="button" class="topbar-button" id="light-dark-mode" aria-label="Toggle theme">
-                        <iconify-icon icon="iconamoon:mode-dark-duotone" class="fs-22 align-middle"></iconify-icon>
-                    </button>
-                </div>
 
                 {% if user.is_authenticated %}
-                <div class="topbar-item">
-                    <button type="button" class="topbar-button"
-                            onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('customMedsModal')).show()"
-                            aria-label="Custom medications" title="Custom medications">
-                        <iconify-icon icon="mdi:pill" class="fs-22 align-middle"></iconify-icon>
-                    </button>
-                </div>
-
-                {# ── Language picker ── #}
-                <div class="dropdown topbar-item">
+                {# ── Language picker — hidden on mobile (accessible from mobile menu) ── #}
+                <div class="dropdown topbar-item d-none d-md-flex me-1">
                     <button type="button"
                             class="topbar-button dropdown-toggle dropdown-toggle-nocaret"
                             data-bs-toggle="dropdown"
@@ -52,7 +39,7 @@
                             aria-label="Transcription language"
                             title="Transcription language"
                             id="topbarLangBtn">
-                        <iconify-icon icon="iconamoon:earth-duotone" class="fs-22 align-middle"></iconify-icon>
+                        <iconify-icon icon="mdi:translate" class="fs-22 align-middle"></iconify-icon>
                     </button>
                     <div class="dropdown-menu dropdown-menu-end p-3" style="min-width:220px;">
                         <h6 class="mb-2 fw-semibold">Transcription language</h6>
@@ -70,20 +57,25 @@
                         <div id="topbarLangStatus" class="small text-success mt-2" style="min-height:1.2em;"></div>
                     </div>
                 </div>
+                {% endif %}
 
-                {# ── AI instructions quick-edit ── #}
                 <div class="topbar-item">
-                    <button type="button"
-                            class="topbar-button"
-                            onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('aiInstructionsModal')).show()"
-                            aria-label="AI note instructions"
-                            title="AI note instructions">
-                        <iconify-icon icon="iconamoon:magic-wand-duotone" class="fs-22 align-middle"></iconify-icon>
+                    <button type="button" class="topbar-button" id="light-dark-mode" aria-label="Toggle theme">
+                        <iconify-icon icon="iconamoon:mode-dark-duotone" class="fs-22 align-middle"></iconify-icon>
+                    </button>
+                </div>
+
+                {% if user.is_authenticated %}
+                <div class="topbar-item">
+                    <button type="button" class="topbar-button"
+                            onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('customMedsModal')).show()"
+                            aria-label="Medications &amp; preferences" title="Medications &amp; preferences">
+                        <iconify-icon icon="mdi:pill" class="fs-22 align-middle"></iconify-icon>
                     </button>
                 </div>
                 {% endif %}
 
-                <div class="dropdown topbar-item">
+                <div class="dropdown topbar-item d-none d-sm-flex">
                     <button type="button"
                             class="topbar-button dropdown-toggle dropdown-toggle-nocaret"
                             id="topbarFontSizeDropdown"
@@ -145,7 +137,7 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 
-                <div class="dropdown topbar-item">
+                <div class="dropdown topbar-item d-none d-sm-flex">
                     <button type="button"
                             class="topbar-button"
                             data-bs-toggle="dropdown"
@@ -229,78 +221,21 @@ document.addEventListener('DOMContentLoaded', function () {
 </header>
 
 {% if user.is_authenticated %}
-{# ── AI Instructions Modal ── #}
-<div class="modal fade" id="aiInstructionsModal" tabindex="-1" aria-labelledby="aiInstructionsModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="aiInstructionsModalLabel">
-                    <iconify-icon icon="iconamoon:magic-wand-duotone" class="me-2 align-middle"></iconify-icon>
-                    AI note instructions
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p class="small text-muted mb-3">
-                    Tell the AI how you'd like your notes written. For example: preferred terminology,
-                    formatting style, things to always or never include.
-                </p>
-                <textarea id="aiInstructionsTextarea"
-                          class="form-control"
-                          rows="6"
-                          placeholder="e.g. Always include medication doses. Use brief bullet points for the plan. Avoid medical jargon in the assessment.">{{ doctor_profile.custom_instructions|default:'' }}</textarea>
-                <div id="aiInstructionsSaveStatus" class="small text-success mt-2" style="min-height:1.2em;"></div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary btn-sm" id="aiInstructionsSaveBtn">Save</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <script>
 (function () {
-    var W = window.WELLNEST;
-    function prefsUrl() { return W && W.endpoints && W.endpoints.updatePreferences; }
-
     /* Language picker — save on change */
     document.addEventListener('change', function (e) {
         if (e.target.id !== 'topbarLangSelect') return;
         var status = document.getElementById('topbarLangStatus');
-        var url = prefsUrl();
-        if (!url) return;
-        fetch(url, {
+        var W = window.WELLNEST;
+        if (!W || !W.endpoints || !W.endpoints.updatePreferences) return;
+        fetch(W.endpoints.updatePreferences, {
             method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.WELLNEST.getCsrf() },
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': W.getCsrf() },
             body: JSON.stringify({ preferred_language: e.target.value })
         }).then(function (r) { return r.json(); }).then(function (d) {
             if (status) status.textContent = d.ok ? 'Saved ✓' : (d.error || 'Error');
             setTimeout(function () { if (status) status.textContent = ''; }, 2000);
-        });
-    });
-
-    /* AI instructions — save on button click */
-    document.addEventListener('click', function (e) {
-        if (e.target.id !== 'aiInstructionsSaveBtn') return;
-        var ta = document.getElementById('aiInstructionsTextarea');
-        var status = document.getElementById('aiInstructionsSaveStatus');
-        var url = prefsUrl();
-        if (!url || !ta) return;
-        fetch(url, {
-            method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.WELLNEST.getCsrf() },
-            body: JSON.stringify({ custom_instructions: ta.value })
-        }).then(function (r) { return r.json(); }).then(function (d) {
-            if (d.ok) {
-                if (status) status.textContent = 'Saved ✓';
-                setTimeout(function () {
-                    bootstrap.Modal.getOrCreateInstance(document.getElementById('aiInstructionsModal')).hide();
-                    if (status) status.textContent = '';
-                }, 800);
-            } else {
-                if (status) status.textContent = d.error || 'Error saving.';
-            }
         });
     });
 })();

@@ -1,12 +1,12 @@
 {% load static %}
-<div class="offcanvas offcanvas-bottom mobile-nav-sheet"
+<div class="offcanvas offcanvas-bottom mobile-nav-sheet wn-mobile-nav-dark"
      tabindex="-1"
      id="wellnestMobileNav"
      aria-labelledby="wellnestMobileNavLabel">
     <div class="offcanvas-header">
         <div class="d-flex align-items-center gap-2">
-            <img src="{% static 'images/wellnest-logo.png' %}" alt="WellNest" height="28">
-            <h6 class="offcanvas-title m-0 fw-semibold" id="wellnestMobileNavLabel">WellNest Scribe</h6>
+            <img src="{% static 'images/wellnest-logo.png' %}" alt="WellNest" height="26">
+            <h6 class="offcanvas-title m-0 fw-semibold" id="wellnestMobileNavLabel">WellNest</h6>
         </div>
         {# No X button — drag handle (CSS ::before) + swipe down to dismiss #}
     </div>
@@ -14,8 +14,68 @@
         <ul class="navbar-nav">
             {% include "partials/_nav_items.html" %}
         </ul>
+
+        {% if user.is_authenticated %}
+        {# ── Quick preferences (mobile only) ── #}
+        <div class="wn-mobile-prefs mt-3 pt-3" style="border-top:1px solid rgba(255,255,255,0.1);">
+            <div class="menu-title mb-2">Quick preferences</div>
+
+            <div class="mb-3">
+                <label class="form-label small fw-semibold mb-1">Transcription language</label>
+                <select id="mobileNavLangSelect" class="form-select form-select-sm">
+                    {% with lang=doctor_profile.preferred_language|default:"jam_Latn" %}
+                    <option value="jam_Latn" {% if lang == "jam_Latn" %}selected{% endif %}>🇯🇲 Jamaican Creole</option>
+                    <option value="eng_Latn" {% if lang == "eng_Latn" %}selected{% endif %}>🇬🇧 English</option>
+                    <option value="spa_Latn" {% if lang == "spa_Latn" %}selected{% endif %}>🇪🇸 Spanish</option>
+                    <option value="fra_Latn" {% if lang == "fra_Latn" %}selected{% endif %}>🇫🇷 French</option>
+                    <option value="hat_Latn" {% if lang == "hat_Latn" %}selected{% endif %}>🇭🇹 Haitian Creole</option>
+                    <option value="por_Latn" {% if lang == "por_Latn" %}selected{% endif %}>🇧🇷 Portuguese</option>
+                    {% endwith %}
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label small fw-semibold mb-1">Default note style</label>
+                <select id="mobileNavNoteStyle" class="form-select form-select-sm">
+                    <option value="soap" {% if doctor_profile.default_note_style == 'soap' %}selected{% endif %}>SOAP</option>
+                    <option value="narrative" {% if doctor_profile.default_note_style == 'narrative' %}selected{% endif %}>Narrative</option>
+                    <option value="chart" {% if doctor_profile.default_note_style == 'chart' %}selected{% endif %}>Chart / progress note</option>
+                </select>
+            </div>
+
+            <div id="mobileNavPrefStatus" class="small text-success mb-1" style="min-height:1.2em;"></div>
+        </div>
+        {% endif %}
     </div>
 </div>
+
+{% if user.is_authenticated %}
+<script>
+(function () {
+    function savePref(data) {
+        var W = window.WELLNEST;
+        if (!W || !W.endpoints || !W.endpoints.updatePreferences) return;
+        fetch(W.endpoints.updatePreferences, {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': W.getCsrf() },
+            body: JSON.stringify(data)
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            var s = document.getElementById('mobileNavPrefStatus');
+            if (s) { s.textContent = d.ok ? 'Saved ✓' : (d.error || 'Error'); setTimeout(function () { s.textContent = ''; }, 2000); }
+            /* Sync topbar selects */
+            if (data.preferred_language) {
+                var tb = document.getElementById('topbarLangSelect');
+                if (tb) tb.value = data.preferred_language;
+            }
+        });
+    }
+    document.addEventListener('change', function (e) {
+        if (e.target.id === 'mobileNavLangSelect') savePref({ preferred_language: e.target.value });
+        if (e.target.id === 'mobileNavNoteStyle') savePref({ default_note_style: e.target.value });
+    });
+}());
+</script>
+{% endif %}
 
 <script>
 (function () {

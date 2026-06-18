@@ -71,7 +71,7 @@
                 <div class="modal-header border-0 pb-1">
                     <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="customMedsModalLabel">
                         <iconify-icon icon="mdi:pill" class="text-primary" style="font-size:1.3rem;"></iconify-icon>
-                        Custom medications
+                        Medications &amp; preferences
                     </h5>
                     <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -86,6 +86,22 @@
                     <p class="small text-muted mt-2 mb-0" id="customMedEmpty" style="font-size:0.76rem;display:none;">
                         No custom medications yet.
                     </p>
+
+                    <hr class="my-3">
+
+                    <h6 class="fw-semibold mb-1 d-flex align-items-center gap-2">
+                        <iconify-icon icon="mdi:creation" class="text-primary" style="font-size:1.1rem;"></iconify-icon>
+                        AI note instructions
+                    </h6>
+                    <p class="small text-muted mb-2">Tell the AI how you'd like your notes written — preferred style, what to include or avoid.</p>
+                    <textarea id="customMedAiInstructions"
+                              class="form-control form-control-sm"
+                              rows="4"
+                              placeholder="e.g. Always include medication doses. Keep the plan section brief. Use bullet points.">{{ doctor_profile.custom_instructions|default:'' }}</textarea>
+                    <div class="d-flex justify-content-end mt-2">
+                        <button type="button" class="btn btn-sm btn-primary" id="customMedAiSaveBtn">Save instructions</button>
+                    </div>
+                    <div id="customMedAiStatus" class="small text-success mt-1" style="min-height:1.2em;text-align:right;"></div>
                 </div>
             </div>
         </div>
@@ -176,6 +192,24 @@
         }
         if (addBtn) addBtn.addEventListener('click', addDrug);
         if (input)  input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addDrug(); } });
+
+        var aiSaveBtn = document.getElementById('customMedAiSaveBtn');
+        var aiStatus  = document.getElementById('customMedAiStatus');
+        if (aiSaveBtn) {
+          aiSaveBtn.addEventListener('click', function () {
+            var ta = document.getElementById('customMedAiInstructions');
+            var W = window.WELLNEST;
+            if (!ta || !W || !W.endpoints || !W.endpoints.updatePreferences) return;
+            fetch(W.endpoints.updatePreferences, {
+              method: 'POST', credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json', 'X-CSRFToken': W.getCsrf() },
+              body: JSON.stringify({ custom_instructions: ta.value })
+            }).then(function (r) { return r.json(); }).then(function (d) {
+              if (aiStatus) aiStatus.textContent = d.ok ? 'Saved ✓' : (d.error || 'Error');
+              setTimeout(function () { if (aiStatus) aiStatus.textContent = ''; }, 2500);
+            });
+          });
+        }
       });
     })();
     </script>
