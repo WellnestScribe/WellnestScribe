@@ -71,6 +71,7 @@ urlpatterns = [
     path("latency/", views.LatencyLogView.as_view(), name="latency_log"),
     path("feedback/", views.FeedbackLogView.as_view(), name="feedback_log"),
     path("api/sessions/<int:pk>/rate/", views.rate_section_api, name="api_rate_section"),
+    path("api/experience-feedback/", views.submit_experience_feedback, name="submit_experience_feedback"),
     path("compliance/", views.ComplianceView.as_view(), name="compliance"),
     path("api/triage/run/", views.triage_run_api, name="api_triage_run"),
     path("api/triage/jobs/<str:job_id>/", views.triage_job_status_api, name="api_triage_job"),

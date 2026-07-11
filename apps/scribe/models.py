@@ -340,6 +340,42 @@ class NoteFeedback(models.Model):
         return f"{self.rating} on {self.section} - session {self.session_id}"
 
 
+class ExperienceFeedback(models.Model):
+    """Pilot-phase experience survey — a few simple questions from testing doctors.
+
+    Temporary: the animated 'Share feedback' button on the review page opens a
+    short form. Answers are simple fields plus a JSON bag so we can tweak the
+    questions without migrations. Admins review via /scribe/feedback/.
+    """
+
+    doctor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="experience_feedback"
+    )
+    session = models.ForeignKey(
+        ScribeSession, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="experience_feedback",
+    )
+    # Scored questions (drive the graphs on the feedback dashboard)
+    ease = models.PositiveSmallIntegerField(null=True, blank=True)      # 1-5
+    accuracy = models.PositiveSmallIntegerField(null=True, blank=True)  # 1-5
+    would_use = models.CharField(max_length=10, blank=True)            # yes / maybe / no
+    plan_choice = models.CharField(max_length=40, blank=True)          # which plan they'd pick
+    would_pay = models.CharField(max_length=40, blank=True)           # what they'd pay (free text)
+    # Open text
+    feature_request = models.TextField(blank=True)                    # what feature would you like
+    improve = models.TextField(blank=True)                            # what could be improved
+    hated = models.TextField(blank=True)                              # what did you hate / like least
+    liked = models.TextField(blank=True)                             # what did you like most
+    extra = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+
+    def __str__(self) -> str:
+        return f"Experience feedback from {self.doctor_id} ({self.created_at:%Y-%m-%d})"
+
+
 class ModalOmniEndpoint(models.Model):
     """One Modal account for omniASR transcription.
 

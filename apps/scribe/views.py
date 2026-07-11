@@ -545,7 +545,31 @@ class FeedbackLogView(LoginRequiredMixin, View):
                 ])
             return response
 
-        return render(request, self.template_name, {"feedback_list": feedback})
+        # ── Pilot experience-survey aggregates (for the graphs) ──
+        from django.db.models import Avg, Count  # noqa: PLC0415
+        from .models import ExperienceFeedback  # noqa: PLC0415
+
+        exp_qs = ExperienceFeedback.objects.select_related("doctor").order_by("-created_at")
+        exp_total = exp_qs.count()
+
+        def _dist(field):
+            rows = exp_qs.exclude(**{field: ""}).values(field).annotate(n=Count("id")).order_by("-n")
+            return [{"label": r[field], "n": r["n"], "pct": round(100 * r["n"] / exp_total) if exp_total else 0} for r in rows]
+
+        exp_summary = {
+            "total": exp_total,
+            "avg_ease": round(exp_qs.aggregate(a=Avg("ease"))["a"] or 0, 1),
+            "avg_accuracy": round(exp_qs.aggregate(a=Avg("accuracy"))["a"] or 0, 1),
+            "would_use": _dist("would_use"),
+            "plans": _dist("plan_choice"),
+        }
+        exp_recent = exp_qs[:40]
+
+        return render(request, self.template_name, {
+            "feedback_list": feedback,
+            "exp_summary": exp_summary,
+            "exp_recent": exp_recent,
+        })
 
 
 class LatencyLogView(LoginRequiredMixin, View):
@@ -2107,6 +2131,40 @@ def rate_section_api(request, pk):
         doctor=request.user,
         section=section,
         defaults={"rating": rating, "comment": comment},
+    )
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@require_POST
+@csrf_protect
+def submit_experience_feedback(request):
+    """Pilot experience survey submission from the animated 'Share feedback' button."""
+    from .models import ExperienceFeedback
+
+    def _score(v):
+        try:
+            return max(1, min(5, int(v)))
+        except (TypeError, ValueError):
+            return None
+
+    session = None
+    sid = request.POST.get("session_id")
+    if sid:
+        session = ScribeSession.objects.filter(pk=sid, doctor=request.user).first()
+
+    ExperienceFeedback.objects.create(
+        doctor=request.user,
+        session=session,
+        ease=_score(request.POST.get("ease")),
+        accuracy=_score(request.POST.get("accuracy")),
+        would_use=(request.POST.get("would_use") or "")[:10],
+        plan_choice=(request.POST.get("plan_choice") or "")[:40],
+        would_pay=(request.POST.get("would_pay") or "")[:40],
+        feature_request=(request.POST.get("feature_request") or "")[:2000],
+        improve=(request.POST.get("improve") or "")[:2000],
+        hated=(request.POST.get("hated") or "")[:2000],
+        liked=(request.POST.get("liked") or "")[:2000],
     )
     return JsonResponse({"ok": True})
 

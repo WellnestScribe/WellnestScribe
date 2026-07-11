@@ -428,6 +428,12 @@
                                 <iconify-icon icon="iconamoon:restart-duotone" class="me-1 align-middle"></iconify-icon>
                                 <span id="regenerateBtnLabel">Regenerate</span>
                             </button>
+                            <button type="button" class="wn-feedback-btn flex-shrink-0" id="wnFeedbackBtn"
+                                    data-bs-toggle="modal" data-bs-target="#wnFeedbackModal" title="Tell us what you think — pilot feedback">
+                                <iconify-icon icon="iconamoon:like-duotone" class="me-1 align-middle"></iconify-icon>
+                                <span>Share feedback</span>
+                                <span class="wn-feedback-sparkle">✨</span>
+                            </button>
                         </div>
                     </div>
 
@@ -2805,5 +2811,139 @@ function _suiteConfirm(title, text) {
 [data-thumb].thumb-active-down iconify-icon { filter: drop-shadow(0 0 3px currentColor); }
 /* Bracket placeholders - visual cue that they're clickable */
 .bk-hl { cursor: pointer; text-decoration: underline dotted rgba(13,110,253,0.5); }
+
+/* ── Pilot "Share feedback" button: animated rainbow (temporary) ── */
+.wn-feedback-btn {
+  border: none; color: #fff; font-weight: 700; border-radius: 999px;
+  padding: 8px 16px; display: inline-flex; align-items: center; gap: 4px;
+  background: linear-gradient(90deg, #ff5f6d, #ffc371, #47cf73, #24c6dc, #514a9d, #a06cd5, #ff5f6d);
+  background-size: 300% 100%;
+  animation: wnRainbow 6s linear infinite;
+  box-shadow: 0 4px 14px rgba(80, 40, 160, 0.28);
+  transition: transform .15s ease, filter .15s ease;
+}
+.wn-feedback-btn:hover { transform: translateY(-1px) scale(1.02); filter: brightness(1.06); }
+.wn-feedback-btn:active { transform: translateY(0) scale(0.99); }
+.wn-feedback-sparkle { animation: wnSparkle 1.6s ease-in-out infinite; }
+@keyframes wnRainbow { 0% { background-position: 0% 50%; } 100% { background-position: 300% 50%; } }
+@keyframes wnSparkle { 0%,100% { opacity: 1; transform: scale(1) rotate(0); } 50% { opacity: .5; transform: scale(1.25) rotate(15deg); } }
+@media (prefers-reduced-motion: reduce) { .wn-feedback-btn, .wn-feedback-sparkle { animation: none; } }
+.wn-rate-group .btn.active { background: var(--wellnest-blue, #0c7ec2); color: #fff; border-color: var(--wellnest-blue, #0c7ec2); }
 </style>
+
+{# ── Pilot feedback survey modal ── #}
+<div class="modal fade" id="wnFeedbackModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-semibold">💜 Help us shape WellNest</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small">A few quick questions from the pilot — thank you! Nothing is required.</p>
+        <form id="wnFeedbackForm">
+          <input type="hidden" id="wnFbSession" value="{{ session.pk }}">
+
+          <label class="form-label small fw-semibold">Would you use WellNest in your practice?</label>
+          <div class="btn-group w-100 mb-3 wn-rate-group" data-field="would_use" role="group">
+            <button type="button" class="btn btn-outline-secondary" data-val="yes">Yes</button>
+            <button type="button" class="btn btn-outline-secondary" data-val="maybe">Maybe</button>
+            <button type="button" class="btn btn-outline-secondary" data-val="no">No</button>
+          </div>
+
+          <label class="form-label small fw-semibold">How easy was it to use? (1 = hard, 5 = effortless)</label>
+          <div class="btn-group w-100 mb-3 wn-rate-group" data-field="ease" role="group">
+            {% for n in "12345" %}<button type="button" class="btn btn-outline-secondary" data-val="{{ n }}">{{ n }}</button>{% endfor %}
+          </div>
+
+          <label class="form-label small fw-semibold">How accurate was the note? (1 = poor, 5 = excellent)</label>
+          <div class="btn-group w-100 mb-3 wn-rate-group" data-field="accuracy" role="group">
+            {% for n in "12345" %}<button type="button" class="btn btn-outline-secondary" data-val="{{ n }}">{{ n }}</button>{% endfor %}
+          </div>
+
+          <label class="form-label small fw-semibold" for="wnFbPlan">Which plan would you choose?</label>
+          <select class="form-select mb-3" id="wnFbPlan">
+            <option value="">— pick one —</option>
+            <option>Standard — US$94</option>
+            <option>Standard + EMR — US$144</option>
+            <option>Professional — US$190</option>
+            <option>Professional + EMR — US$240</option>
+            <option>None yet</option>
+          </select>
+
+          <label class="form-label small fw-semibold" for="wnFbPay">How much would you pay per month? (be honest!)</label>
+          <input type="text" class="form-control mb-3" id="wnFbPay" placeholder="e.g. US$120 / J$18,000">
+
+          <label class="form-label small fw-semibold" for="wnFbFeature">What feature would you love to see?</label>
+          <textarea class="form-control mb-3" id="wnFbFeature" rows="2"></textarea>
+
+          <label class="form-label small fw-semibold" for="wnFbImprove">What could be improved?</label>
+          <textarea class="form-control mb-3" id="wnFbImprove" rows="2"></textarea>
+
+          <label class="form-label small fw-semibold" for="wnFbHated">What did you like least / hate?</label>
+          <textarea class="form-control mb-3" id="wnFbHated" rows="2"></textarea>
+
+          <label class="form-label small fw-semibold" for="wnFbLiked">What did you like most?</label>
+          <textarea class="form-control mb-2" id="wnFbLiked" rows="2"></textarea>
+
+          <div class="alert alert-light border small mb-0">
+            💡 Tip: use the 👍 / 👎 on each note section too — it helps us fix the AI fastest.
+          </div>
+        </form>
+        <div id="wnFbMsg" class="small mt-2"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="wn-feedback-btn" id="wnFbSubmit">Send feedback ✨</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById('wnFeedbackForm');
+  if (!form) return;
+  var picked = {};
+  document.querySelectorAll('.wn-rate-group').forEach(function (grp) {
+    grp.querySelectorAll('button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        grp.querySelectorAll('button').forEach(function (x) { x.classList.remove('active'); });
+        b.classList.add('active');
+        picked[grp.dataset.field] = b.dataset.val;
+      });
+    });
+  });
+  function csrf() { var m = document.cookie.match(/csrftoken=([^;]+)/); return m ? m[1] : ''; }
+  document.getElementById('wnFbSubmit').addEventListener('click', function () {
+    var btn = this, msg = document.getElementById('wnFbMsg');
+    btn.disabled = true; msg.textContent = 'Sending…'; msg.className = 'small mt-2 text-muted';
+    var body = new URLSearchParams();
+    body.append('session_id', document.getElementById('wnFbSession').value || '');
+    body.append('would_use', picked.would_use || '');
+    body.append('ease', picked.ease || '');
+    body.append('accuracy', picked.accuracy || '');
+    body.append('plan_choice', document.getElementById('wnFbPlan').value);
+    body.append('would_pay', document.getElementById('wnFbPay').value);
+    body.append('feature_request', document.getElementById('wnFbFeature').value);
+    body.append('improve', document.getElementById('wnFbImprove').value);
+    body.append('hated', document.getElementById('wnFbHated').value);
+    body.append('liked', document.getElementById('wnFbLiked').value);
+    fetch('{% url "scribe:submit_experience_feedback" %}', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'X-CSRFToken': csrf(), 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString()
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      btn.disabled = false;
+      if (d.ok) {
+        msg.textContent = '🎉 Thank you! Your feedback helps a lot.'; msg.className = 'small mt-2 text-success';
+        setTimeout(function () {
+          var m = bootstrap.Modal.getInstance(document.getElementById('wnFeedbackModal'));
+          if (m) m.hide();
+        }, 1200);
+      } else { msg.textContent = 'Could not send. Try again.'; msg.className = 'small mt-2 text-danger'; }
+    }).catch(function () { btn.disabled = false; msg.textContent = 'Network error.'; msg.className = 'small mt-2 text-danger'; });
+  });
+})();
+</script>
 {% endblock %}

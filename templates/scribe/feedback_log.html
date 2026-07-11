@@ -15,6 +15,64 @@
     </a>
   </div>
 
+  {# ── Pilot experience survey (from the "Share feedback" button) ── #}
+  <div class="card mb-4">
+    <div class="card-body p-4">
+      <h5 class="fw-semibold mb-1">Pilot experience survey</h5>
+      <p class="text-muted small mb-3">{{ exp_summary.total }} response{{ exp_summary.total|pluralize }} from the "Share feedback" button.</p>
+      {% if exp_summary.total %}
+      <div class="row g-4">
+        <div class="col-md-3">
+          <div class="text-muted small">Avg. ease of use</div>
+          <div class="fs-3 fw-bold text-primary">{{ exp_summary.avg_ease }}<span class="fs-6 text-muted"> / 5</span></div>
+          <div class="text-muted small mt-2">Avg. note accuracy</div>
+          <div class="fs-3 fw-bold text-primary">{{ exp_summary.avg_accuracy }}<span class="fs-6 text-muted"> / 5</span></div>
+        </div>
+        <div class="col-md-4">
+          <div class="fw-semibold small mb-2">Would you use WellNest?</div>
+          {% for row in exp_summary.would_use %}
+          <div class="mb-2">
+            <div class="d-flex justify-content-between small"><span class="text-capitalize">{{ row.label }}</span><span class="text-muted">{{ row.n }} ({{ row.pct }}%)</span></div>
+            <div class="progress" style="height:8px;"><div class="progress-bar bg-success" style="width:{{ row.pct }}%"></div></div>
+          </div>
+          {% empty %}<div class="text-muted small">No answers yet.</div>{% endfor %}
+        </div>
+        <div class="col-md-5">
+          <div class="fw-semibold small mb-2">Plan preference</div>
+          {% for row in exp_summary.plans %}
+          <div class="mb-2">
+            <div class="d-flex justify-content-between small"><span>{{ row.label }}</span><span class="text-muted">{{ row.n }} ({{ row.pct }}%)</span></div>
+            <div class="progress" style="height:8px;"><div class="progress-bar" style="width:{{ row.pct }}%"></div></div>
+          </div>
+          {% empty %}<div class="text-muted small">No answers yet.</div>{% endfor %}
+        </div>
+      </div>
+
+      <hr class="my-3">
+      <div class="fw-semibold small mb-2">Recent written feedback</div>
+      <div class="table-responsive" style="max-height:340px;overflow:auto;">
+        <table class="table table-sm align-middle small">
+          <thead><tr><th>Doctor</th><th>Would pay</th><th>Feature wanted</th><th>Improve</th><th>Liked least</th><th>Liked most</th></tr></thead>
+          <tbody>
+            {% for f in exp_recent %}
+            <tr>
+              <td class="text-nowrap">{{ f.doctor.get_full_name|default:f.doctor.username }}</td>
+              <td class="text-nowrap">{{ f.would_pay|default:"-" }}</td>
+              <td>{{ f.feature_request|default:"-" }}</td>
+              <td>{{ f.improve|default:"-" }}</td>
+              <td>{{ f.hated|default:"-" }}</td>
+              <td>{{ f.liked|default:"-" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-muted small">No survey responses yet. They'll appear here once doctors use the "Share feedback" button.</div>
+      {% endif %}
+    </div>
+  </div>
+
   {# Quick stats #}
   {% if feedback_list %}
   <div class="row g-3 mb-4">
