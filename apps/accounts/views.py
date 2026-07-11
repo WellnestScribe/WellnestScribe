@@ -489,16 +489,16 @@ def subscription_view(request):
     # Organisation.subscription_tier where one exists, so the active plan lights up.
     plans = [
         {
-            "code": "emr", "name": "EMR only", "usd": "60", "jmd": "9,500", "cadence": "/month",
-            "popular": False, "best_for": "Records, no AI scribe",
-            "features": ["Lightweight EMR", "Patient charts & records", "Problem list & medications",
-                         "Appointments & reminders", "No AI note-taking"],
-        },
-        {
             "code": "scribe", "name": "Standard", "usd": "94", "jmd": "15,000", "cadence": "/month",
             "popular": False, "best_for": "~15-20 patients / day",
             "features": ["Unlimited AI notes", "SOAP, narrative & chart", "QR to any EHR, no integration",
                          "Front-desk queue & appointments", "5 note edits included"],
+        },
+        {
+            "code": "practice", "name": "Standard + EMR", "usd": "144", "jmd": "23,000", "cadence": "/month",
+            "popular": False, "best_for": "Scribe + full records",
+            "features": ["Everything in Standard", "The lightweight EMR", "Charts, records & problem list",
+                         "Patient timeline & documents"],
         },
         {
             "code": "professional", "name": "Professional", "usd": "190", "jmd": "30,000", "cadence": "/month",
@@ -507,7 +507,7 @@ def subscription_view(request):
                          "Priority support"],
         },
         {
-            "code": "practice", "name": "Professional + EMR", "usd": "240", "jmd": "38,000", "cadence": "/month",
+            "code": "professional_emr", "name": "Professional + EMR", "usd": "240", "jmd": "38,000", "cadence": "/month",
             "popular": False, "best_for": "Full stack, high volume",
             "features": ["Everything in Professional", "The lightweight EMR", "Patient timeline & documents",
                          "Best-value bundle"],
