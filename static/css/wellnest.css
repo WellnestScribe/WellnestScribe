@@ -1965,3 +1965,12 @@ html.wn-eyecomfort:not([data-bs-theme="dark"]) .form-select {
 /* Dark mode: just take the harshest edge off bright text. */
 html.wn-eyecomfort[data-bs-theme="dark"] { --bs-emphasis-color: #dee2e8; }
 .topbar-button.active { color: var(--wellnest-blue, #0c7ec2); }
+
+/* Landing nav on small phones: shrink the logo footprint so the buttons get
+   breathing room (fixes "Sign in" touching the WellNest wordmark). */
+@media (max-width: 575px) {
+  .landing-nav { gap: 10px; }
+  .landing-nav img { height: 30px !important; }
+  .landing-nav .fs-4 { font-size: 1rem !important; }
+  .landing-nav .btn { padding: 7px 12px; }
+}
