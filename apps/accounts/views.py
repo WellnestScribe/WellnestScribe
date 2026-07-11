@@ -479,13 +479,47 @@ def organisation_export_api(request, org_id):
 
 @login_required
 def subscription_view(request):
-    """Self-service page for a user: view their facility's plan + status and
-    export their data (JSON or CSV)."""
+    """Self-service page for a user: view their facility's plan + status,
+    see the pricing tiers (current one highlighted), and export their data."""
     from emr.services.access import get_membership
     ctx = get_membership(request.user)
+    org = ctx.organisation
+
+    # Pricing tiers (from docs/July_2026_Financials_Estimate.md). `code` matches
+    # Organisation.subscription_tier where one exists, so the active plan lights up.
+    plans = [
+        {
+            "code": "scribe", "name": "Standard", "usd": "94", "jmd": "15,000", "cadence": "/month",
+            "popular": False, "blurb": "Everyday clinic practice.",
+            "features": ["Unlimited notes", "Fits a full clinic day", "AI SOAP, narrative & chart",
+                         "QR to any EHR, no integration", "Front-desk queue & appointments"],
+        },
+        {
+            "code": "professional", "name": "Professional", "usd": "190", "jmd": "30,000", "cadence": "/month",
+            "popular": True, "blurb": "High-volume & procedural.",
+            "features": ["Everything in Standard", "Busy private & hospital use", "Recordings up to 5 hours",
+                         "Priority support"],
+        },
+        {
+            "code": "practice", "name": "Scribe + EMR", "usd": "150", "jmd": "24,000", "cadence": "/month",
+            "popular": False, "blurb": "Add the lightweight EMR.",
+            "features": ["Everything in Standard", "Charts, records & problem list", "Patient timeline & documents",
+                         "Appointment reminders"],
+        },
+        {
+            "code": "institution", "name": "Institution", "usd": "76", "jmd": "from 12,000", "cadence": "/seat",
+            "popular": False, "blurb": "Hospitals & health authorities.",
+            "features": ["Per-seat pricing (min 10)", "20% off 5+ seats", "Invoice / PO billing",
+                         "Onboarding & training"],
+        },
+    ]
+    for p in plans:
+        p["current"] = (org.subscription_tier == p["code"])
+
     return render(request, "accounts/subscription.html", {
-        "org": ctx.organisation,
+        "org": org,
         "membership": ctx.membership,
+        "plans": plans,
     })
 
 
