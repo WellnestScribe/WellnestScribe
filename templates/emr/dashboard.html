@@ -14,6 +14,11 @@
         <div class="d-flex gap-2 flex-wrap">
             <a href="{% url 'emr:patient_search' %}" class="btn btn-outline-secondary btn-sm">Find patient</a>
             <a href="{% url 'emr:patient_create' %}" class="btn btn-primary btn-sm">Register patient</a>
+            <form method="post" action="{% url 'emr:worklist_close_day' %}" class="m-0"
+                  onsubmit="return confirm('Save the worklist for the day? Everyone still waiting will be cleared from the queue.');">
+                {% csrf_token %}
+                <button class="btn btn-outline-secondary btn-sm" title="End of day — clear the queue">Save worklist for the day</button>
+            </form>
             {% if emr_membership.is_admin %}
                 <a href="{% url 'emr:settings' %}" class="btn btn-outline-secondary btn-sm">Clinic settings</a>
             {% endif %}
@@ -79,82 +84,91 @@
                         <div>
                             <h5 class="fw-semibold mb-1">Daily worklist</h5>
                             <p class="text-muted small mb-0">
-                                Front desk, triage, and doctor flow in one place.
+                                Waiting patients are numbered in order (①  first). Completed / left drop to the bottom.
                             </p>
+                        </div>
+                        <div class="session-search" style="min-width:220px;">
+                            <iconify-icon icon="iconamoon:search-duotone" class="search-icon"></iconify-icon>
+                            <input type="search" id="worklistSearch" class="form-control" placeholder="Search worklist…" aria-label="Search worklist">
                         </div>
                     </div>
 
                     {% if appointments %}
-                        <div class="d-flex flex-column gap-3">
+                        <div class="d-flex flex-column gap-3" id="worklistList" style="max-height: 62vh; overflow-y: auto;">
                             {% for appointment in appointments %}
-                                <div class="emr-worklist-card">
+                                <div class="emr-worklist-card {% if not appointment.queue_position %}opacity-75{% endif %}"
+                                     data-worklist-search="{{ appointment.patient.display_name|lower }} {{ appointment.notes|lower }}">
                                     <div class="d-flex align-items-start justify-content-between flex-wrap gap-3">
-                                        <div>
-                                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                                <h6 class="mb-0 fw-semibold">{{ appointment.patient.display_name }}</h6>
-                                                <span class="badge rounded-pill bg-primary-subtle text-primary">
-                                                    {{ appointment.get_encounter_type_display }}
-                                                </span>
-                                                <span class="badge rounded-pill bg-light text-dark border">
-                                                    {{ appointment.get_status_display }}
-                                                </span>
-                                            </div>
-                                            <div class="small text-muted mt-1">
-                                                {{ appointment.scheduled_for|date:"g:i A" }}
-                                                {% if appointment.queue_number %}· Queue {{ appointment.queue_number }}{% endif %}
-                                                {% if appointment.notes %}· {{ appointment.notes|truncatechars:80 }}{% endif %}
+                                        <div class="d-flex align-items-start gap-2">
+                                            {% if appointment.queue_position %}
+                                                <span class="badge rounded-pill bg-primary fs-6 d-flex align-items-center justify-content-center"
+                                                      style="min-width:2rem;height:2rem;" title="Queue position">{{ appointment.queue_position }}</span>
+                                            {% endif %}
+                                            <div>
+                                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                                    <h6 class="mb-0 fw-semibold">{{ appointment.patient.display_name }}</h6>
+                                                    <span class="badge rounded-pill bg-primary-subtle text-primary">{{ appointment.get_encounter_type_display }}</span>
+                                                    {% if appointment.queue_position %}
+                                                        <span class="badge rounded-pill bg-info-subtle text-info">Waiting</span>
+                                                    {% elif appointment.status == "complete" %}
+                                                        <span class="badge rounded-pill bg-success-subtle text-success">Seen</span>
+                                                    {% elif appointment.status == "cancelled" %}
+                                                        <span class="badge rounded-pill bg-secondary-subtle text-secondary">Left</span>
+                                                    {% else %}
+                                                        <span class="badge rounded-pill bg-light text-dark border">{{ appointment.get_status_display }}</span>
+                                                    {% endif %}
+                                                </div>
+                                                <div class="small text-muted mt-1">
+                                                    {{ appointment.scheduled_for|date:"g:i A" }}
+                                                    {% if appointment.notes %}· {{ appointment.notes|truncatechars:80 }}{% endif %}
+                                                </div>
                                             </div>
                                         </div>
                                         <div class="d-flex gap-2 flex-wrap">
-                                            <a href="{% url 'emr:patient_detail' appointment.patient.pk %}" class="btn btn-outline-secondary btn-sm">
-                                                Open chart
-                                            </a>
-                                            <a href="{% url 'emr:triage' appointment.pk %}" class="btn btn-outline-secondary btn-sm">
-                                                Vitals
-                                            </a>
+                                            <a href="{% url 'emr:patient_detail' appointment.patient.pk %}" class="btn btn-outline-secondary btn-sm">Open chart</a>
+                                            <a href="{% url 'emr:intake' appointment.patient.pk %}" class="btn btn-primary btn-sm">Intake &amp; vitals</a>
                                             {% with latest_encounter=appointment.encounters.all|first %}
                                                 {% if latest_encounter %}
-                                                    <a href="{% url 'emr:encounter_edit' appointment.patient.pk latest_encounter.pk %}" class="btn btn-primary btn-sm">
-                                                        Open encounter
-                                                    </a>
-                                                {% else %}
-                                                    <a href="{% url 'emr:encounter_create' appointment.patient.pk %}?appointment={{ appointment.pk }}" class="btn btn-primary btn-sm">
-                                                        Start encounter
-                                                    </a>
+                                                    <a href="{% url 'emr:encounter_edit' appointment.patient.pk latest_encounter.pk %}" class="btn btn-outline-secondary btn-sm">Advanced record</a>
                                                 {% endif %}
                                             {% endwith %}
                                         </div>
                                     </div>
 
                                     <div class="d-flex gap-2 flex-wrap mt-3">
-                                        {% if appointment.status != "checked_in" %}
-                                            <form method="post" action="{% url 'emr:appointment_status' appointment.pk %}">
-                                                {% csrf_token %}
-                                                <input type="hidden" name="status" value="checked_in">
-                                                <button class="btn btn-light btn-sm border">Check in</button>
+                                        {% if appointment.queue_position %}
+                                            <form method="post" action="{% url 'emr:appointment_reorder' appointment.pk %}">
+                                                {% csrf_token %}<input type="hidden" name="direction" value="up">
+                                                <button class="btn btn-light btn-sm border" title="Move up"><iconify-icon icon="iconamoon:arrow-up-2-duotone"></iconify-icon></button>
                                             </form>
-                                        {% endif %}
-                                        {% if appointment.status != "triage" %}
-                                            <form method="post" action="{% url 'emr:appointment_status' appointment.pk %}">
-                                                {% csrf_token %}
-                                                <input type="hidden" name="status" value="triage">
-                                                <button class="btn btn-light btn-sm border">Move to triage</button>
+                                            <form method="post" action="{% url 'emr:appointment_reorder' appointment.pk %}">
+                                                {% csrf_token %}<input type="hidden" name="direction" value="down">
+                                                <button class="btn btn-light btn-sm border" title="Move down"><iconify-icon icon="iconamoon:arrow-down-2-duotone"></iconify-icon></button>
                                             </form>
-                                        {% endif %}
-                                        {% if appointment.status != "with_doctor" %}
-                                            <form method="post" action="{% url 'emr:appointment_status' appointment.pk %}">
-                                                {% csrf_token %}
-                                                <input type="hidden" name="status" value="with_doctor">
-                                                <button class="btn btn-light btn-sm border">Ready for doctor</button>
+                                            <form method="post" action="{% url 'emr:appointment_status' appointment.pk %}"
+                                                  onsubmit="return confirm('Mark {{ appointment.patient.display_name|escapejs }} as seen? They will be removed from the queue.');">
+                                                {% csrf_token %}<input type="hidden" name="status" value="complete">
+                                                <button class="btn btn-light btn-sm border">Mark seen</button>
                                             </form>
-                                        {% endif %}
-                                        {% if appointment.status != "complete" %}
                                             <form method="post" action="{% url 'emr:appointment_status' appointment.pk %}">
-                                                {% csrf_token %}
-                                                <input type="hidden" name="status" value="complete">
-                                                <button class="btn btn-light btn-sm border">Mark complete</button>
+                                                {% csrf_token %}<input type="hidden" name="status" value="cancelled">
+                                                <button class="btn btn-light btn-sm border text-danger" title="Patient left / did not wait">Patient left</button>
                                             </form>
+                                        {% elif appointment.status == "cancelled" %}
+                                            <form method="post" action="{% url 'emr:appointment_status' appointment.pk %}">
+                                                {% csrf_token %}<input type="hidden" name="status" value="triage">
+                                                <button class="btn btn-light btn-sm border">Re-add to queue</button>
+                                            </form>
+                                        {% else %}
+                                            <span class="small text-muted align-self-center">Seen — start a new Intake for a return visit.</span>
                                         {% endif %}
+                                        <form method="post" action="{% url 'emr:appointment_delete' appointment.pk %}" class="ms-auto m-0"
+                                              onsubmit="return confirm('Remove {{ appointment.patient.display_name|escapejs }} from the worklist permanently? The clinical note is kept.');">
+                                            {% csrf_token %}
+                                            <button class="btn btn-sm border-0 text-danger" title="Remove from worklist permanently">
+                                                <iconify-icon icon="iconamoon:trash-duotone"></iconify-icon> Remove
+                                            </button>
+                                        </form>
                                     </div>
                                 </div>
                             {% endfor %}
@@ -163,9 +177,9 @@
                         <div class="emr-empty-state">
                             <h6 class="fw-semibold">No patients on today’s worklist yet</h6>
                             <p class="text-muted small mb-3">
-                                Register a patient, then schedule a visit from the patient chart.
+                                Find or register a patient, then press <strong>Intake &amp; queue</strong> on their chart.
                             </p>
-                            <a href="{% url 'emr:patient_create' %}" class="btn btn-primary btn-sm">Register patient</a>
+                            <a href="{% url 'emr:patient_search' %}" class="btn btn-primary btn-sm">Find patient</a>
                         </div>
                     {% endif %}
                 </div>
@@ -200,4 +214,18 @@
         </div>
     </div>
 </div>
+
+<script>
+(function () {
+  var input = document.getElementById('worklistSearch');
+  var list = document.getElementById('worklistList');
+  if (!input || !list) return;
+  input.addEventListener('input', function () {
+    var q = input.value.trim().toLowerCase();
+    list.querySelectorAll('[data-worklist-search]').forEach(function (card) {
+      card.style.display = (!q || card.getAttribute('data-worklist-search').indexOf(q) >= 0) ? '' : 'none';
+    });
+  });
+})();
+</script>
 {% endblock %}

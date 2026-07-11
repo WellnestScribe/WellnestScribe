@@ -206,6 +206,99 @@ def build_scribe_import_bundle(
     return bundle
 
 
+def materialize_encounter_from_session(session, user):
+    """Auto-create/populate an EMR encounter from a finalized scribe session.
+
+    This is the automatic version of "import from scribe": when the doctor
+    finalizes the note, we deterministically extract the structured data and
+    write it straight into the patient's encounter (reusing today's intake
+    encounter if one exists), link the scribe session + provider, and leave it
+    as a DRAFT for the clinician to review and sign. No AI, no manual re-linking.
+
+    Best-effort and idempotent-ish: never overwrites a signed encounter, never
+    clobbers an encounter already owned by a different scribe session, and skips
+    duplicate diagnoses/medications/vitals. Returns the Encounter, or None.
+    """
+    from django.utils import timezone as _tz
+
+    from emr.models import Diagnosis, Encounter, Medication, Vital
+    from emr.services.access import get_membership
+
+    patient = getattr(session, "patient", None)
+    if patient is None:
+        return None
+    org = get_membership(session.doctor).organisation
+    if patient.organisation_id != org.pk:
+        return None
+
+    today = _tz.localdate()
+    enc = (
+        Encounter.objects.filter(patient=patient, organisation=org, encounter_date=today)
+        .exclude(encounter_status="signed")
+        .order_by("-created_at")
+        .first()
+    )
+    if enc is not None and enc.scribe_session_id and enc.scribe_session_id != session.pk:
+        return enc  # a different note already owns this encounter — leave it
+
+    bundle = build_scribe_import_bundle(session, encounter_date=today)
+    ei = bundle.encounter_initial
+
+    if enc is None:
+        enc = Encounter(organisation=org, patient=patient, encounter_date=today, created_by=user)
+    enc.scribe_session = session
+    if enc.provider_id is None:
+        enc.provider = user
+    for f in (
+        "chief_complaint", "history_of_presenting_illness", "physical_examination",
+        "assessment_notes", "plan_notes", "review_of_systems",
+        "follow_up_instructions", "herbal_remedies", "sick_leave_diagnosis",
+    ):
+        if ei.get(f):
+            setattr(enc, f, ei[f])
+    for f in ("encounter_type", "follow_up_date", "sick_leave_start", "sick_leave_end"):
+        if ei.get(f):
+            setattr(enc, f, ei[f])
+    if enc.created_by_id is None:
+        enc.created_by = user
+    enc.updated_by = user
+    if not enc.encounter_status or enc.encounter_status not in {"signed"}:
+        enc.encounter_status = "draft"
+    enc.save()
+
+    if bundle.vitals_initial and not Vital.objects.filter(encounter=enc).exists():
+        vital = Vital(organisation=org, patient=patient, encounter=enc, recorded_by=user)
+        for key, value in bundle.vitals_initial.items():
+            setattr(vital, key, value)
+        vital.save()
+
+    existing_codes = set(Diagnosis.objects.filter(encounter=enc).values_list("icd10_code", flat=True))
+    for d in bundle.diagnosis_initial:
+        if d["icd10_code"] in existing_codes:
+            continue
+        Diagnosis.objects.create(
+            organisation=org, patient=patient, encounter=enc,
+            icd10_code=d["icd10_code"], icd10_description=d.get("icd10_description", ""),
+            status=d.get("status", "active"), diagnosis_rank=d.get("diagnosis_rank", 1),
+            notes=d.get("notes", ""), diagnosing_provider=user, ai_suggested=True,
+        )
+
+    existing_meds = set(Medication.objects.filter(encounter=enc).values_list("drug_name_generic", flat=True))
+    for m in bundle.medication_initial:
+        if m["drug_name_generic"] in existing_meds:
+            continue
+        Medication.objects.create(
+            organisation=org, patient=patient, encounter=enc,
+            drug_name_generic=m["drug_name_generic"], drug_name_brand=m.get("drug_name_brand", ""),
+            dose_amount=m.get("dose_amount"), dose_unit=m.get("dose_unit", ""),
+            route=m.get("route", ""), frequency=m.get("frequency", ""),
+            duration_days=m.get("duration_days"), pharmacy_instructions=m.get("pharmacy_instructions", ""),
+            prescribing_provider=user, ai_suggested=True,
+        )
+
+    return enc
+
+
 def _build_encounter_initial(
     *,
     session: ScribeSession,

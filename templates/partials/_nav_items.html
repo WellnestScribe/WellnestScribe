@@ -5,6 +5,8 @@ Sections are collapsible — state saved in localStorage.
 {% url 'scribe:record' as record_url %}
 {% url 'scribe:history' as history_url %}
 {% url 'emr:dashboard' as emr_url %}
+{% url 'emr:patient_create' as patient_create_url %}
+{% url 'emr:patient_search' as patient_search_url %}
 {% url 'accounts:profile' as profile_url %}
 {% url 'ed:board' as ed_board_url %}
 {% url 'ed:new_visit' as ed_new_url %}
@@ -43,6 +45,32 @@ Sections are collapsible — state saved in localStorage.
 </li>
 </div>
 
+{# ── Front Desk / Nurse Section ── #}
+<li class="menu-title nav-section-toggle" data-section="nav-frontdesk" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;">
+  <span>Front Desk</span>
+  <iconify-icon icon="iconamoon:arrow-up-2-duotone" id="nav-frontdesk-chevron" style="font-size:0.8rem;transition:transform 0.2s;"></iconify-icon>
+</li>
+<div id="nav-frontdesk">
+<li class="nav-item">
+    <a class="nav-link {% if request.path == emr_url %}active{% endif %}" href="{{ emr_url }}">
+        <span class="nav-icon"><iconify-icon icon="mdi:clipboard-list-outline"></iconify-icon></span>
+        <span class="nav-text">Worklist &amp; queue</span>
+    </a>
+</li>
+<li class="nav-item">
+    <a class="nav-link {% if request.path == patient_create_url %}active{% endif %}" href="{{ patient_create_url }}">
+        <span class="nav-icon"><iconify-icon icon="mdi:account-plus-outline"></iconify-icon></span>
+        <span class="nav-text">Register patient</span>
+    </a>
+</li>
+<li class="nav-item">
+    <a class="nav-link {% if request.path == patient_search_url %}active{% endif %}" href="{{ patient_search_url }}">
+        <span class="nav-icon"><iconify-icon icon="mdi:account-search-outline"></iconify-icon></span>
+        <span class="nav-text">Find patient</span>
+    </a>
+</li>
+</div>
+
 {# ── Workspace Section ── #}
 <li class="menu-title nav-section-toggle" data-section="nav-workspace" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;">
   <span>Scribe</span>
@@ -59,12 +87,6 @@ Sections are collapsible — state saved in localStorage.
     <a class="nav-link {% if request.path == history_url %}active{% endif %}" href="{{ history_url }}">
         <span class="nav-icon"><iconify-icon icon="iconamoon:folder-duotone"></iconify-icon></span>
         <span class="nav-text">Sessions</span>
-    </a>
-</li>
-<li class="nav-item">
-    <a class="nav-link {% if request.path|slice:":5" == '/emr/' %}active{% endif %}" href="{{ emr_url }}">
-        <span class="nav-icon"><iconify-icon icon="mdi:file-document-multiple"></iconify-icon></span>
-        <span class="nav-text">EMR</span>
     </a>
 </li>
 {% url 'scribe:drug_check' as drug_check_url %}
@@ -159,6 +181,27 @@ Sections are collapsible — state saved in localStorage.
         <span class="nav-text">Users &amp; Orgs</span>
     </a>
 </li>
+
+{% if is_admin %}
+{% url 'accounts:billing' as billing_url %}
+<li class="nav-item">
+    <a class="nav-link {% if request.path == billing_url %}active{% endif %}" href="{{ billing_url }}">
+        <span class="nav-icon">
+            <iconify-icon icon="iconamoon:credit-card-duotone"></iconify-icon>
+        </span>
+        <span class="nav-text">Billing</span>
+    </a>
+</li>
+{% url 'accounts:docs' as docs_url %}
+<li class="nav-item">
+    <a class="nav-link {% if request.path|slice:':15' == '/accounts/docs/' %}active{% endif %}" href="{{ docs_url }}">
+        <span class="nav-icon">
+            <iconify-icon icon="mdi:book-open-variant"></iconify-icon>
+        </span>
+        <span class="nav-text">Documentation</span>
+    </a>
+</li>
+{% endif %}
 
 {% if is_admin %}
 <li class="nav-item">

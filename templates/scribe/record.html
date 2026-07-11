@@ -141,9 +141,135 @@
         </div>
     </div>
 
-    {# Hidden fields: patient identity is captured on the review screen after the session is created #}
-    <input type="hidden" id="patientName" value="">
+    {% if not scribe_enabled %}
+    <div class="row">
+        <div class="col-12">
+            <div class="alert alert-warning d-flex align-items-start gap-2">
+                <iconify-icon icon="iconamoon:lock-duotone" class="fs-4 mt-1"></iconify-icon>
+                <div>
+                    <strong class="d-block">AI scribe is paused for your clinic</strong>
+                    <span class="small">
+                        Recording and note generation are off while your subscription is paused
+                        {% if subscription_expires %}(since {{ subscription_expires|date:"M j, Y" }}){% endif %}.
+                        <strong>Your patient records, history, and search stay fully available.</strong>
+                        Please reach out to renew — we're happy to help you get back up quickly.
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    (function () {
+      ['#recordBtn', '#ambientRecordBtn'].forEach(function (sel) {
+        document.querySelectorAll(sel).forEach(function (el) {
+          el.disabled = true;
+          el.style.opacity = '.4';
+          el.style.pointerEvents = 'none';
+          el.setAttribute('title', 'AI scribe paused — subscription');
+        });
+      });
+    })();
+    </script>
+    {% endif %}
+
+
+    {# Context bar shown only when arriving from a patient chart (?patient=id); demographics lock to that record. #}
+    {% if selected_patient %}
+    <div class="row">
+        <div class="col-12">
+            <div class="alert alert-primary d-flex align-items-center justify-content-between flex-wrap gap-2 py-2 px-3 mb-3">
+                <div class="d-flex align-items-center gap-2">
+                    <iconify-icon icon="iconamoon:profile-duotone" class="fs-4"></iconify-icon>
+                    <div>
+                        <strong>Recording for {{ selected_patient.full_name }}</strong>
+                        <span class="small d-block opacity-75">
+                            {{ selected_patient.age_display }} yrs · {{ selected_patient.get_sex_display }}{% if selected_patient.trn %} · TRN {{ selected_patient.trn }}{% elif selected_patient.nhf_card_number %} · NHF {{ selected_patient.nhf_card_number }}{% endif %}
+                        </span>
+                        {% if selected_patient_vitals %}
+                        <span class="small d-block mt-1">
+                            <iconify-icon icon="iconamoon:heart-duotone" class="me-1 align-middle text-danger"></iconify-icon>
+                            <span class="fw-semibold">Nurse vitals:</span>
+                            {% if selected_patient_vitals.bp_systolic and selected_patient_vitals.bp_diastolic %}BP {{ selected_patient_vitals.bp_systolic }}/{{ selected_patient_vitals.bp_diastolic }}{% endif %}{% if selected_patient_vitals.temperature_celsius %} · {{ selected_patient_vitals.temperature_celsius }}°C{% endif %}{% if selected_patient_vitals.weight_kg %} · {{ selected_patient_vitals.weight_kg }}kg{% endif %}{% if selected_patient_vitals.blood_glucose_mmol %} · Glu {{ selected_patient_vitals.blood_glucose_mmol }}{% endif %}
+                            <span class="opacity-75">— added to the note automatically</span>
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="readNotesBtn" data-patient-id="{{ selected_patient.pk }}">
+                        <iconify-icon icon="iconamoon:file-document-duotone" class="me-1 align-middle"></iconify-icon>Read past notes
+                    </button>
+                    <a href="{% url 'emr:patient_detail' selected_patient.pk %}" class="btn btn-outline-primary btn-sm">Full chart</a>
+                    <a href="{% url 'scribe:record' %}" class="btn btn-outline-secondary btn-sm">Clear</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# S2: quick read of the patient's last notes before recording — no AI. #}
+    <div class="modal fade" id="recentNotesModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-semibold" id="recentNotesTitle">Past notes</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="recentNotesBody">
+                    <p class="text-muted small mb-0">Loading…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    (function () {
+      var btn = document.getElementById('readNotesBtn');
+      if (!btn) return;
+      function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+      btn.addEventListener('click', function () {
+        var pid = btn.getAttribute('data-patient-id');
+        var body = document.getElementById('recentNotesBody');
+        body.innerHTML = '<p class="text-muted small mb-0">Loading…</p>';
+        var modalEl = document.getElementById('recentNotesModal');
+        if (typeof bootstrap !== 'undefined') bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        fetch('/scribe/api/patient/' + pid + '/recent-notes/', { credentials: 'same-origin' })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            var notes = (d && d.notes) || [];
+            document.getElementById('recentNotesTitle').textContent = 'Past notes — ' + esc(d.patient || '');
+            if (!notes.length) { body.innerHTML = '<p class="text-muted small mb-0">No previous notes for this patient yet.</p>'; return; }
+            var html = '<div class="d-flex flex-column gap-3">';
+            notes.forEach(function (n) {
+              html += '<div class="card border">' +
+                '<div class="card-body p-3">' +
+                  '<div class="d-flex justify-content-between align-items-center mb-2">' +
+                    '<span class="badge bg-primary-subtle text-primary">' + esc(n.date) + '</span>' +
+                    '<a href="' + esc(n.review_url) + '" target="_blank" class="btn btn-outline-secondary btn-sm py-0">Open full note →</a>' +
+                  '</div>' +
+                  '<div class="fw-semibold mb-1">' + esc(n.complaint) + '</div>' +
+                  (n.summary
+                    ? '<p class="small text-muted mb-0" style="white-space:pre-wrap;max-height:8rem;overflow:auto;">' + esc(n.summary) + '</p>'
+                    : '<p class="small text-muted mb-0">No summary text.</p>') +
+                '</div>' +
+              '</div>';
+            });
+            html += '</div>';
+            body.innerHTML = html;
+          })
+          .catch(function () { body.innerHTML = '<p class="text-danger small mb-0">Could not load notes.</p>'; });
+      });
+    })();
+    </script>
+    {% endif %}
+
+    {# Patient id is authoritative when set; server pulls name/sex/ID from the record. #}
+    <input type="hidden" id="patientId" value="{{ selected_patient.pk|default:'' }}">
+    <input type="hidden" id="patientName" value="{{ selected_patient.full_name|default:'' }}">
     <input type="hidden" id="patientIdentifier" value="">
+
+    {# Mobile/tablet queue (desktop carousel is hidden below xl). #}
+    <div class="d-xl-none">
+        {% include "partials/_waiting_queue.html" %}
+    </div>
 
     <div class="row g-4">
         <div class="col-12 col-xl-7">
@@ -498,6 +624,96 @@
         </div>
 
         <div class="col-12 col-xl-5 d-none d-xl-block">
+            {# Waiting-queue carousel — compact, right column, hidden when empty. Doctor swipes/arrows and clicks a card to record. #}
+            <div class="card mb-3 d-none border-primary-subtle" id="queueCarouselCard">
+                <div class="card-body p-3">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <h6 class="fw-semibold m-0 d-flex align-items-center gap-2">
+                            <iconify-icon icon="iconamoon:profile-circle-duotone" class="text-primary"></iconify-icon>
+                            Waiting <span class="badge bg-primary-subtle text-primary" id="queueCarouselCount">0</span>
+                        </h6>
+                        <div class="d-flex gap-1">
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" id="queuePrevBtn" title="Previous (←)"><iconify-icon icon="iconamoon:arrow-left-2-bold"></iconify-icon></button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" id="queueNextBtn" title="Next (→)"><iconify-icon icon="iconamoon:arrow-right-2-bold"></iconify-icon></button>
+                        </div>
+                    </div>
+                    <style>#queueCarouselTrack::-webkit-scrollbar{display:none;}</style>
+                    <div id="queueCarouselTrack" tabindex="0" style="display:flex;gap:10px;overflow-x:auto;scroll-behavior:smooth;outline:none;padding-bottom:2px;cursor:grab;user-select:none;scrollbar-width:none;-ms-overflow-style:none;"></div>
+                </div>
+            </div>
+            <script>
+            (function () {
+              var card = document.getElementById('queueCarouselCard');
+              var track = document.getElementById('queueCarouselTrack');
+              var countEl = document.getElementById('queueCarouselCount');
+              if (!card || !track) return;
+              function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+              function mins(iso) { try { var d = new Date(iso); return Math.max(0, Math.round((Date.now() - d.getTime()) / 60000)) + 'm'; } catch (e) { return ''; } }
+              function render(data) {
+                var q = (data && data.queue) || [];
+                if (!q.length) { card.classList.add('d-none'); track.innerHTML = ''; return; }
+                card.classList.remove('d-none');
+                if (countEl) countEl.textContent = q.length;
+                var html = '';
+                q.forEach(function (p) {
+                  var v = p.vitals || {}, vs = [];
+                  if (v.bp) vs.push('BP ' + esc(v.bp));
+                  if (v.temp) vs.push(esc(v.temp));
+                  if (v.glucose) vs.push('Glu ' + esc(v.glucose));
+                  html += '<a href="' + esc(p.record_url) + '" draggable="false"' +
+                    ' data-vf="' + esc(JSON.stringify(p.vitals_full || [])) + '" data-nm="' + esc(p.name) + '" data-cc="' + esc(p.complaint || '') + '"' +
+                    ' style="flex:0 0 155px;min-width:155px;text-decoration:none;display:block;">' +
+                    '<div class="border rounded-3 p-2 h-100" style="background:var(--bs-tertiary-bg);">' +
+                      '<div class="d-flex justify-content-between align-items-start gap-1">' +
+                        '<span class="fw-semibold text-truncate text-body" style="font-size:.85rem;">' + esc(p.name) + '</span>' +
+                        '<span class="badge rounded-pill bg-primary text-white flex-shrink-0" style="font-size:.6rem;">' + p.position + '</span>' +
+                      '</div>' +
+                      '<div class="text-muted text-truncate" style="font-size:.7rem;">' + esc(p.mrn) + ' · ' + esc(p.age) + 'y</div>' +
+                      '<div class="text-truncate text-body mt-1" style="font-size:.72rem;">' + (p.complaint ? esc(p.complaint) : '<span class="text-muted">no complaint</span>') + '</div>' +
+                      '<div class="text-muted text-truncate" style="font-size:.68rem;">' + (vs.length ? vs.join(' · ') : 'vitals pending') + '</div>' +
+                      '<div class="mt-1"><span class="badge bg-primary-subtle text-primary" style="font-size:.62rem;">' + mins(p.scheduled_for) + ' waiting</span></div>' +
+                    '</div></a>';
+                });
+                track.innerHTML = html;
+              }
+              function shift(dir) { track.scrollBy({left: dir * 165, behavior: 'smooth'}); }
+              document.getElementById('queuePrevBtn').addEventListener('click', function () { shift(-1); });
+              document.getElementById('queueNextBtn').addEventListener('click', function () { shift(1); });
+              track.addEventListener('keydown', function (e) { if (e.key === 'ArrowLeft') { e.preventDefault(); shift(-1); } else if (e.key === 'ArrowRight') { e.preventDefault(); shift(1); } });
+              // Real click-and-drag scrolling. Kill the browser's native link-drag ghost.
+              track.addEventListener('dragstart', function (e) { e.preventDefault(); });
+              var isDown = false, startX = 0, startScroll = 0, moved = false;
+              track.addEventListener('mousedown', function (e) { isDown = true; moved = false; startX = e.pageX; startScroll = track.scrollLeft; track.style.cursor = 'grabbing'; e.preventDefault(); });
+              window.addEventListener('mouseup', function () { if (isDown) { isDown = false; track.style.cursor = 'grab'; } });
+              track.addEventListener('mousemove', function (e) { if (!isDown) return; var dx = e.pageX - startX; if (Math.abs(dx) > 3) moved = true; track.scrollLeft = startScroll - dx; });
+              track.addEventListener('click', function (e) { if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; } }, true);
+              // Hover ~1.2s over a queue card → floating full-vitals popover.
+              var pop = document.createElement('div');
+              pop.className = 'card shadow border';
+              pop.style.cssText = 'position:fixed;z-index:1080;display:none;max-width:250px;';
+              document.body.appendChild(pop);
+              var hoverTimer = null, hoverCard = null;
+              function showPop(cardEl) {
+                var vf = []; try { vf = JSON.parse(cardEl.getAttribute('data-vf') || '[]'); } catch (e) {}
+                var nm = cardEl.getAttribute('data-nm') || '', cc = cardEl.getAttribute('data-cc') || '';
+                var h = '<div class="card-body p-2"><div class="fw-semibold small mb-1">' + esc(nm) + '</div>';
+                if (cc) h += '<div class="small text-muted mb-1">' + esc(cc) + '</div>';
+                if (vf.length) { h += '<div class="small">'; vf.forEach(function (v) { h += '<div class="d-flex justify-content-between gap-2"><span class="text-muted">' + esc(v.label) + '</span><span class="fw-semibold">' + esc(v.value) + '</span></div>'; }); h += '</div>'; }
+                else h += '<div class="small text-warning-emphasis">Vitals pending</div>';
+                pop.innerHTML = h + '</div>';
+                var r = cardEl.getBoundingClientRect();
+                pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 258)) + 'px';
+                pop.style.top = (r.bottom + 6) + 'px';
+                pop.style.display = 'block';
+              }
+              track.addEventListener('mouseover', function (e) { var cardEl = e.target.closest('a[data-vf]'); if (!cardEl || cardEl === hoverCard) return; hoverCard = cardEl; clearTimeout(hoverTimer); hoverTimer = setTimeout(function () { showPop(cardEl); }, 1200); });
+              track.addEventListener('mouseout', function (e) { if (e.target.closest('a[data-vf]')) { hoverCard = null; clearTimeout(hoverTimer); pop.style.display = 'none'; } });
+              function poll() { if (document.hidden) return; fetch('/emr/api/queue/', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) { if (d) render(d); }).catch(function () {}); }
+              poll();
+              setInterval(poll, 12000);
+              document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
+            })();
+            </script>
             <div class="card h-100">
                 <div class="card-body p-4">
                     <div class="d-flex align-items-center justify-content-between mb-3">
@@ -509,11 +725,13 @@
                         <div class="session-search mb-3">
                             <iconify-icon icon="iconamoon:search-duotone" class="search-icon"></iconify-icon>
                             <input type="search"
+                                   id="recentSearchInput"
                                    class="form-control"
                                    data-session-filter="#recentList"
-                                   placeholder="Search recent sessions…"
-                                   aria-label="Search recent sessions">
+                                   placeholder="Search sessions or patients…"
+                                   aria-label="Search sessions or patients">
                         </div>
+                        <div id="recentPatientMatches" class="d-flex flex-column gap-1 mb-2"></div>
                         <div class="d-flex flex-column" id="recentList">
                             {% for s in recent_sessions %}
                                 <a href="{% url 'scribe:review' s.pk %}"
@@ -535,6 +753,86 @@
                                 </a>
                             {% endfor %}
                         </div>
+                        <script>
+                        (function () {
+                          var list = document.getElementById('recentList');
+                          if (!list) return;
+                          function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+                          function rowHtml(s) {
+                            return '<a href="' + esc(s.review_url) + '" class="recent-session-row text-decoration-none" data-session-search="' + esc(s.search) + '">' +
+                              '<span class="rsr-icon"><iconify-icon icon="iconamoon:file-document-duotone"></iconify-icon></span>' +
+                              '<span class="rsr-body">' +
+                                '<span class="rsr-name">' + esc(s.name) + (s.sensitive ? ' <span class="badge ms-1" style="background:#fff3cd;color:#664d03;border:1px solid #ffc107;font-size:0.6rem;">S</span>' : '') + '</span>' +
+                                '<span class="rsr-meta">' + esc(s.meta) + '</span>' +
+                              '</span>' +
+                              '<span class="rsr-status rsr-status--' + esc(s.status) + '">' + esc(s.status_label) + '</span>' +
+                            '</a>';
+                          }
+                          var lastSig = null;
+                          function poll() {
+                            if (document.hidden) return;
+                            fetch('/scribe/api/recent-sessions/', { credentials: 'same-origin' })
+                              .then(function (r) { return r.ok ? r.json() : null; })
+                              .then(function (d) {
+                                if (!d || !d.sessions) return;
+                                var sig = d.sessions.map(function (s) { return s.pk + ':' + s.status; }).join(',');
+                                if (lastSig === null) { lastSig = sig; return; } // keep server-rendered rows on first poll
+                                if (sig === lastSig) return;
+                                lastSig = sig;
+                                list.innerHTML = d.sessions.map(rowHtml).join('');
+                              }).catch(function () {});
+                          }
+                          setInterval(poll, 15000);
+                          document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
+                        })();
+                        </script>
+                        <script>
+                        /* Recent-sessions search doubles as a facility-wide patient search:
+                           type a name → matching registered patients appear with a link to
+                           their chart (read-only history), across the whole clinic. */
+                        (function () {
+                          var input   = document.getElementById('recentSearchInput');
+                          var matches = document.getElementById('recentPatientMatches');
+                          if (!input || !matches) return;
+                          function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+                          var cache = null;
+                          function load() {
+                            if (cache) return Promise.resolve(cache);
+                            return fetch('/scribe/api/patients/', { credentials: 'same-origin' })
+                              .then(function (r) { return r.json(); })
+                              .then(function (d) { cache = (d.patients || []).filter(function (p) { return p.patient_id; }); return cache; })
+                              .catch(function () { return []; });
+                          }
+                          function render(list, q) {
+                            if (!list.length) { matches.innerHTML = ''; return; }
+                            var html = '<div class="text-uppercase fw-semibold px-1" style="font-size:0.62rem;letter-spacing:0.07em;color:var(--bs-secondary-color);">Patients</div>';
+                            list.slice(0, 6).forEach(function (p) {
+                              var meta = (p.session_count > 0 ? p.session_count + (p.session_count > 1 ? ' visits' : ' visit') : 'No visits yet')
+                                       + (p.identifier ? ' · ' + esc(p.identifier) : '');
+                              html += '<a href="/emr/patients/' + p.patient_id + '/" class="recent-session-row text-decoration-none">' +
+                                '<span class="rsr-icon"><iconify-icon icon="iconamoon:profile-duotone"></iconify-icon></span>' +
+                                '<span class="rsr-body"><span class="rsr-name">' + esc(p.name) + '</span>' +
+                                  '<span class="rsr-meta">' + meta + '</span></span>' +
+                                '<span class="rsr-status">Chart →</span></a>';
+                            });
+                            matches.innerHTML = html;
+                          }
+                          var t = null;
+                          input.addEventListener('input', function () {
+                            var q = this.value.trim().toLowerCase();
+                            if (t) clearTimeout(t);
+                            if (q.length < 2) { matches.innerHTML = ''; return; }
+                            t = setTimeout(function () {
+                              load().then(function (pts) {
+                                render(pts.filter(function (p) {
+                                  return p.name.toLowerCase().indexOf(q) >= 0
+                                      || (p.identifier || '').toLowerCase().indexOf(q) >= 0;
+                                }), q);
+                              });
+                            }, 180);
+                          });
+                        })();
+                        </script>
                     {% else %}
                         <div class="text-center py-4 text-muted">
                             <iconify-icon icon="iconamoon:folder-light" class="fs-2 mb-2"></iconify-icon>
@@ -1179,26 +1477,30 @@
     var html = '';
     filtered.forEach(function (p) {
       var disambig = (p.ambiguous && p.identifier) ? ' <span style="font-size:0.7rem;opacity:0.65;">(' + _esc(p.identifier) + ')</span>' : '';
-      var visits = p.session_count > 1 ? p.session_count + ' visits' : '1 visit';
+      var sc = p.session_count || 0;
+      var visits = sc > 1 ? sc + ' visits' : (sc === 1 ? '1 visit' : 'Registered');
+      /* Arrow opens the last session — only meaningful if one exists */
+      var arrow = p.last_pk
+        ? '<a href="/scribe/sessions/' + p.last_pk + '/review/" class="patient-last-link" target="_blank" ' +
+             'title="Open last session" onclick="event.stopPropagation();">' +
+            '<iconify-icon icon="iconamoon:arrow-right-2-light"></iconify-icon></a>'
+        : '';
       html += '<li class="patient-item"' +
         ' data-name="' + _esc(p.name) + '"' +
+        ' data-patient-id="' + (p.patient_id || '') + '"' +
         ' data-last-pk="' + (p.last_pk || '') + '"' +
         ' data-identifier="' + _esc(p.identifier || '') + '"' +
         ' data-gender="' + _esc(p.gender || '') + '"' +
         ' data-last-visit="' + _esc(p.last_visit || '') + '"' +
         ' data-last-cc="' + _esc((p.last_cc || '').substring(0, 60)) + '"' +
-        ' data-session-count="' + (p.session_count || 1) + '"' +
+        ' data-session-count="' + sc + '"' +
         ' data-ambiguous="' + (p.ambiguous ? '1' : '0') + '">' +
         '<div class="patient-icon"><iconify-icon icon="iconamoon:profile-duotone"></iconify-icon></div>' +
         '<div class="patient-info">' +
           '<strong class="d-block" style="font-size:0.9rem;">' + _esc(p.name) + disambig + '</strong>' +
           '<span class="text-muted" style="font-size:0.76rem;">' + _esc(p.last_visit) + ' · ' + visits +
           (p.last_cc ? ' · ' + _esc(p.last_cc.substring(0, 30)) : '') + '</span>' +
-        '</div>' +
-        '<a href="/scribe/sessions/' + p.last_pk + '/review/" class="patient-last-link" target="_blank" ' +
-           'title="Open last session" onclick="event.stopPropagation();">' +
-          '<iconify-icon icon="iconamoon:arrow-right-2-light"></iconify-icon>' +
-        '</a></li>';
+        '</div>' + arrow + '</li>';
     });
 
     if (query && query.trim()) {
@@ -1302,6 +1604,11 @@
     var nameEl = document.getElementById('patientName');
     var name = patientSearch ? patientSearch.value.trim() : (nameEl ? nameEl.value.trim() : '');
     if (nameEl) nameEl.value = name;
+
+    /* Link the real emr.Patient when a registered patient is chosen so the note
+       attaches to their chart; clear it for new/unlinked names. */
+    var pidEl = document.getElementById('patientId');
+    if (pidEl) pidEl.value = (_selectedPatientItem && _selectedPatientItem.dataset.patientId) ? _selectedPatientItem.dataset.patientId : '';
 
     var genderChecked = document.querySelector('input[name="modalGender"]:checked');
     var genderVal = genderChecked ? genderChecked.value : '';
@@ -1418,6 +1725,8 @@
     patientSearch.addEventListener('input', function () {
       var q = this.value;
       _selectedPatientItem = null; /* typed a new name — clear item selection */
+      var pidEl = document.getElementById('patientId');
+      if (pidEl) pidEl.value = ''; /* stop a stale chart link from carrying over */
       if (continueBtn) continueBtn.disabled = !q.trim();
       fetchPatients().then(function (pts) { renderPatients(pts, q); });
     });
@@ -1442,6 +1751,8 @@
   if (generateBtn) {
     generateBtn.addEventListener('click', function (e) {
       if (_generateBtnHandled) { _generateBtnHandled = false; return; }
+      var pid = document.getElementById('patientId');
+      if (pid && pid.value) return; /* known patient (from queue/chart) — no search needed */
       e.stopImmediatePropagation();
       showPatientModal(function () {
         _generateBtnHandled = true;
@@ -1452,31 +1763,18 @@
 
   window.WELLNEST_showPatientModal = showPatientModal;
 
-  /* Pre-fill patient name from ?patient= query param (arriving from review page "Record new session").
-     Also set _skipLastSessionRedirect so the modal Continue button creates a new session directly
-     instead of looping back to the last session review. */
+  /* Feature 1: patient pre-selected server-side via ?patient=<id> — #patientId is
+     populated and the context bar shows them. Skip the last-session redirect; the
+     search modal itself is bypassed in WELLNEST_beforeRecord. */
   (function () {
-    var params = new URLSearchParams(window.location.search);
-    var preName = params.get('patient');
-    var preGender = params.get('gender');
-    if (!preName) return;
-    /* Set patient name field */
-    var nameEl = document.getElementById('patientName');
-    if (nameEl) nameEl.value = preName;
-    /* Set gender */
-    if (preGender) {
-      var genderEl = document.getElementById('patientGender');
-      if (!genderEl) {
-        genderEl = document.createElement('input');
-        genderEl.type = 'hidden'; genderEl.id = 'patientGender';
-        document.body.appendChild(genderEl);
-      }
-      genderEl.value = preGender;
+    var pid = document.getElementById('patientId');
+    if (pid && pid.value) {
+      _skipLastSessionRedirect = true;
     }
-    /* Doctor already reviewed last session — skip the redirect-to-last-session behaviour */
-    _skipLastSessionRedirect = true;
-    /* Clean URL without reload */
-    history.replaceState(null, '', window.location.pathname);
+    var params = new URLSearchParams(window.location.search);
+    if (params.get('patient')) {
+      history.replaceState(null, '', window.location.pathname);
+    }
   }());
 }());
 </script>
@@ -1807,9 +2105,12 @@ document.addEventListener('DOMContentLoaded', function () {
         var _pnEl = document.getElementById('patientName');
         var _piEl = document.getElementById('patientIdentifier');
         var _pgEl = document.getElementById('patientGender');
+        var _pidEl = document.getElementById('patientId');
         if (_pnEl && _pnEl.value.trim()) formData.append('patient_name', _pnEl.value.trim());
         if (_piEl && _piEl.value.trim()) formData.append('patient_identifier', _piEl.value.trim());
         if (_pgEl && _pgEl.value) formData.append('patient_gender', _pgEl.value);
+        // Feature 1: authoritative patient link. Server overrides name/sex/ID from this record.
+        if (_pidEl && _pidEl.value) formData.append('patient_id', _pidEl.value);
 
         var createResp = await fetch('/scribe/api/sessions/', { method: 'POST', credentials: 'same-origin', body: formData });
         var createData = await safeJson(createResp, 'create-session');
@@ -2113,18 +2414,22 @@ document.addEventListener('DOMContentLoaded', function () {
   /* Chain: patient modal → consent gate → start recording.
      Runs AFTER the consent gate script sets window.WELLNEST_consentGate. */
   window.WELLNEST_beforeRecord = function (proceed) {
-    if (typeof window.WELLNEST_showPatientModal === 'function') {
-      window.WELLNEST_showPatientModal(function () {
-        if (typeof window.WELLNEST_consentGate === 'function') {
-          window.WELLNEST_consentGate(proceed);
-        } else {
-          proceed();
-        }
-      });
-    } else if (typeof window.WELLNEST_consentGate === 'function') {
-      window.WELLNEST_consentGate(proceed);
+    var afterPatient = function () {
+      if (typeof window.WELLNEST_consentGate === 'function') {
+        window.WELLNEST_consentGate(proceed);
+      } else {
+        proceed();
+      }
+    };
+    var pid = document.getElementById('patientId');
+    if (pid && pid.value) {
+      /* S1: patient already known (from queue/chart) — skip the search modal,
+         go straight to consent → record. */
+      afterPatient();
+    } else if (typeof window.WELLNEST_showPatientModal === 'function') {
+      window.WELLNEST_showPatientModal(afterPatient);
     } else {
-      proceed();
+      afterPatient();
     }
   };
 }());

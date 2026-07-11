@@ -23,7 +23,10 @@
                 {% if form.username.errors %}<small class="text-danger">{{ form.username.errors|join:" " }}</small>{% endif %}
             </div>
             <div class="mb-3">
-                <label class="form-label small text-muted" for="id_password">Password</label>
+                <div class="d-flex align-items-center justify-content-between">
+                    <label class="form-label small text-muted mb-1" for="id_password">Password</label>
+                    <a href="{% url 'accounts:password_help' %}" class="small text-decoration-none">Forgot password?</a>
+                </div>
                 {{ form.password }}
                 {% if form.password.errors %}<small class="text-danger">{{ form.password.errors|join:" " }}</small>{% endif %}
             </div>

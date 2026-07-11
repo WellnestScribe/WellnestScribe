@@ -337,6 +337,74 @@
 
     {# ── ORGANISATIONS TAB ── #}
     <div id="panelOrgs" style="display:none;">
+      <div style="border:1px solid var(--bs-border-color);border-radius:8px;padding:1rem;margin-bottom:1rem;">
+        <h6 class="fw-semibold mb-2">Add a facility</h6>
+        <p class="text-muted small mb-2">Facilities appear in the sign-up dropdown so staff can pick where they work.</p>
+        <div class="d-flex gap-2 flex-wrap align-items-end">
+          <div style="min-width:220px;">
+            <label class="form-label small text-muted mb-1">Facility name</label>
+            <input type="text" id="newOrgName" class="form-control form-control-sm" placeholder="e.g. May Pen Health Centre">
+          </div>
+          <div style="min-width:150px;">
+            <label class="form-label small text-muted mb-1">Parish</label>
+            <input type="text" id="newOrgParish" class="form-control form-control-sm" placeholder="e.g. Clarendon">
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="createOrgBtn">Add facility</button>
+          <span id="createOrgStatus" class="small text-muted"></span>
+        </div>
+      </div>
+      <script>
+      (function () {
+        var btn = document.getElementById('createOrgBtn');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+          var name = (document.getElementById('newOrgName').value || '').trim();
+          var parish = (document.getElementById('newOrgParish').value || '').trim();
+          var status = document.getElementById('createOrgStatus');
+          if (!name) { status.className = 'small text-danger'; status.textContent = 'Name required.'; return; }
+          var csrf = (window.WELLNEST && window.WELLNEST.getCsrf) ? window.WELLNEST.getCsrf() : '';
+          btn.disabled = true; status.className = 'small text-muted'; status.textContent = 'Adding…';
+          fetch('{% url "accounts:create_organisation" %}', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+            body: JSON.stringify({ name: name, parish: parish })
+          })
+          .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+          .then(function (res) {
+            btn.disabled = false;
+            if (!res.ok) { status.className = 'small text-danger'; status.textContent = (res.d && res.d.error) || 'Failed.'; return; }
+            status.className = 'small text-success'; status.textContent = 'Added ✓';
+            setTimeout(function () { location.reload(); }, 600);
+          })
+          .catch(function () { btn.disabled = false; status.className = 'small text-danger'; status.textContent = 'Network error.'; });
+        });
+      })();
+
+      function orgAction(action, id, name) {
+        var msg = action === 'deactivate'
+          ? 'Move "' + name + '" to the recycle bin? Staff can no longer pick it; the data is kept and it can be restored.'
+          : 'Restore "' + name + '" from the recycle bin?';
+        if (!confirm(msg)) return;
+        var csrf = (window.WELLNEST && window.WELLNEST.getCsrf) ? window.WELLNEST.getCsrf() : '';
+        fetch('/accounts/organisations/' + id + '/' + action + '/', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': csrf } })
+          .then(function (r) { return r.json(); })
+          .then(function (d) { if (d.ok) location.reload(); else alert(d.error || 'Failed.'); })
+          .catch(function () { alert('Network error.'); });
+      }
+      function orgDeletePermanent(id, name) {
+        var typed = prompt('This permanently deletes "' + name + '" and ALL its data. It cannot be undone.\n\nType the facility name exactly to confirm:');
+        if (typed === null) return;
+        var csrf = (window.WELLNEST && window.WELLNEST.getCsrf) ? window.WELLNEST.getCsrf() : '';
+        fetch('/accounts/organisations/' + id + '/delete/', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+          body: JSON.stringify({ confirm_name: typed })
+        })
+          .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+          .then(function (res) { if (res.ok && res.d.ok) location.reload(); else alert((res.d && res.d.error) || 'Failed.'); })
+          .catch(function () { alert('Network error.'); });
+      }
+      </script>
       {% if organisations %}
       <div style="overflow-x:auto;">
         <table class="ua-table">
@@ -356,6 +424,7 @@
                 <div class="d-flex align-items-center gap-2">
                   <iconify-icon icon="iconamoon:building-1-duotone" class="text-primary" style="font-size:1.2rem;flex-shrink:0;"></iconify-icon>
                   <span class="fw-semibold">{{ org.name }}</span>
+                  {% if not org.is_active %}<span class="badge bg-secondary-subtle text-secondary">Recycle bin</span>{% endif %}
                   <iconify-icon icon="iconamoon:arrow-down-2-light" class="ua-org-chevron text-muted ms-1"
                                 style="font-size:0.85rem;" id="org-chevron-{{ org.pk }}"></iconify-icon>
                 </div>
@@ -374,6 +443,23 @@
                   <iconify-icon icon="iconamoon:sign-plus-circle-duotone" class="me-1 align-middle"></iconify-icon>
                   Add member
                 </button>
+                <a href="{% url 'accounts:organisation_export' org.pk %}?format=csv" class="btn btn-outline-secondary btn-sm" title="Export patients as CSV">CSV</a>
+                <a href="{% url 'accounts:organisation_export' org.pk %}" class="btn btn-outline-secondary btn-sm" title="Export full data as JSON">
+                  <iconify-icon icon="iconamoon:cloud-download-duotone" class="align-middle"></iconify-icon>
+                </a>
+                {% if org.is_active %}
+                <button class="btn btn-outline-warning btn-sm" title="Move to recycle bin"
+                        onclick="orgAction('deactivate', {{ org.pk }}, '{{ org.name|escapejs }}')">
+                  <iconify-icon icon="iconamoon:trash-duotone" class="align-middle"></iconify-icon>
+                </button>
+                {% else %}
+                <button class="btn btn-outline-success btn-sm"
+                        onclick="orgAction('restore', {{ org.pk }}, '{{ org.name|escapejs }}')">Restore</button>
+                {% if user.is_superuser %}
+                <button class="btn btn-outline-danger btn-sm"
+                        onclick="orgDeletePermanent({{ org.pk }}, '{{ org.name|escapejs }}')">Delete</button>
+                {% endif %}
+                {% endif %}
                 {% endif %}
               </td>
             </tr>
@@ -411,11 +497,9 @@
                       {% if org.pk in managed_org_ids %}
                       <select class="ua-role-select" style="font-size:0.78rem;padding:3px 6px;"
                               onchange="changeMembershipRole({{ org.pk }}, {{ m.user.pk }}, this.value)">
-                        <option value="doctor"       {% if m.role == "doctor"       %}selected{% endif %}>Doctor</option>
-                        <option value="nurse"        {% if m.role == "nurse"        %}selected{% endif %}>Nurse</option>
-                        <option value="receptionist" {% if m.role == "receptionist" %}selected{% endif %}>Receptionist</option>
-                        <option value="admin"        {% if m.role == "admin"        %}selected{% endif %}>Org Admin</option>
-                        <option value="system_admin" {% if m.role == "system_admin" %}selected{% endif %}>Sys Admin</option>
+                        {% for value, label in membership_role_choices %}
+                        <option value="{{ value }}" {% if m.role == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
                       </select>
                       <button class="btn btn-outline-danger btn-sm px-2"
                               onclick="removeMember({{ org.pk }}, {{ m.user.pk }}, 'membership-{{ m.pk }}')"
@@ -546,11 +630,9 @@
         <div>
           <label class="form-label small fw-semibold">Role in this organization</label>
           <select class="form-select form-select-sm" id="addMemberRole">
-            <option value="doctor">Doctor</option>
-            <option value="nurse">Nurse</option>
-            <option value="receptionist">Receptionist</option>
-            <option value="admin">Org Admin</option>
-            <option value="system_admin">System Admin</option>
+            {% for value, label in membership_role_choices %}
+            <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
           </select>
         </div>
       </div>

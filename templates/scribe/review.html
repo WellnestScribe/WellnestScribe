@@ -640,6 +640,32 @@
                         </button>
                     </div>
 
+                    <button type="button" class="btn btn-outline-primary btn-sm w-100 mb-2" id="addMedBtn"
+                            title="Insert a medication into the Plan. Click the bracket to pick the drug and dose.">
+                        <iconify-icon icon="mdi:pill" class="me-1 align-middle"></iconify-icon>
+                        Add medication
+                    </button>
+                    <script>
+                    (function () {
+                      var btn = document.getElementById('addMedBtn');
+                      if (!btn) return;
+                      btn.addEventListener('click', function () {
+                        var ta = document.querySelector('textarea[data-note-field="plan"]');
+                        if (!ta) { if (window.Swal) { window.Swal.fire('Open the Plan section first.'); } else { alert('Open the Plan section first.'); } return; }
+                        var token = '[medication - dose]';
+                        var start = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+                        var end = ta.selectionEnd != null ? ta.selectionEnd : ta.value.length;
+                        var before = ta.value.slice(0, start), after = ta.value.slice(end);
+                        var sep = (before && !/\s$/.test(before)) ? ' ' : '';
+                        ta.value = before + sep + token + after;
+                        ta.focus();
+                        var pos = (before + sep).length + 1;
+                        try { ta.setSelectionRange(pos, pos + token.length - 2); } catch (e) {}
+                        ta.dispatchEvent(new Event('input', { bubbles: true }));
+                      });
+                    })();
+                    </script>
+
                     {% if doctor_profile.suggestive_assist %}
                     <button type="button" class="btn btn-outline-secondary btn-sm w-100 mb-2" id="improveBtn"
                             title="Returns 3-6 bullets of things a more senior clinician would have added.">
@@ -659,9 +685,9 @@
                     </button>
                     <div class="collapse" id="moreActions">
                         <div class="d-grid gap-2 mt-2">
-                            <a href="{% url 'emr:scribe_intake' session.pk %}" class="btn btn-outline-secondary btn-sm" title="Send to EMR">
+                            <a href="{% url 'emr:scribe_intake' session.pk %}" class="btn btn-outline-secondary btn-sm" title="Add this patient to the EMR">
                                 <iconify-icon icon="iconamoon:files-duotone" class="me-1 align-middle"></iconify-icon>
-                                Send to EMR
+                                Add to EMR
                             </a>
                             <button type="button" class="btn btn-outline-secondary btn-sm" id="qrBtn"
                                     data-bs-toggle="modal" data-bs-target="#shareModal" title="Transfer to another screen via QR">

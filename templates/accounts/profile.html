@@ -124,6 +124,15 @@
     </div>
 
     <div class="col-12 col-xl-4">
+        <div class="card mb-3 border-primary-subtle">
+            <div class="card-body p-4 d-flex align-items-center justify-content-between gap-2">
+                <div>
+                    <h6 class="fw-semibold mb-1">Subscription &amp; data</h6>
+                    <p class="text-muted small mb-0">View your plan and export your clinic's data.</p>
+                </div>
+                <a href="{% url 'accounts:subscription' %}" class="btn btn-outline-primary btn-sm flex-shrink-0">Open</a>
+            </div>
+        </div>
         <div class="card">
             <div class="card-body p-4">
                 <h6 class="fw-semibold">About your specialty</h6>
@@ -167,6 +176,99 @@
                 {% endif %}
             </div>
         </div>
+
+        {% if is_admin %}
+        <div class="card mt-3 border-warning-subtle" id="demoModeCard">
+            <div class="card-body p-4">
+                <h6 class="fw-semibold mb-1 d-flex align-items-center gap-2">
+                    <iconify-icon icon="iconamoon:shield-yes-duotone" class="fs-5 text-warning"></iconify-icon>
+                    Demo mode <span class="badge bg-warning-subtle text-warning">Admin</span>
+                </h6>
+                <p class="text-muted small mb-3">
+                    Throttle or lock the platform for everyone except admins —
+                    use it when a sign-up QR is on screen at an event so a bad
+                    actor can&rsquo;t burn AI credits. Your own account is never
+                    affected.
+                </p>
+
+                <label class="form-label small text-muted">Mode</label>
+                <select id="demoModeSelect" class="form-select mb-3">
+                    {% for value, label in demo_mode_choices %}
+                    <option value="{{ value }}" {% if platform_control.demo_mode == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+
+                <div id="demoLimitWrap" class="mb-3 {% if platform_control.demo_mode != 'limited' %}d-none{% endif %}">
+                    <label class="form-label small text-muted" for="demoNoteLimit">Notes allowed per non-admin account</label>
+                    <input type="number" id="demoNoteLimit" class="form-control" min="1" max="50"
+                           value="{{ platform_control.note_limit }}">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small text-muted" for="demoMessage">Message shown to users (optional)</label>
+                    <textarea id="demoMessage" class="form-control" rows="3"
+                              placeholder="Leave blank to use a sensible default.">{{ platform_control.message }}</textarea>
+                </div>
+
+                <div class="d-flex align-items-center justify-content-between">
+                    <span id="demoSaveStatus" class="small text-muted"></span>
+                    <button type="button" id="demoSaveBtn" class="btn btn-warning btn-sm">Apply</button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
+
+{% if is_admin %}
+{% block extra_scripts %}
+<script>
+(function () {
+  var sel = document.getElementById('demoModeSelect');
+  var limitWrap = document.getElementById('demoLimitWrap');
+  var btn = document.getElementById('demoSaveBtn');
+  var status = document.getElementById('demoSaveStatus');
+  if (!sel || !btn) return;
+
+  sel.addEventListener('change', function () {
+    limitWrap.classList.toggle('d-none', sel.value !== 'limited');
+  });
+
+  btn.addEventListener('click', function () {
+    var csrf = (window.WELLNEST && window.WELLNEST.getCsrf) ? window.WELLNEST.getCsrf() : '';
+    btn.disabled = true;
+    status.className = 'small text-muted';
+    status.textContent = 'Saving…';
+    fetch('{% url "accounts:demo_control" %}', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+      body: JSON.stringify({
+        demo_mode: sel.value,
+        note_limit: parseInt(document.getElementById('demoNoteLimit').value, 10) || 1,
+        message: document.getElementById('demoMessage').value
+      })
+    })
+    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+    .then(function (res) {
+      btn.disabled = false;
+      if (!res.ok) {
+        status.className = 'small text-danger';
+        status.textContent = (res.d && res.d.error) || 'Failed to save.';
+        return;
+      }
+      status.className = 'small text-success';
+      var labels = { off: 'Off — running normally', limited: 'Test mode active', locked: 'Locked' };
+      status.textContent = 'Saved · ' + (labels[res.d.demo_mode] || res.d.demo_mode);
+    })
+    .catch(function () {
+      btn.disabled = false;
+      status.className = 'small text-danger';
+      status.textContent = 'Network error.';
+    });
+  });
+})();
+</script>
+{% endblock %}
+{% endif %}

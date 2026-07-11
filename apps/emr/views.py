@@ -110,9 +110,10 @@ def _save_encounter_children(
     diagnosis_formset,
     medication_formset,
 ):
+    # save(commit=False) must run BEFORE .deleted_objects is populated.
+    diagnoses = diagnosis_formset.save(commit=False)
     for obj in diagnosis_formset.deleted_objects:
         obj.delete()
-    diagnoses = diagnosis_formset.save(commit=False)
     for diagnosis in diagnoses:
         diagnosis.organisation = organisation
         diagnosis.patient = patient
@@ -120,9 +121,9 @@ def _save_encounter_children(
         diagnosis.diagnosing_provider = request.user
         diagnosis.save()
 
+    medications = medication_formset.save(commit=False)
     for obj in medication_formset.deleted_objects:
         obj.delete()
-    medications = medication_formset.save(commit=False)
     for medication in medications:
         medication.organisation = organisation
         medication.patient = patient
@@ -138,21 +139,37 @@ def dashboard_view(request):
     day_start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
     day_end = timezone.make_aware(datetime.combine(today, datetime.max.time()))
 
-    appointments = (
+    all_appts = list(
         Appointment.objects.filter(
             organisation=emr.organisation,
             scheduled_for__range=(day_start, day_end),
-        )
-        .select_related("patient")
-        .order_by("scheduled_for", "queue_number")
+        ).select_related("patient")
     )
 
+    # Active (still waiting) sorted FIFO get positions 1..N and float to the top;
+    # completed/cancelled drop below with no position. This is what makes "who's
+    # next" obvious and stops everyone showing "Queue 1".
+    active_statuses = ("checked_in", "triage", "with_doctor")
+    active = sorted(
+        [a for a in all_appts if a.status in active_statuses],
+        key=lambda a: (a.queue_number or 9999, a.scheduled_for),
+    )
+    for i, a in enumerate(active, start=1):
+        a.queue_position = i
+    inactive = sorted(
+        [a for a in all_appts if a.status not in active_statuses],
+        key=lambda a: a.scheduled_for,
+    )
+    for a in inactive:
+        a.queue_position = None
+    appointments = active + inactive
+
     stats = {
-        "today": appointments.count(),
-        "checked_in": appointments.filter(status="checked_in").count(),
-        "triage": appointments.filter(status="triage").count(),
-        "with_doctor": appointments.filter(status="with_doctor").count(),
-        "complete": appointments.filter(status="complete").count(),
+        "today": len(all_appts),
+        "checked_in": sum(1 for a in all_appts if a.status == "checked_in"),
+        "triage": sum(1 for a in all_appts if a.status == "triage"),
+        "with_doctor": sum(1 for a in all_appts if a.status == "with_doctor"),
+        "complete": sum(1 for a in all_appts if a.status == "complete"),
         "patients": Patient.objects.filter(organisation=emr.organisation).count(),
     }
 
@@ -176,13 +193,182 @@ def dashboard_view(request):
 
 
 @login_required
-def patient_search_view(request):
+@require_http_methods(["GET"])
+def waiting_queue_api(request):
+    """JSON: today's 'patients to come' for the doctor's record screen.
+
+    Digital version of the docket pile in the doctor's office. Returns
+    appointments the nurse has checked in / triaged (excludes complete and
+    cancelled=left), ordered by queue position, with a vitals snapshot so the
+    doctor can read the docket at a glance. Polled by the record page, so any
+    nurse change (reorder, patient left, new arrival, vitals) reflects within
+    seconds. No AI — plain DB reads.
+    """
     emr = membership_for_request(request)
+    today = timezone.localdate()
+    day_start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
+    day_end = timezone.make_aware(datetime.combine(today, datetime.max.time()))
+
+    appts = (
+        Appointment.objects.filter(
+            organisation=emr.organisation,
+            scheduled_for__range=(day_start, day_end),
+            status__in=["checked_in", "triage", "with_doctor"],
+        )
+        .select_related("patient")
+        .order_by("queue_number", "scheduled_for")
+    )
+
+    queue = []
+    for a in appts:
+        p = a.patient
+        vital = (
+            Vital.objects.filter(patient=p, recorded_at__range=(day_start, day_end))
+            .order_by("-recorded_at")
+            .first()
+        )
+        vitals = {}
+        vitals_full = []
+        if vital:
+            if vital.bp_systolic and vital.bp_diastolic:
+                vitals["bp"] = f"{vital.bp_systolic}/{vital.bp_diastolic}"
+            if vital.weight_kg:
+                vitals["weight"] = f"{vital.weight_kg} kg"
+            if vital.blood_glucose_mmol:
+                vitals["glucose"] = f"{vital.blood_glucose_mmol} mmol/L"
+            if vital.temperature_celsius:
+                vitals["temp"] = f"{vital.temperature_celsius}°C"
+            for label, val in [
+                ("Blood pressure", f"{vital.bp_systolic}/{vital.bp_diastolic} mmHg" if vital.bp_systolic and vital.bp_diastolic else None),
+                ("Pulse", f"{vital.pulse_bpm} bpm" if vital.pulse_bpm else None),
+                ("Temperature", f"{vital.temperature_celsius} °C" if vital.temperature_celsius else None),
+                ("Respiratory rate", f"{vital.respiratory_rate}/min" if vital.respiratory_rate else None),
+                ("SpO₂", f"{vital.oxygen_saturation}%" if vital.oxygen_saturation else None),
+                ("Blood glucose", f"{vital.blood_glucose_mmol} mmol/L" if vital.blood_glucose_mmol else None),
+                ("Weight", f"{vital.weight_kg} kg" if vital.weight_kg else None),
+                ("Height", f"{vital.height_cm} cm" if vital.height_cm else None),
+                ("Pain score", f"{vital.pain_score}/10" if vital.pain_score is not None else None),
+            ]:
+                if val:
+                    vitals_full.append({"label": label, "value": val})
+        queue.append({
+            "position": len(queue) + 1,
+            "appointment_id": a.pk,
+            "patient_id": p.pk,
+            "name": p.display_name,
+            "mrn": p.mrn,
+            "age": p.age_display,
+            "sex": p.get_sex_display(),
+            "status": a.status,
+            "status_label": a.get_status_display(),
+            "queue_number": a.queue_number,
+            "scheduled_for": a.scheduled_for.isoformat(),
+            "complaint": (a.notes or "")[:80],
+            "has_vitals": bool(vitals),
+            "vitals": vitals,
+            "vitals_full": vitals_full,
+            "record_url": f"{reverse('scribe:record')}?patient={p.pk}",
+            "chart_url": reverse("emr:patient_detail", args=[p.pk]),
+        })
+
+    return JsonResponse({"queue": queue, "count": len(queue)})
+
+
+@login_required
+@require_http_methods(["GET"])
+def patient_search_api(request):
+    """JSON patient search over real emr.Patient records.
+
+    Shared by the Register-page dedupe banner and the record modal. Returns
+    docket-style fields (MRN + DOB + age + community) so same-name patients are
+    distinguishable. Scoped to the user's organisation. No AI.
+    """
+    emr = membership_for_request(request)
+    q = (request.GET.get("q") or "").strip()
+    if len(q) < 2:
+        return JsonResponse({"patients": []})
+
+    results = list(search_patients(emr.organisation, q)[:10])
+    patients = [{
+        "id": p.pk,
+        "name": p.display_name,
+        "mrn": p.mrn,
+        "dob": p.date_of_birth.strftime("%Y-%m-%d") if p.date_of_birth else "",
+        "age": p.age_display,
+        "sex": p.get_sex_display(),
+        "community": p.community or p.parish or "",
+        "trn": p.trn or "",
+        "visits": p.scribe_sessions.count(),
+        "chart_url": reverse("emr:patient_detail", args=[p.pk]),
+        "record_url": f"{reverse('scribe:record')}?patient={p.pk}",
+    } for p in results]
+    return JsonResponse({"patients": patients})
+
+
+@login_required
+def patient_search_view(request):
+    from datetime import date, timedelta
+    from django.db.models import Q
+
+    emr = membership_for_request(request)
+    org = emr.organisation
     term = request.GET.get("q", "").strip()
-    results = search_patients(emr.organisation, term) if term else []
-    recent = []
-    if not term:
-        recent = Patient.objects.filter(organisation=emr.organisation).order_by("-updated_at")[:12]
+
+    # ── "Who was here?" date filter ──────────────────────────────────────────
+    seen = request.GET.get("seen", "").strip()
+    today = timezone.localdate()
+    date_from = date_to = None
+    seen_label = ""
+    seen_date = ""  # ISO date when a specific day was picked (not a preset)
+    if seen == "today":
+        date_from = date_to = today
+        seen_label = "today"
+    elif seen == "yesterday":
+        date_from = date_to = today - timedelta(days=1)
+        seen_label = "yesterday"
+    elif seen == "7":
+        date_from, date_to, seen_label = today - timedelta(days=6), today, "the last 7 days"
+    elif seen == "30":
+        date_from, date_to, seen_label = today - timedelta(days=29), today, "the last 30 days"
+    elif seen:
+        try:
+            d = date.fromisoformat(seen)
+            date_from = date_to = d
+            seen_label = d.strftime("%b %d, %Y")
+            seen_date = seen
+        except ValueError:
+            seen = ""
+
+    if date_from is not None:
+        # Patients with an encounter or appointment in the window = "were here".
+        enc_ids = Encounter.objects.filter(
+            organisation=org, encounter_date__range=(date_from, date_to)
+        ).values_list("patient_id", flat=True)
+        appt_ids = Appointment.objects.filter(
+            organisation=org, scheduled_for__date__range=(date_from, date_to)
+        ).values_list("patient_id", flat=True)
+        ids = set(enc_ids) | set(appt_ids)
+        qs = Patient.objects.filter(organisation=org, pk__in=ids)
+        if term:
+            qs = qs.filter(
+                Q(legal_first_name__icontains=term)
+                | Q(legal_last_name__icontains=term)
+                | Q(preferred_name__icontains=term)
+                | Q(nhf_card_number__icontains=term)
+                | Q(trn__icontains=term)
+                | Q(phone_primary__icontains=term)
+            )
+        patients = list(qs.order_by("legal_last_name", "legal_first_name")[:200])
+    elif term:
+        patients = list(search_patients(org, term)[:100])
+    else:
+        # No filters → browse all patients (capped) so the list is usable.
+        patients = list(
+            Patient.objects.filter(organisation=org)
+            .order_by("legal_last_name", "legal_first_name")[:50]
+        )
+
+    total = Patient.objects.filter(organisation=org).count()
 
     return render(
         request,
@@ -190,8 +376,11 @@ def patient_search_view(request):
         {
             **_base_context(request),
             "query": term,
-            "results": results,
-            "recent": recent,
+            "patients": patients,
+            "patient_total": total,
+            "seen": seen,
+            "seen_label": seen_label,
+            "seen_date": seen_date,
             "scribe_session_id": request.GET.get("scribe", "").strip(),
         },
     )
@@ -232,6 +421,10 @@ def patient_create_view(request):
         )
         messages.success(request, "Patient registered.")
         if scribe_session is not None:
+            # Close the loop: link the scribe session to this new patient so the
+            # note appears under the patient's Scribe-visits history (Feature 1).
+            scribe_session.patient = patient
+            scribe_session.save(update_fields=["patient"])
             return redirect(f"{reverse('emr:encounter_create', args=[patient.pk])}?scribe={scribe_session.pk}")
         return redirect("emr:patient_detail", pk=patient.pk)
 
@@ -329,6 +522,10 @@ def patient_detail_view(request, pk):
     problem_list = active_problem_list_for_patient(patient)[:8]
     last_vitals = patient.vitals.order_by("-recorded_at").first()
     recent_scribe_sessions = _scribe_queryset_for_user(request.user)[:6]
+    # Feature 1: this patient's own scribe visits (sessions linked via FK).
+    patient_visits = (
+        patient.scribe_sessions.select_related("note").order_by("-created_at")[:20]
+    )
 
     return render(
         request,
@@ -343,8 +540,23 @@ def patient_detail_view(request, pk):
             "last_vitals": last_vitals,
             "allergy_form": allergy_form,
             "recent_scribe_sessions": recent_scribe_sessions,
+            "patient_visits": patient_visits,
         },
     )
+
+
+@login_required
+@require_http_methods(["GET"])
+def patient_activity_api(request, patient_pk):
+    """Lightweight signature of a patient's encounters + scribe visits so the
+    chart can auto-refresh when new activity lands (e.g. a note just finalized)."""
+    emr = membership_for_request(request)
+    patient = get_object_or_404(Patient, pk=patient_pk, organisation=emr.organisation)
+    enc = list(patient.encounters.order_by("-created_at").values_list("pk", "encounter_status")[:12])
+    vis = list(
+        ScribeSession.objects.filter(patient=patient).order_by("-created_at").values_list("pk", "status")[:12]
+    )
+    return JsonResponse({"sig": f"{enc}|{vis}"})
 
 
 @login_required
@@ -406,16 +618,125 @@ def appointment_status_view(request, pk):
         messages.error(request, "Unknown appointment status.")
         return redirect(request.POST.get("next") or "emr:dashboard")
     appointment.status = next_status
-    appointment.save(update_fields=["status", "updated_at"])
+    reason = (request.POST.get("reason") or "").strip()[:120]
+    fields = ["status", "updated_at"]
+    # Guardrail: taking a patient OUT of the queue records why, so nobody is
+    # silently dropped and left waiting.
+    if reason and next_status == "cancelled":
+        appointment.notes = ((appointment.notes + " · ") if appointment.notes else "") + f"Removed: {reason}"
+        fields.append("notes")
+    appointment.save(update_fields=fields)
     log_audit_event(
         request,
         emr.organisation,
         action="update",
         resource_type="appointment",
         resource_id=appointment.pk,
-        detail=f"Moved {appointment.patient.display_name} to {next_status}",
+        detail=f"Moved {appointment.patient.display_name} to {next_status}"
+        + (f" ({reason})" if reason else ""),
     )
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JsonResponse({"ok": True, "status": next_status})
     messages.success(request, "Worklist updated.")
+    return redirect(request.POST.get("next") or reverse("emr:dashboard"))
+
+
+@login_required
+@require_POST
+def appointment_delete_view(request, pk):
+    """Remove a worklist entry permanently (the clinical note/encounter is kept)."""
+    emr = _require(
+        lambda membership: membership.can_manage_schedule(),
+        request,
+        "Your role cannot manage the worklist.",
+    )
+    if emr is None:
+        return redirect("emr:dashboard")
+    appointment = get_object_or_404(Appointment, pk=pk, organisation=emr.organisation)
+    name = appointment.patient.display_name
+    appointment.delete()
+    log_audit_event(
+        request, emr.organisation, action="delete", resource_type="appointment",
+        resource_id=pk, detail=f"Removed {name} from the worklist",
+    )
+    messages.success(request, f"{name} removed from the worklist.")
+    return redirect("emr:dashboard")
+
+
+@login_required
+@require_POST
+def worklist_close_day_view(request):
+    """End-of-day: mark every still-waiting patient complete so tomorrow starts clean."""
+    emr = _require(
+        lambda membership: membership.can_manage_schedule(),
+        request,
+        "Your role cannot manage the worklist.",
+    )
+    if emr is None:
+        return redirect("emr:dashboard")
+    today = timezone.localdate()
+    day_start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
+    day_end = timezone.make_aware(datetime.combine(today, datetime.max.time()))
+    n = Appointment.objects.filter(
+        organisation=emr.organisation,
+        scheduled_for__range=(day_start, day_end),
+        status__in=["scheduled", "checked_in", "triage", "with_doctor"],
+    ).update(status="complete")
+    log_audit_event(
+        request, emr.organisation, action="update", resource_type="worklist",
+        resource_id="", detail=f"Closed worklist for the day ({n} cleared)",
+    )
+    messages.success(request, f"Worklist saved for the day — {n} patient(s) cleared from the queue.")
+    return redirect("emr:dashboard")
+
+
+@login_required
+@require_POST
+def appointment_reorder_view(request, pk):
+    """Nurse reorders the waiting queue (move a patient up/down).
+
+    Normalises today's waiting appointments to 1..N by current order, then
+    swaps the target with its neighbour. The doctor's record-screen poll picks
+    up the new order within seconds — no push needed.
+    """
+    emr = _require(
+        lambda membership: membership.can_manage_schedule(),
+        request,
+        "Your role cannot reorder the worklist.",
+    )
+    if emr is None:
+        return redirect("emr:dashboard")
+
+    appointment = get_object_or_404(Appointment, pk=pk, organisation=emr.organisation)
+    direction = request.POST.get("direction", "")
+    today = timezone.localdate()
+    day_start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
+    day_end = timezone.make_aware(datetime.combine(today, datetime.max.time()))
+
+    siblings = list(
+        Appointment.objects.filter(
+            organisation=emr.organisation,
+            scheduled_for__range=(day_start, day_end),
+            status__in=["checked_in", "triage", "with_doctor"],
+        ).order_by("queue_number", "scheduled_for")
+    )
+    # Normalise queue positions so swapping is always well-defined.
+    for i, s in enumerate(siblings, start=1):
+        if s.queue_number != i:
+            s.queue_number = i
+            s.save(update_fields=["queue_number", "updated_at"])
+
+    idx = next((i for i, s in enumerate(siblings) if s.pk == appointment.pk), None)
+    if idx is not None:
+        swap = idx - 1 if direction == "up" else idx + 1
+        if 0 <= swap < len(siblings):
+            a, b = siblings[idx], siblings[swap]
+            a.queue_number, b.queue_number = b.queue_number, a.queue_number
+            a.save(update_fields=["queue_number", "updated_at"])
+            b.save(update_fields=["queue_number", "updated_at"])
+
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JsonResponse({"ok": True})
     return redirect(request.POST.get("next") or reverse("emr:dashboard"))
 
 
@@ -497,6 +818,56 @@ def encounter_edit_view(request, patient_pk, encounter_pk):
     return _encounter_editor(request, patient_pk=patient_pk, encounter_pk=encounter_pk)
 
 
+@login_required
+@require_http_methods(["GET"])
+def encounter_view(request, patient_pk, encounter_pk):
+    """Read-only view of a past encounter — full clinical detail, no editing.
+
+    Anyone in the clinic can open it (org-scoped); the editable Advanced editor
+    stays behind can_edit_encounters, so nurses/pharmacists can read a chart
+    without being able to change it.
+    """
+    emr = membership_for_request(request)
+    patient = get_object_or_404(Patient, pk=patient_pk, organisation=emr.organisation)
+    encounter = get_object_or_404(
+        Encounter.objects.select_related("provider", "signed_by", "scribe_session"),
+        pk=encounter_pk,
+        patient=patient,
+        organisation=emr.organisation,
+    )
+    log_audit_event(
+        request,
+        emr.organisation,
+        action="view",
+        resource_type="encounter",
+        resource_id=encounter.pk,
+        detail=f"Viewed encounter {encounter.pk} for {patient.display_name}",
+    )
+    note_sections = [
+        ("Chief complaint", encounter.chief_complaint),
+        ("History of presenting illness", encounter.history_of_presenting_illness),
+        ("Review of systems", encounter.review_of_systems),
+        ("Physical examination", encounter.physical_examination),
+        ("Assessment", encounter.assessment_notes),
+        ("Plan", encounter.plan_notes),
+    ]
+    return render(
+        request,
+        "emr/encounter_view.html",
+        {
+            **_base_context(request),
+            "patient": patient,
+            "encounter": encounter,
+            "note_sections": note_sections,
+            "vitals": getattr(encounter, "vitals", None),
+            "diagnoses": encounter.diagnoses.all(),
+            "medications": encounter.medications.all(),
+            "addenda": encounter.addenda.select_related("author").all(),
+            "can_edit": emr.membership.can_edit_encounters(),
+        },
+    )
+
+
 def _encounter_editor(request, *, patient_pk, encounter_pk=None):
     emr = _require(
         lambda membership: membership.can_edit_encounters(),
@@ -543,7 +914,15 @@ def _encounter_editor(request, *, patient_pk, encounter_pk=None):
         initial.update(scribe_import.encounter_initial)
 
     provider_queryset = user_choices_for_organisation(emr.organisation)
-    scribe_queryset = _scribe_queryset_for_user(request.user)
+    # Scope the Scribe-session picker to THIS patient's linked notes (Feature 1),
+    # not every session the doctor ever recorded. Include the note being
+    # imported via ?scribe= even if it isn't linked to the patient yet.
+    from django.db.models import Q
+    scribe_queryset = _scribe_queryset_for_user(request.user).filter(patient=patient)
+    if scribe_session is not None:
+        scribe_queryset = _scribe_queryset_for_user(request.user).filter(
+            Q(patient=patient) | Q(pk=scribe_session.pk)
+        )
     form = EncounterForm(
         request.POST or None,
         instance=encounter,
@@ -673,6 +1052,235 @@ def _encounter_editor(request, *, patient_pk, encounter_pk=None):
             "scribe_import": scribe_import,
         },
     )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def intake_view(request, patient_pk):
+    """Nurse intake: capture chief complaint + vitals, then send to the queue.
+
+    Deliberately light — the nurse does NOT do ROS / physical exam / signing.
+    On submit it puts the patient in the doctor's waiting queue (today's
+    appointment → 'triage') with the vitals attached, exactly like the paper
+    docket flow: weigh, take BP, jot the complaint, hand to the doctor.
+    """
+    emr = _require(
+        lambda membership: membership.can_record_vitals(),
+        request,
+        "Your role cannot record vitals.",
+    )
+    if emr is None:
+        return redirect("emr:dashboard")
+
+    patient = get_object_or_404(Patient, pk=patient_pk, organisation=emr.organisation)
+    today = timezone.localdate()
+    # If already in today's queue, this is an EDIT of the same intake (not a new
+    # one): pre-load the existing appointment, vitals and complaint so nothing
+    # is duplicated. Intake + Vitals are one screen now.
+    active_appt = (
+        Appointment.objects.filter(
+            organisation=emr.organisation, patient=patient,
+            scheduled_for__date=today,
+            status__in=["scheduled", "checked_in", "triage", "with_doctor"],
+        ).order_by("scheduled_for").first()
+    )
+    existing_vital = (
+        Vital.objects.filter(patient=patient, recorded_at__date=today)
+        .order_by("-recorded_at").first()
+    )
+    existing_encounter = active_appt.encounters.order_by("-created_at").first() if active_appt else None
+    vitals_form = VitalForm(request.POST or None, prefix="vitals", instance=existing_vital)
+
+    if request.method == "POST" and vitals_form.is_valid():
+        chief = (request.POST.get("chief_complaint") or "").strip()
+        enc_type = (request.POST.get("encounter_type") or "acute").strip()
+        valid_types = {c[0] for c in Encounter._meta.get_field("encounter_type").choices}
+        if enc_type not in valid_types:
+            enc_type = "acute"
+        with transaction.atomic():
+            appt = active_appt
+            if appt is None:
+                next_q = (
+                    Appointment.objects.filter(
+                        organisation=emr.organisation, scheduled_for__date=today
+                    ).aggregate(m=Max("queue_number"))["m"] or 0
+                ) + 1
+                appt = Appointment.objects.create(
+                    organisation=emr.organisation,
+                    patient=patient,
+                    scheduled_for=timezone.now(),
+                    status="triage",
+                    encounter_type=enc_type,
+                    queue_number=next_q,
+                    notes=chief,
+                    created_by=request.user,
+                )
+            else:
+                appt.status = "triage"
+                appt.encounter_type = enc_type
+                if chief:
+                    appt.notes = chief
+                appt.save(update_fields=["status", "encounter_type", "notes", "updated_at"])
+
+            encounter = existing_encounter or appt.encounters.order_by("-created_at").first()
+            if encounter is None:
+                encounter = Encounter.objects.create(
+                    organisation=emr.organisation,
+                    patient=patient,
+                    appointment=appt,
+                    encounter_date=today,
+                    encounter_type=enc_type,
+                    chief_complaint=chief,
+                    created_by=request.user,
+                    updated_by=request.user,
+                )
+            elif chief:
+                encounter.chief_complaint = chief
+                encounter.save(update_fields=["chief_complaint", "updated_at"])
+
+            if _form_has_meaningful_data(vitals_form.cleaned_data):
+                vital = vitals_form.save(commit=False)
+                vital.organisation = emr.organisation
+                vital.patient = patient
+                vital.encounter = encounter
+                vital.recorded_by = request.user
+                vital.save()
+
+        log_audit_event(
+            request,
+            emr.organisation,
+            action="update",
+            resource_type="intake",
+            resource_id=patient.pk,
+            detail=f"Intake {'updated' if active_appt else 'queued'} {patient.display_name}",
+        )
+        messages.success(
+            request,
+            f"{patient.display_name}'s intake updated." if active_appt
+            else f"{patient.display_name} sent to the doctor's queue.",
+        )
+        return redirect("emr:dashboard")
+
+    _existing_chief = ""
+    if existing_encounter and existing_encounter.chief_complaint:
+        _existing_chief = existing_encounter.chief_complaint
+    elif active_appt and active_appt.notes:
+        _existing_chief = active_appt.notes
+    return render(
+        request,
+        "emr/intake_form.html",
+        {
+            **_base_context(request),
+            "patient": patient,
+            "vitals_form": vitals_form,
+            "last_vitals": patient.vitals.order_by("-recorded_at").first(),
+            "already_in_queue": bool(active_appt),
+            "intake_chief": _existing_chief,
+            "intake_type": active_appt.encounter_type if active_appt else "acute",
+            "encounter_type_choices": Encounter._meta.get_field("encounter_type").choices,
+        },
+    )
+
+
+@login_required
+@require_POST
+def patient_add_to_queue_view(request, patient_pk):
+    """Put a patient into the doctor's waiting queue (today's appointment → triage)."""
+    emr = _require(
+        lambda membership: membership.can_manage_schedule(),
+        request,
+        "Your role cannot manage the queue.",
+    )
+    if emr is None:
+        return redirect("emr:dashboard")
+    patient = get_object_or_404(Patient, pk=patient_pk, organisation=emr.organisation)
+    today = timezone.localdate()
+    with transaction.atomic():
+        appt = (
+            Appointment.objects.filter(
+                organisation=emr.organisation,
+                patient=patient,
+                scheduled_for__date=today,
+                status__in=["scheduled", "checked_in", "triage", "with_doctor"],
+            )
+            .order_by("scheduled_for")
+            .first()
+        )
+        if appt is None:
+            next_q = (
+                Appointment.objects.filter(
+                    organisation=emr.organisation, scheduled_for__date=today
+                ).aggregate(m=Max("queue_number"))["m"] or 0
+            ) + 1
+            Appointment.objects.create(
+                organisation=emr.organisation,
+                patient=patient,
+                scheduled_for=timezone.now(),
+                status="triage",
+                queue_number=next_q,
+                created_by=request.user,
+            )
+        else:
+            appt.status = "triage"
+            appt.save(update_fields=["status", "updated_at"])
+    messages.success(request, f"{patient.display_name} added to the queue.")
+    return redirect(request.POST.get("next") or "emr:dashboard")
+
+
+@login_required
+@require_POST
+def scribe_link_patient_view(request, session_pk):
+    """Link a scribe session to an existing patient (opt-in 'Add to EMR').
+
+    Sets ScribeSession.patient so the note joins that patient's history and
+    becomes findable in the EMR — without forcing every scribe note into the
+    EMR (scribe-only stays the default).
+    """
+    emr = membership_for_request(request)
+    session = get_object_or_404(_scribe_queryset_for_user(request.user), pk=session_pk)
+    patient = get_object_or_404(
+        Patient, pk=request.POST.get("patient_id"), organisation=emr.organisation
+    )
+    session.patient = patient
+    session.save(update_fields=["patient"])
+    log_audit_event(
+        request,
+        emr.organisation,
+        action="update",
+        resource_type="scribe_session",
+        resource_id=session.pk,
+        detail=f"Linked scribe note to {patient.display_name}",
+    )
+    messages.success(request, f"Note added to {patient.display_name}'s record.")
+    return redirect("emr:patient_detail", pk=patient.pk)
+
+
+@login_required
+@require_POST
+def encounter_addendum_view(request, encounter_pk):
+    """Append an addendum to an encounter (allowed even when signed — the
+    original record is never altered)."""
+    emr = _require(
+        lambda membership: membership.can_edit_encounters(),
+        request,
+        "Your role cannot add to encounters.",
+    )
+    if emr is None:
+        return redirect("emr:dashboard")
+    from .models import EncounterAddendum
+    encounter = get_object_or_404(Encounter, pk=encounter_pk, organisation=emr.organisation)
+    text = (request.POST.get("text") or "").strip()
+    if text:
+        EncounterAddendum.objects.create(
+            organisation=emr.organisation, encounter=encounter,
+            author=request.user, text=text,
+        )
+        log_audit_event(
+            request, emr.organisation, action="create", resource_type="addendum",
+            resource_id=encounter.pk, detail=f"Added addendum to encounter {encounter.pk}",
+        )
+        messages.success(request, "Addendum added.")
+    return redirect("emr:encounter_edit", patient_pk=encounter.patient_id, encounter_pk=encounter.pk)
 
 
 @login_required

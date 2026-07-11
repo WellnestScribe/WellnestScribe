@@ -13,8 +13,15 @@
         </div>
         <div class="d-flex gap-2 flex-wrap">
             <a href="{% url 'emr:patient_edit' patient.pk %}" class="btn btn-outline-secondary btn-sm">Edit details</a>
-            <a href="{% url 'emr:appointment_create' patient.pk %}" class="btn btn-outline-secondary btn-sm">Add to worklist</a>
-            <a href="{% url 'emr:encounter_create' patient.pk %}" class="btn btn-primary btn-sm">New encounter</a>
+            <a href="{% url 'emr:encounter_create' patient.pk %}" class="btn btn-outline-secondary btn-sm">Advanced record</a>
+            {% if doctor_profile.can_use_scribe %}
+            <a href="{% url 'scribe:record' %}?patient={{ patient.pk }}" class="btn btn-outline-primary btn-sm">
+                <iconify-icon icon="iconamoon:microphone-duotone" class="me-1"></iconify-icon>Record visit
+            </a>
+            {% endif %}
+            <a href="{% url 'emr:intake' patient.pk %}" class="btn btn-primary btn-sm">
+                <iconify-icon icon="iconamoon:clipboard-duotone" class="me-1"></iconify-icon>Intake &amp; queue
+            </a>
         </div>
     </div>
 
@@ -92,7 +99,10 @@
                                             <td>{{ encounter.chief_complaint|default:"—"|truncatechars:80 }}</td>
                                             <td>{{ encounter.get_encounter_status_display }}</td>
                                             <td class="text-end">
-                                                <a href="{% url 'emr:encounter_edit' patient.pk encounter.pk %}" class="btn btn-outline-secondary btn-sm">Open</a>
+                                                <a href="{% url 'emr:encounter_view' patient.pk encounter.pk %}" class="btn btn-outline-secondary btn-sm">View</a>
+                                                {% if encounter.encounter_status != 'signed' and doctor_profile.can_use_scribe %}
+                                                    <a href="{% url 'emr:encounter_edit' patient.pk encounter.pk %}" class="btn btn-outline-primary btn-sm">Edit</a>
+                                                {% endif %}
                                             </td>
                                         </tr>
                                     {% endfor %}
@@ -102,8 +112,48 @@
                     {% else %}
                         <div class="emr-empty-state">
                             <h6 class="fw-semibold">No encounters yet</h6>
-                            <a href="{% url 'emr:encounter_create' patient.pk %}" class="btn btn-primary btn-sm">Start first encounter</a>
+                            <p class="text-muted small mb-3">Take the patient's intake (complaint + vitals) and send them to the doctor's queue.</p>
+                            <a href="{% url 'emr:intake' patient.pk %}" class="btn btn-primary btn-sm">
+                                <iconify-icon icon="iconamoon:clipboard-duotone" class="me-1"></iconify-icon>Intake &amp; queue
+                            </a>
                         </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <h5 class="fw-semibold mb-0">Scribe visits</h5>
+                        {% if doctor_profile.can_use_scribe %}
+                        <a href="{% url 'scribe:record' %}?patient={{ patient.pk }}" class="btn btn-outline-primary btn-sm">
+                            <iconify-icon icon="iconamoon:microphone-duotone" class="me-1"></iconify-icon>Record visit
+                        </a>
+                        {% endif %}
+                    </div>
+                    {% if patient_visits %}
+                        <div class="d-flex flex-column gap-2">
+                            {% for visit in patient_visits %}
+                                <a href="{% url 'scribe:review' visit.pk %}" class="session-row">
+                                    <span class="session-icon">
+                                        <iconify-icon icon="iconamoon:file-document-duotone"></iconify-icon>
+                                    </span>
+                                    <span class="flex-grow-1">
+                                        <span class="d-block fw-semibold">
+                                            {{ visit.chief_complaint|default:visit.title|default:"Consultation" }}
+                                        </span>
+                                        <span class="d-block small text-muted">
+                                            {{ visit.created_at|date:"M j, Y · g:i A" }} · {{ visit.get_status_display }}
+                                        </span>
+                                    </span>
+                                    {% if visit.is_sensitive %}
+                                        <span class="badge rounded-pill bg-warning-subtle text-warning">Sensitive</span>
+                                    {% endif %}
+                                </a>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted small mb-0">No recorded consultations yet.</p>
                     {% endif %}
                 </div>
             </div>
@@ -199,4 +249,26 @@
         </div>
     </div>
 </div>
+
+<script>
+(function () {
+  var initial = null;
+  function poll() {
+    if (document.hidden) return;
+    fetch('{% url "emr:patient_activity" patient.pk %}', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d) return;
+        if (initial === null) { initial = d.sig; return; }
+        if (d.sig !== initial) {
+          var a = document.activeElement;
+          if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT')) return;
+          window.location.reload();
+        }
+      }).catch(function () {});
+  }
+  setInterval(poll, 20000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
+})();
+</script>
 {% endblock %}

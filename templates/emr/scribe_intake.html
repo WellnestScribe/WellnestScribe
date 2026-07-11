@@ -40,7 +40,12 @@
                             </div>
                             <div class="d-flex gap-2 flex-wrap">
                                 <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary btn-sm">Open chart</a>
-                                <a href="{% url 'emr:encounter_create' patient.pk %}?scribe={{ session.pk }}" class="btn btn-primary btn-sm">Create encounter from note</a>
+                                <form method="post" action="{% url 'emr:scribe_link' session.pk %}" class="m-0">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="patient_id" value="{{ patient.pk }}">
+                                    <button class="btn btn-primary btn-sm">Add note to this patient</button>
+                                </form>
+                                <a href="{% url 'emr:encounter_create' patient.pk %}?scribe={{ session.pk }}" class="btn btn-outline-secondary btn-sm">Create encounter</a>
                             </div>
                         </div>
                     </div>

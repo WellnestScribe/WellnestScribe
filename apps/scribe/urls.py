@@ -54,6 +54,8 @@ urlpatterns = [
     # SSE stream — PC listens here for QR scan notifications
     path("scan-events/", views.scan_events_view, name="scan_events"),
     path("api/patients/", views.patients_api, name="api_patients"),
+    path("api/recent-sessions/", views.recent_sessions_api, name="api_recent_sessions"),
+    path("api/patient/<int:patient_id>/recent-notes/", views.patient_recent_notes_api, name="api_patient_recent_notes"),
     path("api/quick-transcribe/", views.quick_transcribe_api, name="api_quick_transcribe"),
     path(
         "api/sessions/<int:pk>/resume/",

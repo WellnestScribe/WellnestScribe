@@ -173,3 +173,80 @@ class SecurityAuditMiddleware:
         if forwarded:
             return forwarded.split(",")[0].strip()
         return request.META.get("REMOTE_ADDR", "unknown")
+
+
+# Paths a locked-out non-admin may still reach, so they can read the notice,
+# sign out, and load styling. Everything else is blocked in MODE_LOCKED.
+_LOCKDOWN_ALLOW_PREFIXES = (
+    "/accounts/signin",
+    "/accounts/signup",
+    "/accounts/signout",
+    "/accounts/api/reauth",
+    "/static/",
+    "/media/",
+    "/favicon",
+    "/manifest",
+    "/sw.js",
+    "/serviceworker",
+)
+
+
+class DemoLockdownMiddleware:
+    """Enforce PlatformControl's *Locked* demo mode for non-admin users.
+
+    When an admin sets demo_mode to 'locked' (e.g. during a public pitch where
+    a sign-up QR is on screen), every non-admin request outside the allow-list
+    is short-circuited: API/POST calls get a JSON 403, page loads get a friendly
+    "test mode" screen. This is the global chokepoint that protects model
+    credits even on endpoints added later — it sits in front of every view.
+
+    'Test mode' (limited) is NOT handled here; that is a per-session count
+    enforced where sessions are created, so users can still finish their one
+    allowed note.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        blocked = self._should_block(request)
+        if blocked is not None:
+            return blocked
+        return self.get_response(request)
+
+    def _should_block(self, request):
+        path = request.path
+        if path.startswith(_LOCKDOWN_ALLOW_PREFIXES):
+            return None
+        user = getattr(request, "user", None)
+        if user is None or not user.is_authenticated:
+            return None  # anonymous users can't run the pipeline anyway
+
+        # Local imports: middleware is imported before apps are ready.
+        from accounts.models import PlatformControl, user_is_admin
+
+        try:
+            control = PlatformControl.get()
+        except Exception:  # noqa: BLE001 — never let the gate take the site down
+            return None
+        if control.demo_mode != PlatformControl.MODE_LOCKED:
+            return None
+        if user_is_admin(user):
+            return None
+
+        message = control.message_for_mode()
+        wants_json = (
+            request.method == "POST"
+            or "/api/" in path
+            or "application/json" in request.headers.get("accept", "")
+            or request.headers.get("x-requested-with") == "XMLHttpRequest"
+        )
+        if wants_json:
+            from django.http import JsonResponse
+            return JsonResponse(
+                {"ok": False, "error": message, "demo_locked": True}, status=403
+            )
+        from django.shortcuts import render
+        return render(
+            request, "accounts/demo_locked.html", {"message": message}, status=403
+        )

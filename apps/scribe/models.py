@@ -55,6 +55,21 @@ class ScribeSession(models.Model):
     patient_identifier = EncryptedCharField(max_length=120, blank=True)
     patient_gender = models.CharField(max_length=1, choices=GENDER_CHOICES, blank=True, default="")
 
+    # Persistent patient link (Feature 1: patient records & visit history).
+    # When set, this session is a "visit" under a real emr.Patient and its
+    # demographics (name, sex) are authoritative — copied into the loose
+    # patient_* fields above so note generation uses the correct sex instead
+    # of inferring it. Left null for quick, unlinked sessions (no regression).
+    # String ref avoids a scribe→emr import cycle; SET_NULL so deleting a
+    # patient never destroys the clinical note.
+    patient = models.ForeignKey(
+        "emr.Patient",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="scribe_sessions",
+    )
+
     # Active conditions (multi-select checklist on record screen). Stored
     # as a comma-separated list of short keys: 'dm', 'htn', 'lipids',
     # 'ckd', 'obesity', etc.

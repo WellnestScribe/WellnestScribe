@@ -27,16 +27,21 @@ class WellnestSignUpForm(UserCreationForm):
             attrs={"class": "form-control", "placeholder": "Dr. Jane Smith"}
         ),
     )
+    role = forms.ChoiceField(
+        choices=DoctorProfile.ROLE_CHOICES,
+        initial=DoctorProfile.ROLE_CLINICIAN,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
     specialty = forms.ChoiceField(
         choices=DoctorProfile.SPECIALTY_CHOICES,
         widget=forms.Select(attrs={"class": "form-select"}),
     )
-    facility = forms.CharField(
-        max_length=120,
+    organisation = forms.ModelChoiceField(
+        queryset=None,
         required=False,
-        widget=forms.TextInput(
-            attrs={"class": "form-control", "placeholder": "Health centre / hospital"}
-        ),
+        empty_label="— Default (assign later) —",
+        widget=forms.Select(attrs={"class": "form-select"}),
+        label="Facility",
     )
 
     class Meta:
@@ -49,6 +54,11 @@ class WellnestSignUpForm(UserCreationForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Lazy import avoids app-loading order issues; facilities are managed by admins.
+        from emr.models import Organisation
+        self.fields["organisation"].queryset = Organisation.objects.filter(
+            is_active=True
+        ).order_by("name")
         for name in ("username", "email", "password1", "password2"):
             if name in self.fields:
                 self.fields[name].widget.attrs.setdefault("class", "form-control")

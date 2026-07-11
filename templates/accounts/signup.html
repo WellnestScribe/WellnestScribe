@@ -21,12 +21,17 @@
                     {% if form.full_name.errors %}<small class="text-danger">{{ form.full_name.errors|join:" " }}</small>{% endif %}
                 </div>
                 <div class="col-12 col-md-6">
+                    <label class="form-label small text-muted" for="id_role">Role</label>
+                    {{ form.role }}
+                </div>
+                <div class="col-12 col-md-6">
                     <label class="form-label small text-muted" for="id_specialty">Specialty</label>
                     {{ form.specialty }}
                 </div>
-                <div class="col-12 col-md-6">
-                    <label class="form-label small text-muted" for="id_facility">Facility (optional)</label>
-                    {{ form.facility }}
+                <div class="col-12">
+                    <label class="form-label small text-muted" for="id_organisation">Facility (optional)</label>
+                    {{ form.organisation }}
+                    <small class="text-muted">Not listed? No problem — leave it as default and an admin can set your facility later.</small>
                 </div>
                 <div class="col-12 col-md-6">
                     <label class="form-label small text-muted" for="id_username">Username</label>

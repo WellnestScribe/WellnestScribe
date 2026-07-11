@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Subscription &amp; data · WellNest{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="page-title-box">
+            <h4 class="mb-1 fw-semibold">Subscription &amp; data</h4>
+            <p class="text-muted mb-0 small">Your plan and a copy of your clinic's data, any time.</p>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-12 col-xl-7">
+        <div class="card">
+            <div class="card-body p-4">
+                <h5 class="fw-semibold mb-3">Your plan</h5>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="text-muted small">Facility</div>
+                        <div class="fw-semibold">{{ org.name }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Your role here</div>
+                        <div class="fw-semibold">{{ membership.get_role_display }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Plan</div>
+                        <div class="fw-semibold">{{ org.get_subscription_tier_display }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Status</div>
+                        <div>
+                            {% if org.subscription_status == "active" %}
+                                <span class="badge bg-success-subtle text-success">Active</span>
+                            {% elif org.subscription_status == "trial" %}
+                                <span class="badge bg-info-subtle text-info">Trial</span>
+                            {% elif org.subscription_status == "past_due" %}
+                                <span class="badge bg-warning-subtle text-warning">Past due</span>
+                            {% else %}
+                                <span class="badge bg-danger-subtle text-danger">{{ org.get_subscription_status_display }}</span>
+                            {% endif %}
+                            {% if org.scribe_enabled %}
+                                <span class="badge bg-success-subtle text-success ms-1">AI scribe on</span>
+                            {% else %}
+                                <span class="badge bg-danger-subtle text-danger ms-1">AI scribe paused</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Provider seats</div>
+                        <div class="fw-semibold">{{ org.provider_seats }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="text-muted small">Paid through</div>
+                        <div class="fw-semibold">{{ org.subscription_expires|date:"M j, Y"|default:"—" }}</div>
+                    </div>
+                </div>
+                {% if not org.scribe_enabled %}
+                <div class="alert alert-warning small mt-3 mb-0">
+                    AI note generation is paused for your clinic. <strong>Your patient records are still fully available.</strong>
+                    Please contact your administrator about the subscription.
+                </div>
+                {% endif %}
+                <p class="text-muted small mb-0 mt-3">To change your plan, contact your administrator or WellNest support.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-5">
+        <div class="card">
+            <div class="card-body p-4">
+                <h5 class="fw-semibold mb-2">Export your data</h5>
+                <p class="text-muted small mb-3">
+                    Download a copy of your clinic's records — patients, encounters, diagnoses,
+                    medications, and vitals. Yours to keep and move, any time.
+                </p>
+                <div class="d-grid gap-2">
+                    <a href="{% url 'accounts:my_data_export' %}?format=csv" class="btn btn-primary">
+                        <iconify-icon icon="iconamoon:file-document-duotone" class="me-1 align-middle"></iconify-icon>Export as CSV (spreadsheet)
+                    </a>
+                    <a href="{% url 'accounts:my_data_export' %}" class="btn btn-outline-secondary">
+                        <iconify-icon icon="iconamoon:cloud-download-duotone" class="me-1 align-middle"></iconify-icon>Export as JSON (full data)
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

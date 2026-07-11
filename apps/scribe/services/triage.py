@@ -836,6 +836,76 @@ def transcribe_parakeet(audio_path: str | Path, *, device: str = "cpu") -> str:
 
 # TEMPORARY — Modal L4 GPU endpoint for ambient-mode latency testing.
 # Remove this function once the testing phase is complete.
+def _transcode_to_opus16k(src: Path) -> "Path | None":
+    """Transcode audio to 16 kHz mono Opus (OGG) for upload to Modal.
+
+    Speech ASR only needs 16 kHz mono — the omniASR model's native input — so
+    re-encoding to Opus @ 32 kbps is transparent for transcription quality yet
+    shrinks the upload ~8x (a 159 MB / 1.5 h stereo MP3 → ~19 MB). This keeps
+    3 h+ sessions well under Modal's 100 MB cap and avoids loading a huge file
+    into the GPU container's RAM.
+
+    Uses PyAV, which bundles ffmpeg (no system binary required, works the same
+    on the Render server and a Windows box), and streams frame-by-frame so
+    memory stays low even when several people convert at once. The heavy lifting
+    is on the server — the phone/tablet only uploads the raw file.
+    """
+    import tempfile
+
+    try:
+        import av  # type: ignore
+    except Exception:  # noqa: BLE001 — PyAV missing → caller falls back
+        return None
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".ogg", delete=False)
+    tmp.close()
+    dst = Path(tmp.name)
+
+    inc = outc = None
+    try:
+        inc = av.open(str(src))
+        if not inc.streams.audio:
+            raise RuntimeError("no audio stream in source")
+        in_stream = inc.streams.audio[0]
+        outc = av.open(str(dst), mode="w", format="ogg")
+        out_stream = outc.add_stream("libopus", rate=16000)
+        out_stream.bit_rate = 32000
+        try:
+            out_stream.layout = "mono"  # give the full bitrate to one channel
+        except Exception:  # noqa: BLE001 — older PyAV; encoder still works
+            pass
+        resampler = av.AudioResampler(format="s16", layout="mono", rate=16000)
+        for frame in inc.decode(in_stream):
+            frame.pts = None
+            for rframe in resampler.resample(frame):
+                for packet in out_stream.encode(rframe):
+                    outc.mux(packet)
+        for rframe in resampler.resample(None):  # flush resampler
+            for packet in out_stream.encode(rframe):
+                outc.mux(packet)
+        for packet in out_stream.encode(None):  # flush encoder
+            outc.mux(packet)
+    except Exception:  # noqa: BLE001
+        for c in (outc, inc):
+            try:
+                if c is not None:
+                    c.close()
+            except Exception:  # noqa: BLE001
+                pass
+        dst.unlink(missing_ok=True)
+        return None
+
+    try:
+        outc.close()
+        inc.close()
+    except Exception:  # noqa: BLE001
+        pass
+    if dst.stat().st_size > 100:
+        return dst
+    dst.unlink(missing_ok=True)
+    return None
+
+
 def _convert_webm_to_wav(src: Path) -> "Path | None":
     """Convert any audio/video format to 16 kHz mono WAV.
 
@@ -919,10 +989,20 @@ def transcribe_modal_mms(
 
     src = Path(audio_path)
     tmp_wav: "Path | None" = None
-    # Browser webm files lack duration metadata; convert to WAV so Modal's
-    # duration pre-check doesn't read 0 s and reject valid recordings.
-    if src.suffix.lower() in {".webm", ".ogg", ".opus"}:
-        tmp_wav = _convert_webm_to_wav(src)
+    mime = "audio/webm"
+    # Normalise big uploads and browser recordings to 16 kHz mono Opus (keeps us
+    # under Modal's 100 MB cap and fixes the missing-duration header).
+    try:
+        _oversized = src.stat().st_size > 40 * 1024 * 1024
+    except OSError:
+        _oversized = False
+    if src.suffix.lower() in {".webm", ".ogg", ".opus"} or _oversized:
+        tmp_wav = _transcode_to_opus16k(src)
+        if tmp_wav is not None:
+            mime = "audio/ogg"
+        elif src.suffix.lower() in {".webm", ".ogg", ".opus"}:
+            tmp_wav = _convert_webm_to_wav(src)
+            mime = "audio/wav" if tmp_wav else mime
 
     send_path = tmp_wav if tmp_wav else src
     try:
@@ -930,7 +1010,7 @@ def transcribe_modal_mms(
             resp = requests.post(
                 url,
                 headers=headers,
-                files={"file": (send_path.name, f, "audio/wav" if tmp_wav else "audio/webm")},
+                files={"file": (send_path.name, f, mime)},
                 data={"backend": "mms", "target_lang": target_lang},
                 timeout=300,
             )
@@ -1018,14 +1098,24 @@ def transcribe_modal_omni(
         )
 
     src = Path(audio_path)
-    tmp_wav: "Path | None" = None
-    # Browser-recorded webm/ogg/opus have a broken duration header — convert locally.
-    # All other formats (m4a, mp3, mp4, wav, flac…) are sent raw; Modal's ffmpeg handles them.
-    if src.suffix.lower() in {".webm", ".ogg", ".opus"}:
-        tmp_wav = _convert_webm_to_wav(src)
+    tmp_wav: "Path | None" = None  # any temp we create (opus or wav) — cleaned in finally
+    mime = "application/octet-stream"
+    # Normalise to 16 kHz mono Opus when the file is big (would trip Modal's
+    # 100 MB cap) or is a browser recording (webm/opus carry a broken duration
+    # header). Small, already-compatible files are sent raw for speed.
+    try:
+        _oversized = src.stat().st_size > 40 * 1024 * 1024
+    except OSError:
+        _oversized = False
+    if src.suffix.lower() in {".webm", ".ogg", ".opus"} or _oversized:
+        tmp_wav = _transcode_to_opus16k(src)
+        if tmp_wav is not None:
+            mime = "audio/ogg"
+        elif src.suffix.lower() in {".webm", ".ogg", ".opus"}:
+            tmp_wav = _convert_webm_to_wav(src)  # fallback: at least fix the header
+            mime = "audio/wav" if tmp_wav else mime
 
     send_path = tmp_wav if tmp_wav else src
-    mime = "audio/wav" if tmp_wav else "application/octet-stream"
 
     last_error: str = ""
     try:

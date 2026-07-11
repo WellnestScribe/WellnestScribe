@@ -36,8 +36,27 @@ MEMBERSHIP_ROLE_CHOICES = [
     ("doctor", "Doctor"),
     ("nurse", "Nurse"),
     ("receptionist", "Receptionist"),
+    ("scribe", "Medical scribe"),
+    ("radiologist", "Radiologist"),
+    ("pharmacist", "Pharmacist"),
+    ("lab_tech", "Lab technician"),
     ("admin", "Organisation admin"),
     ("system_admin", "System admin"),
+]
+
+SUBSCRIPTION_TIER_CHOICES = [
+    ("trial", "Trial"),
+    ("scribe", "Scribe only (per provider)"),
+    ("practice", "Practice — Scribe + EMR"),
+    ("emr", "EMR only (per facility)"),
+]
+
+SUBSCRIPTION_STATUS_CHOICES = [
+    ("active", "Active"),
+    ("trial", "Trial"),
+    ("past_due", "Past due"),
+    ("suspended", "Suspended"),
+    ("cancelled", "Cancelled"),
 ]
 
 PATIENT_SEX_CHOICES = [

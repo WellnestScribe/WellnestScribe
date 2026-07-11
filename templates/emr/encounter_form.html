@@ -13,12 +13,20 @@
         </div>
         <div class="d-flex gap-2 flex-wrap">
             <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary btn-sm">Back to chart</a>
+            <form method="post" action="{% url 'emr:add_to_queue' patient.pk %}" class="m-0">
+                {% csrf_token %}
+                <button class="btn btn-primary btn-sm">
+                    <iconify-icon icon="iconamoon:arrow-right-2-duotone" class="me-1 align-middle"></iconify-icon>Add to queue
+                </button>
+            </form>
             {% if encounter.pk %}
                 <a href="{% url 'emr:prescription_print' encounter.pk %}" class="btn btn-outline-secondary btn-sm">Prescription</a>
                 <a href="{% url 'emr:referral_create' encounter.pk %}" class="btn btn-outline-secondary btn-sm">Referral</a>
             {% endif %}
         </div>
     </div>
+
+    {% include "partials/_waiting_queue.html" %}
 
     {% if encounter.encounter_status == "signed" %}
         <div class="alert alert-success small">
@@ -118,13 +126,32 @@
         {% endfor %}
     </datalist>
 
-    <form method="post" class="row g-4">
+    <form method="post" class="row g-4" id="encounterForm">
         {% csrf_token %}
         {% if scribe_session %}
             <input type="hidden" name="scribe_id" value="{{ scribe_session.pk }}">
         {% endif %}
         <div class="col-12 col-xl-8">
             <fieldset {% if encounter.encounter_status == "signed" %}disabled{% endif %}>
+                <div class="card mb-4">
+                    <div class="card-body p-4">
+                        <h5 class="fw-semibold mb-3">Vitals captured for this encounter</h5>
+                        <div class="row g-3">
+                            <div class="col-md-3">{{ vitals_form.bp_systolic.label_tag }}{{ vitals_form.bp_systolic }}</div>
+                            <div class="col-md-3">{{ vitals_form.bp_diastolic.label_tag }}{{ vitals_form.bp_diastolic }}</div>
+                            <div class="col-md-3">{{ vitals_form.temperature_celsius.label_tag }}{{ vitals_form.temperature_celsius }}</div>
+                            <div class="col-md-3">{{ vitals_form.weight_kg.label_tag }}{{ vitals_form.weight_kg }}</div>
+                            <div class="col-md-3">{{ vitals_form.pulse_bpm.label_tag }}{{ vitals_form.pulse_bpm }}</div>
+                            <div class="col-md-3">{{ vitals_form.respiratory_rate.label_tag }}{{ vitals_form.respiratory_rate }}</div>
+                            <div class="col-md-3">{{ vitals_form.oxygen_saturation.label_tag }}{{ vitals_form.oxygen_saturation }}</div>
+                            <div class="col-md-3"><label class="form-label">Blood glucose (mmol/L)</label>{{ vitals_form.blood_glucose_mmol }}</div>
+                            <div class="col-md-3">{{ vitals_form.height_cm.label_tag }}{{ vitals_form.height_cm }}</div>
+                            <div class="col-md-3">{{ vitals_form.muac_cm.label_tag }}{{ vitals_form.muac_cm }}</div>
+                            <div class="col-md-3">{{ vitals_form.pain_score.label_tag }}{{ vitals_form.pain_score }}</div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="card mb-4">
                     <div class="card-body p-4">
                         <h5 class="fw-semibold mb-3">Visit context</h5>
@@ -147,25 +174,6 @@
                             <div class="col-md-4">{{ form.sick_leave_end.label_tag }}{{ form.sick_leave_end }}</div>
                             <div class="col-md-4">{{ form.sick_leave_diagnosis.label_tag }}{{ form.sick_leave_diagnosis }}</div>
                             <div class="col-12">{{ form.herbal_remedies.label_tag }}{{ form.herbal_remedies }}</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card mb-4">
-                    <div class="card-body p-4">
-                        <h5 class="fw-semibold mb-3">Vitals captured for this encounter</h5>
-                        <div class="row g-3">
-                            <div class="col-md-3">{{ vitals_form.weight_kg.label_tag }}{{ vitals_form.weight_kg }}</div>
-                            <div class="col-md-3">{{ vitals_form.height_cm.label_tag }}{{ vitals_form.height_cm }}</div>
-                            <div class="col-md-3">{{ vitals_form.bp_systolic.label_tag }}{{ vitals_form.bp_systolic }}</div>
-                            <div class="col-md-3">{{ vitals_form.bp_diastolic.label_tag }}{{ vitals_form.bp_diastolic }}</div>
-                            <div class="col-md-3">{{ vitals_form.pulse_bpm.label_tag }}{{ vitals_form.pulse_bpm }}</div>
-                            <div class="col-md-3">{{ vitals_form.respiratory_rate.label_tag }}{{ vitals_form.respiratory_rate }}</div>
-                            <div class="col-md-3">{{ vitals_form.temperature_celsius.label_tag }}{{ vitals_form.temperature_celsius }}</div>
-                            <div class="col-md-3">{{ vitals_form.oxygen_saturation.label_tag }}{{ vitals_form.oxygen_saturation }}</div>
-                            <div class="col-md-4"><label class="form-label">Blood glucose (mmol/L)</label>{{ vitals_form.blood_glucose_mmol }}</div>
-                            <div class="col-md-4">{{ vitals_form.muac_cm.label_tag }}{{ vitals_form.muac_cm }}</div>
-                            <div class="col-md-4">{{ vitals_form.pain_score.label_tag }}{{ vitals_form.pain_score }}</div>
                         </div>
                     </div>
                 </div>
@@ -254,7 +262,24 @@
                 </div>
             </fieldset>
 
-            <div class="d-flex gap-2 flex-wrap">
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Attachments &amp; lab results</h5>
+                    <div class="border rounded-3 p-4 text-center text-muted" style="border-style:dashed !important;">
+                        <iconify-icon icon="iconamoon:cloud-upload-duotone" class="fs-2 d-block mb-2"></iconify-icon>
+                        Upload a photo of lab results, a referral, or a written prescription.
+                        <div class="mt-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled title="Coming soon">
+                                <iconify-icon icon="iconamoon:camera-duotone" class="me-1"></iconify-icon>Add image / file
+                            </button>
+                            <span class="badge bg-warning-subtle text-warning ms-1">Coming soon</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap p-2 rounded-3 border"
+                 style="position: sticky; bottom: 0.5rem; background: var(--bs-body-bg); z-index: 5; box-shadow: 0 -2px 8px rgba(0,0,0,.08);">
                 {% if encounter.encounter_status != "signed" %}
                     <button class="btn btn-primary" name="action" value="save">Save draft</button>
                     <button class="btn btn-success" name="action" value="sign">Sign encounter</button>
@@ -321,5 +346,100 @@
             </div>
         </div>
     </form>
+
+    {% if encounter.pk %}
+    <div class="row g-4 mt-1">
+        <div class="col-12 col-xl-8">
+            <div class="card">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Addenda</h5>
+                    <p class="text-muted small">
+                        Add a correction or note after the fact. Addenda are stored separately and never change the signed record.
+                    </p>
+                    {% for a in encounter.addenda.all %}
+                        <div class="border-start border-3 border-primary-subtle ps-3 mb-3">
+                            <div class="small text-muted">
+                                {{ a.created_at|date:"M j, Y · g:i A" }} · {{ a.author.get_full_name|default:a.author.username|default:"—" }}
+                            </div>
+                            <div style="white-space:pre-wrap;">{{ a.text }}</div>
+                        </div>
+                    {% empty %}
+                        <p class="text-muted small">No addenda yet.</p>
+                    {% endfor %}
+                    <form method="post" action="{% url 'emr:encounter_addendum' encounter.pk %}" class="mt-3">
+                        {% csrf_token %}
+                        <textarea name="text" class="form-control mb-2" rows="2" placeholder="Add an addendum…" required></textarea>
+                        <button class="btn btn-outline-primary btn-sm">Add addendum</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  var form = document.getElementById('encounterForm');
+  if (!form) return;
+  var checks = [
+    ['id_vitals-bp_systolic', 'BP systolic', 40, 300],
+    ['id_vitals-bp_diastolic', 'BP diastolic', 20, 200],
+    ['id_vitals-temperature_celsius', 'Temperature (°C)', 30, 45],
+    ['id_vitals-weight_kg', 'Weight (kg)', 0.5, 400],
+    ['id_vitals-height_cm', 'Height (cm)', 20, 260],
+    ['id_vitals-pulse_bpm', 'Pulse (bpm)', 20, 300],
+    ['id_vitals-respiratory_rate', 'Respiratory rate', 4, 80],
+    ['id_vitals-oxygen_saturation', 'Oxygen saturation (%)', 50, 100],
+    ['id_vitals-blood_glucose_mmol', 'Blood glucose (mmol/L)', 1, 60],
+  ];
+  form.addEventListener('submit', function (e) {
+    var problems = [], firstEl = null;
+    checks.forEach(function (c) {
+      var el = document.getElementById(c[0]);
+      if (!el) return;
+      var raw = String(el.value || '').trim();
+      if (!raw) return;
+      var n = parseFloat(raw);
+      if (isNaN(n) || n < c[2] || n > c[3]) {
+        problems.push(c[1] + ' should be between ' + c[2] + ' and ' + c[3] + ' (you entered ' + raw + ')');
+        if (!firstEl) firstEl = el;
+      }
+    });
+    var sysEl = document.getElementById('id_vitals-bp_systolic');
+    var diaEl = document.getElementById('id_vitals-bp_diastolic');
+    var sys = sysEl ? parseFloat(sysEl.value) : NaN;
+    var dia = diaEl ? parseFloat(diaEl.value) : NaN;
+    if (!isNaN(sys) && !isNaN(dia) && sys <= dia) {
+      problems.push('BP systolic must be higher than diastolic.');
+      if (!firstEl) firstEl = sysEl;
+    }
+    if (problems.length) {
+      e.preventDefault();
+      var focusFirst = function () { if (firstEl) { firstEl.scrollIntoView({behavior: 'smooth', block: 'center'}); firstEl.focus(); } };
+      if (window.Swal) {
+        window.Swal.fire({icon: 'warning', title: 'Check the vitals', html: problems.join('<br>'), confirmButtonText: 'Fix'}).then(focusFirst);
+      } else { alert(problems.join('\n')); focusFirst(); }
+    }
+  });
+})();
+</script>
+<script>
+/* Auto-grow the encounter textareas so long imported notes aren't cramped in a
+   tiny scrolling box (looks tacky). */
+(function () {
+  var tas = document.querySelectorAll('#encounterForm textarea');
+  tas.forEach(function (ta) {
+    ta.style.overflow = 'hidden';
+    ta.style.resize = 'vertical';
+    ta.style.minHeight = '3rem';
+    function fit() { ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight + 2) + 'px'; }
+    fit();
+    ta.addEventListener('input', fit);
+  });
+  window.addEventListener('load', function () { tas.forEach(function (ta) { ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight + 2) + 'px'; }); });
+})();
+</script>
 {% endblock %}

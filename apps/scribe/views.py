@@ -88,6 +88,82 @@ def _get_profile(user) -> DoctorProfile:
     return profile
 
 
+# emr.Patient.sex → scribe patient_gender. Keeps note-generation pronouns
+# correct from the authoritative patient record instead of inference.
+_EMR_SEX_TO_GENDER = {"male": "M", "female": "F", "intersex": "O", "unknown": ""}
+
+
+def _resolve_linked_patient(user, patient_id):
+    """Return an emr.Patient in the user's clinic, or None.
+
+    Scoped through the same org resolver the EMR uses, so a doctor can only
+    attach patients from their own organisation. Any emr problem returns None
+    rather than breaking the recording flow (Feature 1).
+    """
+    if not patient_id:
+        return None
+    try:
+        from emr.models import Patient
+        from emr.services.access import get_membership
+    except Exception:  # noqa: BLE001 — emr must never break recording
+        return None
+    try:
+        ctx = get_membership(user)
+        return Patient.objects.filter(pk=patient_id, organisation=ctx.organisation).first()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _latest_nurse_vitals(patient_id):
+    """Most recent Vital recorded for a patient today (nurse intake), or None."""
+    if not patient_id:
+        return None
+    try:
+        from emr.models import Vital
+        return (
+            Vital.objects.filter(
+                patient_id=patient_id, recorded_at__date=timezone.localdate()
+            )
+            .order_by("-recorded_at")
+            .first()
+        )
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _nurse_vitals_context(session) -> str:
+    """Nurse-measured vitals for this visit, formatted as note-generation context.
+
+    Binds the BP / glucose / temp the nurse captured at intake to the note the
+    doctor dictates, so the AI writes the real measured numbers instead of
+    inventing them (S7: vitals-as-context).
+    """
+    v = _latest_nurse_vitals(getattr(session, "patient_id", None))
+    if v is None:
+        return ""
+    bits = []
+    if v.bp_systolic and v.bp_diastolic:
+        bits.append(f"BP {v.bp_systolic}/{v.bp_diastolic} mmHg")
+    if v.pulse_bpm:
+        bits.append(f"pulse {v.pulse_bpm} bpm")
+    if v.temperature_celsius:
+        bits.append(f"temperature {v.temperature_celsius} °C")
+    if v.weight_kg:
+        bits.append(f"weight {v.weight_kg} kg")
+    if v.oxygen_saturation:
+        bits.append(f"SpO2 {v.oxygen_saturation}%")
+    if v.blood_glucose_mmol:
+        bits.append(f"blood glucose {v.blood_glucose_mmol} mmol/L")
+    if not bits:
+        return ""
+    return (
+        "Vitals measured by the nurse at intake today (use these exact values in the "
+        "Objective / vital signs section — do not invent different numbers): "
+        + ", ".join(bits)
+        + "."
+    )
+
+
 def _json_body(request):
     if not request.body:
         return {}
@@ -129,12 +205,28 @@ class RecordView(LoginRequiredMixin, View):
             ScribeSession.objects.filter(doctor=request.user)
             .order_by("-created_at")[:6]
         )
+        # Feature 1: patient-first entry. ?patient=<id> preselects and locks the
+        # patient so the doctor records straight into that patient's history.
+        selected_patient = _resolve_linked_patient(request.user, request.GET.get("patient"))
+        selected_patient_vitals = _latest_nurse_vitals(selected_patient.pk) if selected_patient else None
+        scribe_enabled, subscription_expires = True, None
+        try:
+            from emr.services.access import get_membership
+            _org = get_membership(request.user).organisation
+            scribe_enabled = _org.scribe_enabled
+            subscription_expires = _org.subscription_expires
+        except Exception:  # noqa: BLE001
+            pass
         return render(
             request,
             self.template_name,
             {
                 "profile": profile,
                 "recent_sessions": recent,
+                "selected_patient": selected_patient,
+                "selected_patient_vitals": selected_patient_vitals,
+                "scribe_enabled": scribe_enabled,
+                "subscription_expires": subscription_expires,
                 "specialty_choices": DoctorProfile.SPECIALTY_CHOICES,
                 "format_choices": ScribeSession.NOTE_FORMAT_CHOICES,
                 "length_choices": ScribeSession.LENGTH_MODE_CHOICES,
@@ -145,16 +237,12 @@ class RecordView(LoginRequiredMixin, View):
         )
 
 
-@login_required
-def patients_api(request):
-    """Unique patients from this doctor's sessions, grouped by (name, identifier)."""
-    sessions = (
-        ScribeSession.objects.filter(doctor=request.user)
-        .exclude(patient_name="")
-        .order_by("-created_at")
-        .values("pk", "patient_name", "patient_identifier", "patient_gender", "chief_complaint", "created_at")
-    )
-    # Group by (name.lower(), identifier.lower()) so same-name different-ID = distinct patients.
+def _group_unlinked_sessions(sessions):
+    """Group scribe sessions with no linked emr.Patient by (name, identifier).
+
+    Covers walk-ins recorded before the patient was registered — still
+    searchable, but they carry no patient_id (chart link) until linked.
+    """
     seen: dict = {}
     for s in sessions:
         name = (s["patient_name"] or "").strip()
@@ -164,6 +252,7 @@ def patients_api(request):
         key = (name.lower(), ident.lower())
         if key not in seen:
             seen[key] = {
+                "patient_id": "",
                 "name": name,
                 "identifier": ident,
                 "gender": s["patient_gender"] or "",
@@ -174,10 +263,72 @@ def patients_api(request):
             }
         else:
             seen[key]["session_count"] += 1
+    return list(seen.values())
 
-    results = list(seen.values())[:50]
 
-    # Mark names that appear more than once so UI can show disambiguator.
+@login_required
+def patients_api(request):
+    """Every patient registered to the doctor's clinic — shared across the whole
+    facility, not just this doctor's own sessions.
+
+    Pulls the authoritative roster from emr.Patient (so a colleague's patients,
+    and seeded/registered patients who were never scribed, all show up), then
+    folds in any unlinked walk-in sessions from clinic staff. Each registered
+    result carries a real ``patient_id`` so selecting it links the chart.
+    """
+    results: list = []
+
+    try:
+        from emr.models import OrganisationMembership, Patient
+        from emr.services.access import get_membership
+        org = get_membership(request.user).organisation
+    except Exception:  # noqa: BLE001 — never break recording if EMR is unavailable
+        org = None
+
+    if org is not None:
+        patients = (
+            Patient.objects.filter(organisation=org)
+            .prefetch_related("scribe_sessions")
+            .order_by("legal_last_name", "legal_first_name")[:500]
+        )
+        for p in patients:
+            sess = sorted(
+                p.scribe_sessions.all(), key=lambda s: s.created_at, reverse=True
+            )
+            last = sess[0] if sess else None
+            results.append({
+                "patient_id": p.pk,
+                "name": p.display_name,
+                "identifier": (p.trn or p.nhf_card_number or p.mrn or "").strip(),
+                "gender": _EMR_SEX_TO_GENDER.get((p.sex or "").lower(), ""),
+                "last_pk": last.pk if last else "",
+                "last_cc": (getattr(last, "chief_complaint", "") or "") if last else "",
+                "last_visit": last.created_at.strftime("%b %d, %Y") if last else "Registered",
+                "session_count": len(sess),
+            })
+
+        # Fold in unlinked walk-in sessions recorded by anyone in the clinic.
+        member_ids = OrganisationMembership.objects.filter(
+            organisation=org
+        ).values_list("user_id", flat=True)
+        unlinked = (
+            ScribeSession.objects.filter(doctor_id__in=list(member_ids), patient__isnull=True)
+            .exclude(patient_name="")
+            .order_by("-created_at")
+            .values("pk", "patient_name", "patient_identifier", "patient_gender", "chief_complaint", "created_at")
+        )
+        results.extend(_group_unlinked_sessions(unlinked))
+    else:
+        # Fallback: this doctor's own sessions only (no clinic context).
+        own = (
+            ScribeSession.objects.filter(doctor=request.user)
+            .exclude(patient_name="")
+            .order_by("-created_at")
+            .values("pk", "patient_name", "patient_identifier", "patient_gender", "chief_complaint", "created_at")
+        )
+        results.extend(_group_unlinked_sessions(own))
+
+    # Mark names that appear more than once so the UI can show a disambiguator.
     name_freq: dict = {}
     for r in results:
         name_freq[r["name"].lower()] = name_freq.get(r["name"].lower(), 0) + 1
@@ -185,6 +336,55 @@ def patients_api(request):
         r["ambiguous"] = name_freq[r["name"].lower()] > 1
 
     return JsonResponse({"patients": results})
+
+
+@login_required
+def recent_sessions_api(request):
+    """JSON of the doctor's latest sessions so the record page can refresh the
+    Recent-sessions list live (no page reload after finishing a note)."""
+    qs = ScribeSession.objects.filter(doctor=request.user).order_by("-created_at")[:8]
+    sessions = [{
+        "pk": s.pk,
+        "name": s.patient_name or s.created_at.strftime("%b %d, %Y"),
+        "meta": s.created_at.strftime("%b %d · %I:%M %p")
+                + (f" · {s.chief_complaint[:38]}" if s.chief_complaint else ""),
+        "status": s.status,
+        "status_label": s.get_status_display(),
+        "sensitive": bool(s.is_sensitive),
+        "review_url": f"/scribe/sessions/{s.pk}/review/",
+        "search": f"{(s.patient_name or '').lower()} {(s.chief_complaint or '').lower()}",
+    } for s in qs]
+    return JsonResponse({"sessions": sessions})
+
+
+@login_required
+def patient_recent_notes_api(request, patient_id):
+    """Last few notes for a patient so the doctor can skim before recording (S2).
+
+    No AI — returns the stored note text (visit summary / assessment excerpt)
+    plus a link to open the full note. Scoped to the user's organisation.
+    """
+    patient = _resolve_linked_patient(request.user, patient_id)
+    if patient is None:
+        return JsonResponse({"notes": []})
+    sessions = (
+        ScribeSession.objects.filter(patient=patient)
+        .select_related("note")
+        .order_by("-created_at")[:3]
+    )
+    notes = []
+    for s in sessions:
+        note = getattr(s, "note", None)
+        summary = ""
+        if note:
+            summary = (note.visit_summary or note.assessment or note.full_note or "").strip()[:600]
+        notes.append({
+            "date": s.created_at.strftime("%b %d, %Y"),
+            "complaint": s.chief_complaint or s.title or "Consultation",
+            "summary": summary,
+            "review_url": f"/scribe/sessions/{s.pk}/review/",
+        })
+    return JsonResponse({"notes": notes, "patient": patient.full_name})
 
 
 class HistoryView(LoginRequiredMixin, View):
@@ -1171,10 +1371,37 @@ def triage_interpret_api(request):
 
 # ----- API views -----
 
+def _demo_limit_block(request):
+    """Return a JsonResponse if Test-mode caps this non-admin user, else None.
+
+    In PlatformControl 'limited' mode a non-admin may create at most
+    note_limit sessions. Gating session creation caps the whole pipeline
+    (transcription + generation) per account during a public demo. Locked mode
+    is handled globally by DemoLockdownMiddleware, so it isn't repeated here.
+    """
+    from accounts.models import PlatformControl, user_is_admin
+
+    control = PlatformControl.get()
+    if control.demo_mode != PlatformControl.MODE_LIMITED:
+        return None
+    if user_is_admin(request.user):
+        return None
+    used = ScribeSession.objects.filter(doctor=request.user).count()
+    if used >= control.note_limit:
+        return JsonResponse(
+            {"ok": False, "error": control.message_for_mode(), "demo_limited": True},
+            status=403,
+        )
+    return None
+
+
 @login_required
 @require_POST
 @csrf_protect
 def create_session_api(request):
+    limited = _demo_limit_block(request)
+    if limited is not None:
+        return limited
     profile = _get_profile(request.user)
     audio = request.FILES.get("audio")
     note_format = request.POST.get("note_format", profile.default_note_style)
@@ -1190,6 +1417,17 @@ def create_session_api(request):
     _pg_raw = request.POST.get("patient_gender", "").strip()[:1].upper()
     patient_gender = _pg_raw if _pg_raw in {"M", "F", "O"} else ""
     active_conditions = request.POST.get("active_conditions", "").strip()[:200]
+
+    # Feature 1: if a persistent patient was selected, its record is
+    # authoritative — overwrite the loose fields so the note uses the correct
+    # name and sex (fixes inferred-demographics bug). No patient = quick session.
+    patient_obj = _resolve_linked_patient(request.user, request.POST.get("patient_id"))
+    if patient_obj is not None:
+        patient_name = (patient_obj.full_name or patient_name)[:120]
+        patient_gender = _EMR_SEX_TO_GENDER.get(patient_obj.sex, patient_gender)
+        patient_identifier = (
+            patient_obj.trn or patient_obj.nhf_card_number or patient_identifier
+        )[:120]
 
     valid_formats = dict(ScribeSession.NOTE_FORMAT_CHOICES)
     valid_lengths = dict(ScribeSession.LENGTH_MODE_CHOICES)
@@ -1211,6 +1449,7 @@ def create_session_api(request):
             status="draft",
             duration_seconds=duration_seconds,
             audio_file=audio if audio else None,
+            patient=patient_obj,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("Create session failed for doctor %s", request.user.pk)
@@ -1264,6 +1503,8 @@ def rename_session_api(request, pk):
 @csrf_protect
 def transcribe_session_api(request, pk):
     session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)
+    if _scribe_billing_suspended(request.user):
+        return JsonResponse({"ok": False, "error": _BILLING_BLOCK_MSG, "billing_suspended": True}, status=402)
     if not session.audio_file:
         return JsonResponse(
             {"ok": False, "error": "No audio attached to session."}, status=400
@@ -1296,11 +1537,29 @@ def transcribe_session_api(request, pk):
     return JsonResponse({"ok": True, "transcript": transcript})
 
 
+def _scribe_billing_suspended(user) -> bool:
+    """True only when the user's clinic subscription is explicitly suspended.
+    Gates AI note generation — never EMR record access."""
+    try:
+        from emr.services.access import get_membership
+        return not get_membership(user).organisation.scribe_enabled
+    except Exception:  # noqa: BLE001
+        return False
+
+
+_BILLING_BLOCK_MSG = (
+    "AI note generation is paused for your clinic (subscription suspended). "
+    "Patient records remain available — please contact your administrator."
+)
+
+
 @login_required
 @require_POST
 @csrf_protect
 def generate_note_api(request, pk):
     session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)
+    if _scribe_billing_suspended(request.user):
+        return JsonResponse({"ok": False, "error": _BILLING_BLOCK_MSG, "billing_suspended": True}, status=402)
     payload = _json_body(request)
     note_format = payload.get("note_format", session.note_format)
     length_mode = payload.get("length_mode", session.length_mode)
@@ -1353,7 +1612,7 @@ def generate_note_api(request, pk):
     _gender_map = {"M": "Male", "F": "Female", "O": "Other"}
     _gender_label = _gender_map.get(session.patient_gender, "")
     _patient_ctx = f"Patient sex: {_gender_label}. Use correct pronouns throughout." if _gender_label else ""
-    _custom = "\n".join(filter(None, [_patient_ctx, profile.custom_instructions])).strip()
+    _custom = "\n".join(filter(None, [_patient_ctx, _nurse_vitals_context(session), profile.custom_instructions])).strip()
 
     use_combined = dj_settings.SCRIBE_COMBINED_PIPELINE and (is_first_generation or force_reinterpret) and raw_source
     result = None
@@ -1398,10 +1657,18 @@ def generate_note_api(request, pk):
                 fresh = run_interpret_for_lang(raw_source, lang=_lang)
                 _interpret_ms = int((time.monotonic() - _t0) * 1000)
                 step2 = _extract_step2(fresh) or fresh.strip()
+                # Interpreter returned nothing usable (content filter / model change)
+                # — fall back to the raw ASR so we still have text to generate from.
+                if not step2 or len(step2.strip()) < 5:
+                    step2 = raw_source.strip()
                 session.transcript = step2
                 transcript = step2
             except Exception:  # noqa: BLE001
-                transcript = (session.transcript or "").strip()
+                # Interpreter (Azure) failed — don't lose the recording. Fall back
+                # to the raw ASR text so note generation can still run on it,
+                # rather than reporting a misleading "transcript empty" error.
+                logger.exception("Interpret step failed for session %s; using raw transcript", pk)
+                transcript = raw_source.strip() or (session.transcript or "").strip()
         else:
             # Regeneration: use cached Step 2 — no extra LLM call.
             transcript = (session.transcript or "").strip()
@@ -1543,6 +1810,8 @@ def generate_note_stream_api(request, pk):
     from django.http import StreamingHttpResponse
 
     session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)
+    if _scribe_billing_suspended(request.user):
+        return JsonResponse({"ok": False, "error": _BILLING_BLOCK_MSG, "billing_suspended": True}, status=402)
     payload = _json_body(request)
     note_format = payload.get("note_format", session.note_format)
     length_mode = payload.get("length_mode", session.length_mode)
@@ -1578,7 +1847,7 @@ def generate_note_stream_api(request, pk):
     _gender_map = {"M": "Male", "F": "Female", "O": "Other"}
     _gender_label = _gender_map.get(session.patient_gender, "")
     _patient_ctx = f"Patient sex: {_gender_label}. Use correct pronouns throughout." if _gender_label else ""
-    _custom = "\n".join(filter(None, [_patient_ctx, profile.custom_instructions])).strip()
+    _custom = "\n".join(filter(None, [_patient_ctx, _nurse_vitals_context(session), profile.custom_instructions])).strip()
 
     import json as _json
 
@@ -1594,18 +1863,21 @@ def generate_note_stream_api(request, pk):
             try:
                 fresh = run_interpret_for_lang(raw_source, lang=_lang)
                 step2 = _extract_step2_local(fresh) or fresh.strip()
+                if not step2 or len(step2.strip()) < 5:
+                    step2 = raw_source.strip()  # interpreter empty — use raw ASR
                 transcript = step2
-                ScribeSession.objects.filter(pk=pk).update(
-                    transcript=step2,
-                    raw_transcript=raw_source,
-                    note_format=note_format,
-                    length_mode=length_mode,
-                    status="generating",
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Stream interpret failed session %s", pk)
-                yield _event({"error": str(exc)})
-                return
+            except Exception:  # noqa: BLE001
+                # Interpreter (Azure) failed — keep the recording usable by
+                # generating from the raw ASR text instead of aborting.
+                logger.exception("Stream interpret failed session %s; using raw transcript", pk)
+                transcript = raw_source.strip()
+            ScribeSession.objects.filter(pk=pk).update(
+                transcript=transcript,
+                raw_transcript=raw_source,
+                note_format=note_format,
+                length_mode=length_mode,
+                status="generating",
+            )
         else:
             # Cached transcript — skip interpret
             if transcript and "STEP 2" in transcript.upper():
@@ -1855,6 +2127,28 @@ def finalize_session_api(request, pk):
     session.finalized_at = timezone.now()
     session.save(update_fields=["status", "finalized_at", "updated_at"])
     _log(session, "finalized", "")
+
+    # S3: finishing the note pops the patient off the doctor's waiting queue —
+    # mark today's active appointment complete. Best-effort; never blocks finalize.
+    if session.patient_id:
+        try:
+            from emr.models import Appointment
+            Appointment.objects.filter(
+                patient_id=session.patient_id,
+                scheduled_for__date=timezone.localdate(),
+                status__in=["checked_in", "triage", "with_doctor"],
+            ).update(status="complete")
+        except Exception:  # noqa: BLE001
+            logger.exception("could not auto-complete appointment for session %s", pk)
+
+        # F: auto-merge — populate the patient's encounter from this note so the
+        # doctor never re-does it via "import from scribe". Best-effort.
+        try:
+            from emr.services.scribe_import import materialize_encounter_from_session
+            materialize_encounter_from_session(session, request.user)
+        except Exception:  # noqa: BLE001
+            logger.exception("could not auto-materialize encounter for session %s", pk)
+
     return JsonResponse({"ok": True})
 
 
@@ -1999,6 +2293,8 @@ def magic_edit_api(request, pk):
 @csrf_protect
 def quick_transcribe_api(request):
     """Transcribe a short audio blob (quick-edit dictation). Returns text only."""
+    if _scribe_billing_suspended(request.user):
+        return JsonResponse({"ok": False, "error": _BILLING_BLOCK_MSG, "billing_suspended": True}, status=402)
     audio = request.FILES.get("audio")
     if not audio:
         return JsonResponse({"ok": False, "error": "No audio sent."}, status=400)
@@ -2218,6 +2514,8 @@ def ambient_transcribe_api(request, pk):
     until status == 'done', then calls /api/sessions/<pk>/generate/ with the
     resulting transcript.
     """
+    if _scribe_billing_suspended(request.user):
+        return JsonResponse({"ok": False, "error": _BILLING_BLOCK_MSG, "billing_suspended": True}, status=402)
     try:
         session = ScribeSession.objects.get(pk=pk, doctor=request.user)
     except ScribeSession.DoesNotExist:

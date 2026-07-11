@@ -33,14 +33,20 @@ class DoctorProfile(models.Model):
     ROLE_ED_NURSE     = "ed_nurse"     # ED nurse — ED board + triage access
     ROLE_NURSE        = "nurse"        # General nurse — view & assist, no finalize
     ROLE_RECEPTIONIST = "receptionist" # Reception — read-only session list
+    ROLE_RADIOLOGIST  = "radiologist"  # Imaging — view + report, no finalize of clinical notes
+    ROLE_PHARMACIST   = "pharmacist"   # Pharmacy — meds/prescriptions
+    ROLE_LAB_TECH     = "lab_tech"     # Laboratory technician
     ROLE_CHOICES = [
-        (ROLE_CLINICIAN,    "Clinician"),
+        (ROLE_CLINICIAN,    "Doctor / Clinician"),
         (ROLE_LEAD,         "Clinical lead"),
         (ROLE_ADMIN,        "Administrator"),
-        (ROLE_SCRIBE,       "Medical scribe"),
-        (ROLE_ED_NURSE,     "ED nurse"),
         (ROLE_NURSE,        "Nurse"),
+        (ROLE_ED_NURSE,     "ED nurse"),
+        (ROLE_SCRIBE,       "Medical scribe"),
         (ROLE_RECEPTIONIST, "Receptionist"),
+        (ROLE_RADIOLOGIST,  "Radiologist"),
+        (ROLE_PHARMACIST,   "Pharmacist"),
+        (ROLE_LAB_TECH,     "Lab technician"),
     ]
 
     user = models.OneToOneField(
@@ -157,3 +163,95 @@ class DoctorProfile(models.Model):
         return self.role == self.ROLE_RECEPTIONIST and not (
             self.user.is_staff or self.user.is_superuser
         )
+
+
+class PlatformControl(models.Model):
+    """Singleton global kill-switch for public demos.
+
+    Lets an admin throttle or lock the platform for non-admin users — e.g. when
+    sharing a sign-up QR with a room full of strangers and you need to stop a
+    bad actor from burning model credits by hammering the pipeline. Admins are
+    never affected, so your own live demo always works.
+
+    There is exactly one row (pk=1). Read it with PlatformControl.get().
+    """
+
+    MODE_OFF     = "off"
+    MODE_LIMITED = "limited"   # non-admins capped at note_limit sessions, then politely stopped
+    MODE_LOCKED  = "locked"    # non-admins blocked from the whole app
+    MODE_CHOICES = [
+        (MODE_OFF,     "Off — normal operation"),
+        (MODE_LIMITED, "Test mode — limit each non-admin to a few notes"),
+        (MODE_LOCKED,  "Locked — block all non-admin usage"),
+    ]
+
+    DEFAULT_LIMITED_MESSAGE = (
+        "Thanks for trying WellNest! This account has reached its trial limit "
+        "for our preview. We'll be opening up full access soon."
+    )
+    DEFAULT_LOCKED_MESSAGE = (
+        "WellNest is currently in test mode while our team applies some finishing "
+        "touches. Please check back shortly — thanks for your patience."
+    )
+
+    demo_mode = models.CharField(
+        max_length=10, choices=MODE_CHOICES, default=MODE_OFF
+    )
+    note_limit = models.PositiveSmallIntegerField(
+        default=1,
+        help_text="In Test mode, the max number of sessions a non-admin may create.",
+    )
+    message = models.CharField(
+        max_length=300,
+        blank=True,
+        default="",
+        help_text="Optional override for the message non-admins see. Blank uses a sensible default.",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "Platform control"
+        verbose_name_plural = "Platform control"
+
+    def __str__(self) -> str:
+        return f"PlatformControl(demo_mode={self.demo_mode})"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1  # enforce singleton
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get(cls) -> "PlatformControl":
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    @property
+    def is_off(self) -> bool:
+        return self.demo_mode == self.MODE_OFF
+
+    def message_for_mode(self) -> str:
+        if self.message.strip():
+            return self.message.strip()
+        if self.demo_mode == self.MODE_LIMITED:
+            return self.DEFAULT_LIMITED_MESSAGE
+        return self.DEFAULT_LOCKED_MESSAGE
+
+
+def user_is_admin(user) -> bool:
+    """True if user is a platform admin (role admin, staff, or superuser).
+
+    Safe to call with anonymous users. Does not raise when no DoctorProfile
+    exists, so it is usable from middleware on every request.
+    """
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if user.is_staff or user.is_superuser:
+        return True
+    profile = DoctorProfile.objects.filter(user=user).first()
+    return bool(profile and profile.is_admin)

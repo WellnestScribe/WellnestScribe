@@ -32,6 +32,8 @@ from .constants import (
     REFERRAL_STATUS_CHOICES,
     REFERRAL_URGENCY_CHOICES,
     ROUTE_CHOICES,
+    SUBSCRIPTION_STATUS_CHOICES,
+    SUBSCRIPTION_TIER_CHOICES,
 )
 
 
@@ -66,8 +68,16 @@ class Organisation(TimestampedModel):
     phone = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
     nhf_facility_code = models.CharField(max_length=20, blank=True)
-    subscription_tier = models.CharField(max_length=20, default="trial")
-    subscription_status = models.CharField(max_length=20, default="active")
+    subscription_tier = models.CharField(
+        max_length=20, choices=SUBSCRIPTION_TIER_CHOICES, default="trial"
+    )
+    subscription_status = models.CharField(
+        max_length=20, choices=SUBSCRIPTION_STATUS_CHOICES, default="active"
+    )
+    subscription_expires = models.DateField(null=True, blank=True)
+    provider_seats = models.PositiveSmallIntegerField(default=1)
+    monthly_amount = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    billing_notes = models.TextField(blank=True)
     billing_currency = models.CharField(max_length=3, default="JMD")
     is_active = models.BooleanField(default=True)
 
@@ -76,6 +86,12 @@ class Organisation(TimestampedModel):
 
     def __str__(self) -> str:
         return self.name
+
+    @property
+    def scribe_enabled(self) -> bool:
+        """AI scribe (note generation) allowed? Off only when explicitly
+        suspended/cancelled — EMR record access is NEVER gated on billing."""
+        return self.subscription_status not in {"suspended", "cancelled"}
 
 
 class OrganisationMembership(TimestampedModel):
@@ -109,27 +125,38 @@ class OrganisationMembership(TimestampedModel):
         return f"{self.user} @ {self.organisation} ({self.role})"
 
     @property
+    def _django_privileged(self) -> bool:
+        """Django superuser/staff bypass every EMR role gate.
+
+        A platform owner (superuser) must never be blocked from clinical
+        actions by their organisation membership role — otherwise a solo
+        admin-owner can't document their own encounters.
+        """
+        u = self.user
+        return bool(getattr(u, "is_superuser", False) or getattr(u, "is_staff", False))
+
+    @property
     def is_admin(self) -> bool:
-        return self.role in {"admin", "system_admin"}
+        return self._django_privileged or self.role in {"admin", "system_admin"}
 
     @property
     def is_doctor(self) -> bool:
-        return self.role in {"doctor", "system_admin"}
+        return self._django_privileged or self.role in {"doctor", "system_admin"}
 
     def can_register_patients(self) -> bool:
-        return self.role in {"doctor", "nurse", "receptionist", "admin", "system_admin"}
+        return self._django_privileged or self.role in {"doctor", "nurse", "receptionist", "admin", "system_admin"}
 
     def can_record_vitals(self) -> bool:
-        return self.role in {"doctor", "nurse", "system_admin"}
+        return self._django_privileged or self.role in {"doctor", "nurse", "system_admin"}
 
     def can_manage_schedule(self) -> bool:
-        return self.role in {"doctor", "nurse", "receptionist", "admin", "system_admin"}
+        return self._django_privileged or self.role in {"doctor", "nurse", "receptionist", "admin", "system_admin"}
 
     def can_edit_encounters(self) -> bool:
-        return self.role in {"doctor", "nurse", "system_admin"}
+        return self._django_privileged or self.role in {"doctor", "nurse", "system_admin"}
 
     def can_sign_encounters(self) -> bool:
-        return self.role in {"doctor", "system_admin"}
+        return self._django_privileged or self.role in {"doctor", "system_admin"}
 
 
 class Patient(OrganisationScopedModel):
@@ -226,6 +253,16 @@ class Patient(OrganisationScopedModel):
         if before_birthday:
             years -= 1
         return str(max(years, 0))
+
+    @property
+    def mrn(self) -> str:
+        """Docket / medical record number — stable, unique, human-friendly.
+
+        Derived from the row id so it never collides and needs no migration.
+        Shown in the record picker and chart so two same-name patients are
+        told apart the way a paper registry uses the docket number + DOB.
+        """
+        return f"WN{self.pk:06d}" if self.pk else ""
 
 
 class Allergy(OrganisationScopedModel):
@@ -387,6 +424,32 @@ class Encounter(OrganisationScopedModel):
         return f"{self.patient} - {self.encounter_date:%Y-%m-%d}"
 
 
+class EncounterAddendum(OrganisationScopedModel):
+    """Append-only note added to an encounter after it was signed.
+
+    Lets a clinician add a correction/addition without altering the immutable
+    signed record — the original stays intact; addenda are shown alongside it.
+    """
+
+    encounter = models.ForeignKey(
+        Encounter, on_delete=models.CASCADE, related_name="addenda"
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="emr_addenda_authored",
+    )
+    text = models.TextField()
+
+    class Meta:
+        ordering = ("created_at",)
+
+    def __str__(self) -> str:
+        return f"Addendum to encounter {self.encounter_id} @ {self.created_at:%Y-%m-%d %H:%M}"
+
+
 class Vital(OrganisationScopedModel):
     patient = models.ForeignKey(
         Patient,
@@ -442,8 +505,12 @@ class Vital(OrganisationScopedModel):
             height_m = Decimal(self.height_cm) / Decimal("100")
             if height_m <= 0:
                 return None
-            bmi = Decimal(self.weight_kg) / (height_m * height_m)
-            return bmi.quantize(Decimal("0.1"))
+            bmi = (Decimal(self.weight_kg) / (height_m * height_m)).quantize(Decimal("0.1"))
+            # Column is max_digits=4, decimal_places=1 (max 999.9). Guard against
+            # implausible input (e.g. height typed in cm as 4) overflowing the DB.
+            if bmi <= 0 or bmi > Decimal("999.9"):
+                return None
+            return bmi
         except (InvalidOperation, ZeroDivisionError):
             return None
 

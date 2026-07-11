@@ -29,6 +29,12 @@
     <style>
     .bp-custom-tag{display:inline-flex;align-items:center;gap:4px;font-size:.76rem;background:rgba(13,110,253,.08);border:1px solid rgba(13,110,253,.2);border-radius:20px;padding:2px 8px;margin:2px}
     .bp-custom-tag button{background:none;border:none;padding:0;cursor:pointer;line-height:1;color:var(--bs-secondary-color);font-size:.9rem}
+    /* Themed scrollbars that blend with the WellNest palette (light + dark) */
+    .wn-scroll,#worklistList,#waitingQueueList{scrollbar-width:thin;scrollbar-color:var(--bs-border-color) transparent;}
+    .wn-scroll::-webkit-scrollbar,#worklistList::-webkit-scrollbar,#waitingQueueList::-webkit-scrollbar{width:8px;height:8px;}
+    .wn-scroll::-webkit-scrollbar-track,#worklistList::-webkit-scrollbar-track,#waitingQueueList::-webkit-scrollbar-track{background:transparent;}
+    .wn-scroll::-webkit-scrollbar-thumb,#worklistList::-webkit-scrollbar-thumb,#waitingQueueList::-webkit-scrollbar-thumb{background:var(--bs-border-color);border-radius:8px;}
+    .wn-scroll::-webkit-scrollbar-thumb:hover,#worklistList::-webkit-scrollbar-thumb:hover,#waitingQueueList::-webkit-scrollbar-thumb:hover{background:var(--bs-secondary-color);}
     </style>
     {% block extra_head %}{% endblock %}
 </head>

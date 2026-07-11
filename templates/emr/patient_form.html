@@ -25,10 +25,34 @@
         </div>
     {% endif %}
 
-    <form method="post" class="row g-4">
+    <form method="post" class="row g-4" id="patientForm">
         {% csrf_token %}
         {% if scribe_session %}
             <input type="hidden" name="scribe" value="{{ scribe_session.pk }}">
+        {% endif %}
+        {% if form.errors %}
+        <div class="col-12">
+            {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+            <div class="alert alert-danger small mb-0">
+                <iconify-icon icon="iconamoon:information-circle-duotone" class="me-1 align-middle"></iconify-icon>
+                Some required details are missing or invalid — see the highlighted fields below.
+            </div>
+        </div>
+        {% endif %}
+        {% if mode != "edit" %}
+        <div class="col-12">
+            <div class="card border-info-subtle">
+                <div class="card-body p-3">
+                    <label class="form-label small fw-semibold mb-1" for="dupeSearch">
+                        <iconify-icon icon="mdi:account-search-outline" class="me-1 align-middle"></iconify-icon>
+                        Check if this patient already exists
+                    </label>
+                    <input type="text" id="dupeSearch" class="form-control" autocomplete="off"
+                           placeholder="Type name, MRN, or TRN before registering…">
+                    <div id="dupeResults" class="mt-2 d-flex flex-column gap-2"></div>
+                </div>
+            </div>
+        </div>
         {% endif %}
         <div class="col-12 col-xl-8">
             <div class="card">
@@ -109,8 +133,10 @@
                 </div>
             </div>
 
-            <div class="d-grid gap-2 mt-3">
-                <button class="btn btn-primary">Save patient</button>
+            <div class="d-grid gap-2 mt-3" style="position: sticky; top: 1.5rem;">
+                <button class="btn btn-primary">
+                    <iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon>Save patient
+                </button>
                 {% if patient %}
                     <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary">Cancel</a>
                 {% else %}
@@ -120,4 +146,81 @@
         </div>
     </form>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  var form = document.getElementById('patientForm');
+  if (!form) return;
+  var required = [
+    ['id_legal_first_name', 'Legal first name'],
+    ['id_legal_last_name', 'Legal last name'],
+    ['id_date_of_birth', 'Date of birth'],
+    ['id_sex', 'Sex'],
+  ];
+  form.addEventListener('submit', function (e) {
+    var missing = [], firstEl = null;
+    required.forEach(function (r) {
+      var el = document.getElementById(r[0]);
+      if (el && !String(el.value || '').trim()) { missing.push(r[1]); if (!firstEl) firstEl = el; }
+    });
+    if (missing.length) {
+      e.preventDefault();
+      var focusFirst = function () { if (firstEl) { firstEl.scrollIntoView({behavior: 'smooth', block: 'center'}); firstEl.focus(); } };
+      if (window.Swal) {
+        window.Swal.fire({
+          icon: 'warning',
+          title: 'Missing required details',
+          html: 'Please fill in:<br><strong>' + missing.join('<br>') + '</strong>',
+          confirmButtonText: 'OK'
+        }).then(focusFirst);
+      } else {
+        alert('Missing required: ' + missing.join(', '));
+        focusFirst();
+      }
+    }
+  });
+  // Server-side errors: jump to the first highlighted field.
+  var firstErr = form.querySelector('.errorlist');
+  if (firstErr) { firstErr.scrollIntoView({behavior: 'smooth', block: 'center'}); }
+
+  // Dedupe: warn before registering someone who already exists.
+  var dupe = document.getElementById('dupeSearch');
+  var dupeResults = document.getElementById('dupeResults');
+  if (dupe && dupeResults) {
+    var escd = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+    var timer = null;
+    dupe.addEventListener('input', function () {
+      clearTimeout(timer);
+      var q = dupe.value.trim();
+      if (q.length < 2) { dupeResults.innerHTML = ''; return; }
+      timer = setTimeout(function () {
+        fetch('/emr/api/patient-search/?q=' + encodeURIComponent(q), { credentials: 'same-origin' })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            var ps = (d && d.patients) || [];
+            if (!ps.length) {
+              dupeResults.innerHTML = '<div class="small text-success"><iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon>No existing match — go ahead and register.</div>';
+              return;
+            }
+            var html = '<div class="small text-warning-emphasis mb-1">⚠ Possible existing patient(s) — open the chart instead of re-registering:</div>';
+            ps.forEach(function (p) {
+              html += '<a href="' + escd(p.chart_url) + '" class="session-row text-decoration-none">' +
+                '<span class="session-icon"><iconify-icon icon="iconamoon:profile-duotone"></iconify-icon></span>' +
+                '<span class="flex-grow-1">' +
+                  '<span class="d-block fw-semibold">' + escd(p.name) +
+                    ' <span class="text-muted fw-normal" style="font-size:.75rem;">' + escd(p.mrn) + ' · DOB ' + escd(p.dob || '—') + ' · ' + escd(p.age) + 'y · ' + escd(p.sex) + '</span></span>' +
+                  '<span class="d-block small text-muted">' + escd(p.community || '') + (p.visits ? ' · ' + p.visits + ' visit(s)' : '') + '</span>' +
+                '</span>' +
+                '<span class="btn btn-outline-secondary btn-sm align-self-center">Open chart</span></a>';
+            });
+            dupeResults.innerHTML = html;
+          })
+          .catch(function () {});
+      }, 300);
+    });
+  }
+})();
+</script>
 {% endblock %}

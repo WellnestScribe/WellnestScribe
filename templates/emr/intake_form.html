@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Intake · {{ patient.display_name }} · WellNest{% endblock %}
+
+{% block content %}
+<div class="emr-shell">
+    <div class="page-title-box d-flex align-items-start justify-content-between flex-wrap gap-3">
+        <div>
+            <h4 class="mb-1 fw-semibold">
+                Intake — {{ patient.display_name }}
+                {% if already_in_queue %}<span class="badge bg-info-subtle text-info align-middle">Already in queue — editing</span>{% endif %}
+            </h4>
+            <p class="text-muted small mb-0">
+                {{ patient.age_display }} yrs · {{ patient.get_sex_display }} · MRN {{ patient.mrn }}
+            </p>
+        </div>
+        <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary btn-sm">Back to chart</a>
+    </div>
+
+    {% include "partials/_waiting_queue.html" %}
+
+    <form method="post" class="row g-4">
+        {% csrf_token %}
+        <div class="col-12 col-xl-8">
+            <div class="card">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Reason for visit</h5>
+                    <div class="row g-3">
+                        <div class="col-md-5">
+                            <label class="form-label small text-muted" for="encounter_type">Visit type</label>
+                            <select name="encounter_type" id="encounter_type" class="form-select">
+                                {% for value, label in encounter_type_choices %}
+                                <option value="{{ value }}" {% if request.POST.encounter_type == value %}selected{% elif not request.POST and intake_type == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <label class="form-label small text-muted mb-1" for="chief_complaint">
+                                    Chief complaint — what the patient says is wrong
+                                </label>
+                                <button type="button" id="chiefComplaintMic" class="btn btn-outline-secondary btn-sm py-0 px-2"
+                                        title="Dictate the complaint">
+                                    <iconify-icon icon="iconamoon:microphone-duotone" class="align-middle"></iconify-icon>
+                                </button>
+                            </div>
+                            <textarea name="chief_complaint" id="chief_complaint" class="form-control" rows="2"
+                                      placeholder="e.g. headache and fever for 2 days">{{ request.POST.chief_complaint|default:intake_chief }}</textarea>
+                        </div>
+                    </div>
+
+                    <h5 class="fw-semibold mt-4 mb-3">Vitals</h5>
+                    <div class="row g-3">
+                        <div class="col-6 col-md-3"><label class="form-label small text-muted">BP systolic</label>{{ vitals_form.bp_systolic }}</div>
+                        <div class="col-6 col-md-3"><label class="form-label small text-muted">BP diastolic</label>{{ vitals_form.bp_diastolic }}</div>
+                        <div class="col-6 col-md-3"><label class="form-label small text-muted">Temp (°C)</label>{{ vitals_form.temperature_celsius }}</div>
+                        <div class="col-6 col-md-3"><label class="form-label small text-muted">Weight (kg)</label>{{ vitals_form.weight_kg }}</div>
+                        <div class="col-6 col-md-3"><label class="form-label small text-muted">Pulse (bpm)</label>{{ vitals_form.pulse_bpm }}</div>
+                        <div class="col-6 col-md-3"><label class="form-label small text-muted">SpO₂ (%)</label>{{ vitals_form.oxygen_saturation }}</div>
+                        <div class="col-6 col-md-3"><label class="form-label small text-muted">Glucose (mmol/L)</label>{{ vitals_form.blood_glucose_mmol }}</div>
+                    </div>
+                    <p class="text-muted small mb-0 mt-3">
+                        Fill only what you measured — every field is optional. Diagnosis, exam, and the note are the doctor's part.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-4">
+            <div class="card">
+                <div class="card-body p-4">
+                    <h6 class="fw-semibold mb-2">Send to doctor</h6>
+                    <p class="text-muted small mb-3">
+                        Adds {{ patient.display_name }} to the doctor's waiting queue with these vitals.
+                        The doctor picks them up on the New session screen.
+                    </p>
+                    {% if last_vitals %}
+                        <div class="alert alert-light border small mb-3">
+                            Last vitals: BP {{ last_vitals.bp_systolic|default:"—" }}/{{ last_vitals.bp_diastolic|default:"—" }},
+                            {{ last_vitals.recorded_at|date:"M j" }}
+                        </div>
+                    {% endif %}
+                    <div class="d-grid gap-2" style="position: sticky; top: 1.5rem;">
+                        <button class="btn btn-primary">
+                            <iconify-icon icon="iconamoon:arrow-right-2-duotone" class="me-1 align-middle"></iconify-icon>{% if already_in_queue %}Update intake{% else %}Send to queue{% endif %}
+                        </button>
+                        <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+// Placeholder mic — voice dictation for the chief complaint is on the roadmap.
+// No recording happens yet; this just tells the nurse it's coming.
+(function () {
+  var mic = document.getElementById('chiefComplaintMic');
+  if (!mic) return;
+  mic.addEventListener('click', function () {
+    if (window.Swal) {
+      window.Swal.fire({
+        icon: 'info',
+        title: 'Voice dictation coming soon',
+        text: "Soon you'll be able to tap and speak the patient's complaint and have it typed in automatically. For now, please type it in.",
+        confirmButtonText: 'Got it',
+        confirmButtonColor: '#0d6efd',
+      });
+    } else {
+      alert("Voice dictation is coming soon. For now, please type the complaint in.");
+    }
+  });
+})();
+</script>
+{% endblock %}

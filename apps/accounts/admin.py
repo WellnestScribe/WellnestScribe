@@ -1,6 +1,19 @@
 from django.contrib import admin
 
-from .models import DoctorProfile
+from .models import DoctorProfile, PlatformControl
+
+
+@admin.register(PlatformControl)
+class PlatformControlAdmin(admin.ModelAdmin):
+    list_display = ("demo_mode", "note_limit", "updated_at", "updated_by")
+    readonly_fields = ("updated_at", "updated_by")
+
+    def has_add_permission(self, request):
+        # Singleton — created on first access via PlatformControl.get().
+        return not PlatformControl.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(DoctorProfile)

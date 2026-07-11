@@ -195,7 +195,10 @@ document.addEventListener('DOMContentLoaded', function () {
                        data-bs-toggle="dropdown"
                        aria-haspopup="true"
                        aria-expanded="false">
-                        <span class="d-flex align-items-center">
+                        <span class="d-flex align-items-center gap-2">
+                            {% if doctor_profile %}
+                                <span class="badge rounded-pill bg-primary-subtle text-primary d-none d-sm-inline-block">{{ doctor_profile.get_role_display }}</span>
+                            {% endif %}
                             <span class="avatar-sm rounded-circle bg-primary-subtle text-primary fw-semibold d-inline-flex align-items-center justify-content-center" style="width:34px;height:34px;">
                                 {{ user.get_username|slice:":1"|upper }}
                             </span>
@@ -206,6 +209,10 @@ document.addEventListener('DOMContentLoaded', function () {
                         <a class="dropdown-item" href="{% url 'accounts:profile' %}">
                             <i class="bx bx-user-circle text-muted fs-18 align-middle me-1"></i>
                             <span class="align-middle">Profile &amp; preferences</span>
+                        </a>
+                        <a class="dropdown-item" href="{% url 'accounts:subscription' %}">
+                            <iconify-icon icon="iconamoon:credit-card-duotone" class="text-muted fs-18 align-middle me-1"></iconify-icon>
+                            <span class="align-middle">Subscription &amp; data</span>
                         </a>
                         <a class="dropdown-item" href="{% url 'scribe:history' %}">
                             <i class="bx bx-time text-muted fs-18 align-middle me-1"></i>

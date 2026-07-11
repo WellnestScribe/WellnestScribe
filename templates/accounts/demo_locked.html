@@ -1,0 +1,31 @@
+{% load static %}
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="utf-8">
+    <title>Test mode · WellNest Scribe</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0c7ec2">
+    <link rel="shortcut icon" href="{% static 'images/favicon.ico' %}">
+    <link href="{% static 'css/vendor.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/icons.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/app.min.css' %}" rel="stylesheet">
+    <style>
+        body { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bs-body-bg); margin: 0; }
+        .lock-card { max-width: 460px; width: 92%; }
+    </style>
+</head>
+<body>
+    <div class="lock-card text-center">
+        <div class="card shadow-sm">
+            <div class="card-body p-5">
+                <iconify-icon icon="iconamoon:shield-yes-duotone" class="text-primary" style="font-size: 3.5rem;"></iconify-icon>
+                <h4 class="fw-semibold mt-3 mb-2">WellNest is in test mode</h4>
+                <p class="text-muted mb-4">{{ message }}</p>
+                <a href="{% url 'accounts:signout' %}" class="btn btn-outline-secondary btn-sm">Sign out</a>
+            </div>
+        </div>
+        <p class="text-muted small mt-3 mb-0">WellNest AI Scribe</p>
+    </div>
+</body>
+</html>

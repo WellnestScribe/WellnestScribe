@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Encounter · {{ patient.display_name }} · WellNest{% endblock %}
+
+{% block content %}
+<div class="emr-shell">
+    <div class="page-title-box d-flex align-items-start justify-content-between flex-wrap gap-3">
+        <div>
+            <h4 class="mb-1 fw-semibold">
+                {{ patient.display_name }}
+                <span class="badge align-middle
+                    {% if encounter.encounter_status == 'signed' %}bg-success-subtle text-success
+                    {% else %}bg-secondary-subtle text-secondary{% endif %}">
+                    {{ encounter.get_encounter_status_display }}
+                </span>
+            </h4>
+            <p class="text-muted small mb-0">
+                {{ encounter.get_encounter_type_display }} ·
+                {{ encounter.encounter_date|date:"l, M j, Y" }}{% if encounter.encounter_time %} · {{ encounter.encounter_time|time:"g:i A" }}{% endif %}
+                {% if encounter.provider %} · {{ encounter.provider.get_full_name|default:encounter.provider.username }}{% endif %}
+            </p>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary btn-sm">Back to chart</a>
+            {% if can_edit and encounter.encounter_status != 'signed' %}
+                <a href="{% url 'emr:encounter_edit' patient.pk encounter.pk %}" class="btn btn-outline-primary btn-sm">
+                    <iconify-icon icon="iconamoon:edit-duotone" class="me-1"></iconify-icon>Edit in Advanced editor
+                </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="alert alert-light border small d-flex align-items-center gap-2">
+        <iconify-icon icon="iconamoon:eye-duotone"></iconify-icon>
+        Read-only view — this is the record as documented. {% if encounter.encounter_status == 'signed' %}Signed records cannot be changed; add an addendum from the chart if needed.{% else %}Use the Advanced editor to make changes.{% endif %}
+    </div>
+
+    <div class="row g-4">
+        <div class="col-12 col-xl-8">
+            {# ── Vitals ── #}
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Vitals</h5>
+                    {% if vitals %}
+                        <div class="row g-3 small">
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">BP</span>{{ vitals.bp_systolic|default:"—" }}/{{ vitals.bp_diastolic|default:"—" }} mmHg</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">Pulse</span>{{ vitals.pulse_bpm|default:"—" }} bpm</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">Temp</span>{{ vitals.temperature_celsius|default:"—" }} °C</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">SpO₂</span>{{ vitals.oxygen_saturation|default:"—" }} %</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">Resp rate</span>{{ vitals.respiratory_rate|default:"—" }} /min</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">Weight</span>{{ vitals.weight_kg|default:"—" }} kg</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">Height</span>{{ vitals.height_cm|default:"—" }} cm</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">BMI</span>{{ vitals.bmi|default:"—" }}</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">Glucose</span>{{ vitals.blood_glucose_mmol|default:"—" }} mmol/L</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">Pain</span>{{ vitals.pain_score|default:"—" }}/10</div>
+                        </div>
+                    {% else %}
+                        <p class="text-muted small mb-0">No vitals recorded for this encounter.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            {# ── Clinical note ── #}
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Clinical note</h5>
+                    {% for label, value in note_sections %}
+                        <div class="mb-3">
+                            <div class="text-uppercase fw-semibold text-muted" style="font-size:0.68rem;letter-spacing:0.06em;">{{ label }}</div>
+                            {% if value %}
+                                <div class="mt-1" style="white-space:pre-wrap;">{{ value }}</div>
+                            {% else %}
+                                <div class="mt-1 text-muted small">Not documented</div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {# ── Diagnoses ── #}
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Diagnoses</h5>
+                    {% for dx in diagnoses %}
+                        <div class="d-flex justify-content-between align-items-start border-bottom py-2">
+                            <div>
+                                <strong>{{ dx.icd10_code }}</strong> · {{ dx.icd10_description|default:dx.notes|default:"Diagnosis" }}
+                                {% if dx.ai_suggested %}<span class="badge bg-info-subtle text-info ms-1">AI</span>{% endif %}
+                            </div>
+                            <span class="badge bg-secondary-subtle text-secondary">{{ dx.get_status_display }}</span>
+                        </div>
+                    {% empty %}
+                        <p class="text-muted small mb-0">No diagnoses recorded.</p>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {# ── Medications ── #}
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Medications prescribed</h5>
+                    {% for med in medications %}
+                        <div class="border-bottom py-2 small">
+                            <strong>{{ med.drug_name_generic }}</strong>{% if med.drug_name_brand %} ({{ med.drug_name_brand }}){% endif %}
+                            {% if med.dose_amount %} · {{ med.dose_amount }} {{ med.dose_unit }}{% endif %}
+                            {% if med.route %} · {{ med.get_route_display }}{% endif %}
+                            {% if med.frequency %} · {{ med.frequency }}{% endif %}
+                            {% if med.duration_days %} · {{ med.duration_days }} days{% endif %}
+                            {% if med.pharmacy_instructions %}<div class="text-muted">{{ med.pharmacy_instructions }}</div>{% endif %}
+                        </div>
+                    {% empty %}
+                        <p class="text-muted small mb-0">No medications prescribed.</p>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {# ── Addenda ── #}
+            {% if addenda %}
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-semibold mb-3">Addenda</h5>
+                    {% for a in addenda %}
+                        <div class="border-start border-3 ps-3 mb-3">
+                            <div class="text-muted small">
+                                {{ a.created_at|date:"M j, Y · g:i A" }}{% if a.author %} · {{ a.author.get_full_name|default:a.author.username }}{% endif %}
+                            </div>
+                            <div style="white-space:pre-wrap;">{{ a.text }}</div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        {# ── Side rail ── #}
+        <div class="col-12 col-xl-4">
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h6 class="fw-semibold mb-3">Encounter details</h6>
+                    <div class="small">
+                        <div class="d-flex justify-content-between py-1"><span class="text-muted">Date</span><span>{{ encounter.encounter_date|date:"M j, Y" }}</span></div>
+                        <div class="d-flex justify-content-between py-1"><span class="text-muted">Type</span><span>{{ encounter.get_encounter_type_display }}</span></div>
+                        <div class="d-flex justify-content-between py-1"><span class="text-muted">Status</span><span>{{ encounter.get_encounter_status_display }}</span></div>
+                        <div class="d-flex justify-content-between py-1"><span class="text-muted">Provider</span><span>{% if encounter.provider %}{{ encounter.provider.get_full_name|default:encounter.provider.username }}{% else %}—{% endif %}</span></div>
+                        {% if encounter.signed_by %}
+                            <div class="d-flex justify-content-between py-1"><span class="text-muted">Signed by</span><span>{{ encounter.signed_by.get_full_name|default:encounter.signed_by.username }}</span></div>
+                            <div class="d-flex justify-content-between py-1"><span class="text-muted">Signed at</span><span>{{ encounter.signed_at|date:"M j, g:i A" }}</span></div>
+                        {% endif %}
+                    </div>
+                    {% if encounter.scribe_session %}
+                        <a href="{% url 'scribe:review' encounter.scribe_session.pk %}" class="btn btn-outline-secondary btn-sm w-100 mt-3">
+                            <iconify-icon icon="iconamoon:file-document-duotone" class="me-1"></iconify-icon>Open source scribe note
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if encounter.follow_up_date or encounter.follow_up_instructions %}
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h6 class="fw-semibold mb-2">Follow-up</h6>
+                    {% if encounter.follow_up_date %}<div class="small mb-1"><strong>{{ encounter.follow_up_date|date:"M j, Y" }}</strong></div>{% endif %}
+                    {% if encounter.follow_up_instructions %}<div class="small" style="white-space:pre-wrap;">{{ encounter.follow_up_instructions }}</div>{% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if encounter.sick_leave_start %}
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                    <h6 class="fw-semibold mb-2">Sick leave</h6>
+                    <div class="small">{{ encounter.sick_leave_start|date:"M j" }} – {{ encounter.sick_leave_end|date:"M j, Y" }}</div>
+                    {% if encounter.sick_leave_diagnosis %}<div class="small text-muted">{{ encounter.sick_leave_diagnosis }}</div>{% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,5 +1,6 @@
 import json
 
+from django.contrib import messages
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
@@ -10,7 +11,7 @@ from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods, require_POST
 
 from .forms import DoctorProfileForm, WellnestSignInForm, WellnestSignUpForm
-from .models import DoctorProfile
+from .models import DoctorProfile, PlatformControl
 
 
 def _get_client_ip(request) -> str:
@@ -73,12 +74,27 @@ def signup_view(request):
     form = WellnestSignUpForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         user = form.save()
+        org = form.cleaned_data.get("organisation")
         DoctorProfile.objects.create(
             user=user,
             full_name=form.cleaned_data["full_name"],
+            role=form.cleaned_data["role"],
             specialty=form.cleaned_data["specialty"],
-            facility=form.cleaned_data.get("facility", ""),
+            facility=org.name if org else "",
         )
+        if org is not None:
+            from emr.models import OrganisationMembership
+            _membership_role = {
+                DoctorProfile.ROLE_ADMIN: "admin",
+                DoctorProfile.ROLE_NURSE: "nurse",
+                DoctorProfile.ROLE_ED_NURSE: "nurse",
+                DoctorProfile.ROLE_RECEPTIONIST: "receptionist",
+            }.get(form.cleaned_data["role"], "doctor")
+            OrganisationMembership.objects.get_or_create(
+                user=user,
+                organisation=org,
+                defaults={"role": _membership_role, "is_default": True},
+            )
         # With multiple AUTHENTICATION_BACKENDS configured Django requires
         # an explicit backend on programmatic login.
         login(
@@ -94,6 +110,14 @@ def signup_view(request):
 def signout_view(request):
     logout(request)
     return redirect("accounts:signin")
+
+
+def password_help_view(request):
+    """Password-reset guidance. Accounts are admin-provisioned and there is no
+    public email flow, so the honest reset path is: ask your clinic administrator
+    (they reset it from Users → Set password). Its own neat page so the sign-in
+    'Forgot password?' link goes somewhere real."""
+    return render(request, "accounts/password_help.html")
 
 
 @login_required
@@ -129,6 +153,7 @@ def profile_view(request):
     if request.method == "POST" and form.is_valid():
         form.save()
         return redirect("accounts:profile")
+    is_admin = bool(profile.is_admin)
     return render(
         request,
         "accounts/profile.html",
@@ -136,6 +161,9 @@ def profile_view(request):
             "form": form,
             "profile": profile,
             "bootstrap_admin_available": _no_admins_exist(),
+            "is_admin": is_admin,
+            "platform_control": PlatformControl.get() if is_admin else None,
+            "demo_mode_choices": PlatformControl.MODE_CHOICES,
         },
     )
 
@@ -184,6 +212,46 @@ def _require_admin(view_fn):
         return view_fn(request, *args, **kwargs)
 
     return _inner
+
+
+@_require_admin
+@require_POST
+@csrf_protect
+def demo_control_api(request):
+    """Admin-only: set the platform-wide demo mode (off / limited / locked).
+
+    Powers the 'Demo mode' card on the profile page so an admin can lock the
+    platform down from the UI during a public pitch — no redeploy needed.
+    """
+    try:
+        body = json.loads(request.body)
+    except (ValueError, AttributeError):
+        return JsonResponse({"error": "bad request"}, status=400)
+
+    mode = (body.get("demo_mode") or "").strip()
+    valid_modes = {m[0] for m in PlatformControl.MODE_CHOICES}
+    if mode not in valid_modes:
+        return JsonResponse({"error": "invalid mode"}, status=400)
+
+    try:
+        note_limit = max(1, min(50, int(body.get("note_limit", 1))))
+    except (TypeError, ValueError):
+        note_limit = 1
+    message = (body.get("message") or "").strip()[:300]
+
+    control = PlatformControl.get()
+    control.demo_mode = mode
+    control.note_limit = note_limit
+    control.message = message
+    control.updated_by = request.user
+    control.save()
+    return JsonResponse({
+        "ok": True,
+        "demo_mode": control.demo_mode,
+        "note_limit": control.note_limit,
+        "message": control.message,
+        "effective_message": control.message_for_mode(),
+    })
 
 
 @require_http_methods(["GET"])
@@ -258,6 +326,7 @@ def users_admin_view(request):
         "users_with_orgs": users_with_orgs,
         "organisations": organisations,
         "role_choices": DoctorProfile.ROLE_CHOICES,
+        "membership_role_choices": OrganisationMembership._meta.get_field("role").choices,
         "specialty_choices": DoctorProfile.SPECIALTY_CHOICES,
         "q": q,
         "role_filter": role_filter,
@@ -265,6 +334,279 @@ def users_admin_view(request):
         "is_system_admin": is_system_admin,
         "managed_org_ids": managed_org_ids,
     })
+
+
+@_require_admin
+@require_POST
+@csrf_protect
+def create_organisation_api(request):
+    """Admin: add a facility (organisation) so it appears in the signup dropdown."""
+    from emr.models import Organisation
+    try:
+        body = json.loads(request.body)
+        name = (body.get("name") or "").strip()
+        parish = (body.get("parish") or "").strip()
+        org_type = (body.get("organisation_type") or "private_clinic").strip()
+    except (ValueError, AttributeError):
+        return JsonResponse({"error": "bad request"}, status=400)
+    if not name:
+        return JsonResponse({"error": "Facility name is required."}, status=400)
+    if Organisation.objects.filter(name__iexact=name).exists():
+        return JsonResponse({"error": f"A facility named '{name}' already exists."}, status=400)
+    org = Organisation.objects.create(name=name, parish=parish, organisation_type=org_type)
+    return JsonResponse({"ok": True, "id": org.pk, "name": org.name})
+
+
+@_require_admin
+@require_POST
+@csrf_protect
+def organisation_deactivate_api(request, org_id):
+    """Soft-delete: move a facility to the recycle bin (hidden, data kept)."""
+    from emr.models import Organisation
+    org = get_object_or_404(Organisation, pk=org_id)
+    org.is_active = False
+    org.save(update_fields=["is_active"])
+    return JsonResponse({"ok": True})
+
+
+@_require_admin
+@require_POST
+@csrf_protect
+def organisation_restore_api(request, org_id):
+    """Restore a facility from the recycle bin."""
+    from emr.models import Organisation
+    org = get_object_or_404(Organisation, pk=org_id)
+    org.is_active = True
+    org.save(update_fields=["is_active"])
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+@csrf_protect
+def organisation_delete_api(request, org_id):
+    """Permanently delete a facility. Superuser only, must be in the recycle bin
+    (deactivated) first, and must confirm by typing the exact name."""
+    if not (request.user.is_authenticated and request.user.is_superuser):
+        return JsonResponse({"error": "Only a superuser can permanently delete a facility."}, status=403)
+    from emr.models import Organisation
+    org = get_object_or_404(Organisation, pk=org_id)
+    if org.is_active:
+        return JsonResponse({"error": "Deactivate the facility first (recycle bin), then delete."}, status=400)
+    try:
+        body = json.loads(request.body)
+        confirm = (body.get("confirm_name") or "").strip()
+    except (ValueError, AttributeError):
+        return JsonResponse({"error": "bad request"}, status=400)
+    if confirm != org.name:
+        return JsonResponse({"error": "Type the exact facility name to confirm deletion."}, status=400)
+    name = org.name
+    org.delete()
+    return JsonResponse({"ok": True, "name": name})
+
+
+def _org_export_data(org):
+    """Full portable data dict for a facility (patients + clinical records)."""
+    from django.utils import timezone as _tz
+    data = {
+        "exported_at": _tz.now().isoformat(),
+        "organisation": {"id": org.pk, "name": org.name, "parish": org.parish, "type": org.organisation_type},
+        "patients": [],
+    }
+    for p in org.patients.all().prefetch_related("encounters", "diagnoses", "medications", "vitals", "allergies"):
+        data["patients"].append({
+            "mrn": p.mrn,
+            "first_name": p.legal_first_name,
+            "last_name": p.legal_last_name,
+            "date_of_birth": p.date_of_birth.isoformat() if p.date_of_birth else None,
+            "sex": p.sex,
+            "trn": p.trn, "nhf_card_number": p.nhf_card_number,
+            "phone": p.phone_primary, "parish": p.parish, "community": p.community,
+            "allergies": [{"allergen": a.allergen_name, "severity": a.severity} for a in p.allergies.all()],
+            "encounters": [{
+                "date": e.encounter_date.isoformat() if e.encounter_date else None,
+                "type": e.encounter_type, "status": e.encounter_status,
+                "chief_complaint": e.chief_complaint,
+                "assessment": e.assessment_notes, "plan": e.plan_notes,
+            } for e in p.encounters.all()],
+            "diagnoses": [{"icd10": d.icd10_code, "description": d.icd10_description, "status": d.status} for d in p.diagnoses.all()],
+            "medications": [{"drug": m.drug_name_generic, "dose": str(m.dose_amount or ""), "unit": m.dose_unit, "frequency": m.frequency} for m in p.medications.all()],
+            "vitals": [{
+                "recorded_at": v.recorded_at.isoformat() if v.recorded_at else None,
+                "bp": f"{v.bp_systolic}/{v.bp_diastolic}" if v.bp_systolic and v.bp_diastolic else None,
+                "weight_kg": str(v.weight_kg or ""), "glucose_mmol": str(v.blood_glucose_mmol or ""),
+            } for v in p.vitals.all()],
+        })
+    return data
+
+
+def _org_export_csv_response(org, filename=None):
+    """One-row-per-patient CSV (demographics + counts + active problems/meds)."""
+    import csv
+    from django.http import HttpResponse
+    resp = HttpResponse(content_type="text/csv")
+    resp["Content-Disposition"] = f'attachment; filename="{filename or ("wellnest-" + str(org.pk) + "-patients")}.csv"'
+    writer = csv.writer(resp)
+    writer.writerow([
+        "MRN", "First name", "Last name", "Date of birth", "Sex", "TRN", "NHF",
+        "Phone", "Parish", "Community", "Encounters", "Active diagnoses", "Current medications",
+    ])
+    for p in org.patients.all().prefetch_related("encounters", "diagnoses", "medications"):
+        active_dx = "; ".join(d.icd10_code for d in p.diagnoses.all() if d.status == "active")
+        active_meds = "; ".join(m.drug_name_generic for m in p.medications.all() if m.status == "active")
+        writer.writerow([
+            p.mrn, p.legal_first_name, p.legal_last_name,
+            p.date_of_birth or "", p.sex, p.trn, p.nhf_card_number,
+            p.phone_primary, p.parish, p.community, p.encounters.count(), active_dx, active_meds,
+        ])
+    return resp
+
+
+@login_required
+def organisation_export_api(request, org_id):
+    """Export a facility's data for portability. ?format=csv for CSV, else JSON."""
+    from django.http import HttpResponseForbidden
+    from emr.models import Organisation
+    profile = getattr(request.user, "doctor_profile", None)
+    if not (profile and profile.is_admin):
+        return HttpResponseForbidden("Admin access required.")
+    org = get_object_or_404(Organisation, pk=org_id)
+    if request.GET.get("format") == "csv":
+        return _org_export_csv_response(org)
+    resp = JsonResponse(_org_export_data(org), json_dumps_params={"indent": 2})
+    resp["Content-Disposition"] = f'attachment; filename="wellnest-{org.pk}-export.json"'
+    return resp
+
+
+@login_required
+def subscription_view(request):
+    """Self-service page for a user: view their facility's plan + status and
+    export their data (JSON or CSV)."""
+    from emr.services.access import get_membership
+    ctx = get_membership(request.user)
+    return render(request, "accounts/subscription.html", {
+        "org": ctx.organisation,
+        "membership": ctx.membership,
+    })
+
+
+@login_required
+def my_data_export(request):
+    """Export the signed-in user's own facility data (JSON or ?format=csv)."""
+    from emr.services.access import get_membership
+    org = get_membership(request.user).organisation
+    if request.GET.get("format") == "csv":
+        return _org_export_csv_response(org, filename="wellnest-my-patients")
+    resp = JsonResponse(_org_export_data(org), json_dumps_params={"indent": 2})
+    resp["Content-Disposition"] = 'attachment; filename="wellnest-my-data.json"'
+    return resp
+
+
+def _doc_title(path):
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            s = line.strip()
+            if s.startswith("# "):
+                return s[2:].strip()
+            if s:
+                break
+    except Exception:  # noqa: BLE001
+        pass
+    return path.stem.replace("_", " ").replace("-", " ").title()
+
+
+@login_required
+def docs_view(request, slug=None):
+    """Render the project's docs/*.md policy + reference files as an in-app page."""
+    from django.conf import settings as dj_settings
+    from django.http import HttpResponseForbidden
+
+    profile = getattr(request.user, "doctor_profile", None)
+    if not (profile and profile.is_admin):
+        return HttpResponseForbidden("Admin access required.")
+
+    docs_dir = dj_settings.BASE_DIR / "docs"
+    files = sorted(docs_dir.glob("*.md"), key=lambda p: p.name) if docs_dir.exists() else []
+    entries = [{"slug": p.stem, "title": _doc_title(p), "name": p.name} for p in files]
+
+    current = next((e for e in entries if e["slug"] == slug), None) or (entries[0] if entries else None)
+    content_html = ""
+    if current:
+        try:
+            import markdown as _md
+            raw = (docs_dir / current["name"]).read_text(encoding="utf-8")
+            content_html = _md.markdown(
+                raw, extensions=["tables", "fenced_code", "sane_lists", "toc"]
+            )
+        except Exception:  # noqa: BLE001
+            content_html = "<p class='text-danger'>Could not render this document.</p>"
+
+    return render(request, "accounts/docs.html", {
+        "entries": entries,
+        "current": current,
+        "content_html": content_html,
+    })
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def billing_view(request):
+    """Manual subscription / billing management (no processor yet).
+
+    Admins set each facility's tier, status, seats, paid-through date and notes.
+    Suspending a facility turns OFF the AI scribe only — EMR record access is
+    never gated on billing (patient safety).
+    """
+    profile = getattr(request.user, "doctor_profile", None)
+    if not (profile and profile.is_admin):
+        from django.http import HttpResponseForbidden
+        return HttpResponseForbidden("Admin access required.")
+
+    from datetime import datetime
+
+    from emr.constants import SUBSCRIPTION_STATUS_CHOICES, SUBSCRIPTION_TIER_CHOICES
+    from emr.models import Organisation
+
+    if request.method == "POST":
+        org = get_object_or_404(Organisation, pk=request.POST.get("org_id"))
+        tier = request.POST.get("subscription_tier", "")
+        status = request.POST.get("subscription_status", "")
+        if tier in {c[0] for c in SUBSCRIPTION_TIER_CHOICES}:
+            org.subscription_tier = tier
+        if status in {c[0] for c in SUBSCRIPTION_STATUS_CHOICES}:
+            org.subscription_status = status
+        try:
+            org.provider_seats = max(0, int(request.POST.get("provider_seats") or org.provider_seats))
+        except (TypeError, ValueError):
+            pass
+        exp = (request.POST.get("subscription_expires") or "").strip()
+        if exp:
+            try:
+                org.subscription_expires = datetime.strptime(exp, "%Y-%m-%d").date()
+            except ValueError:
+                pass
+        else:
+            org.subscription_expires = None
+        amt = (request.POST.get("monthly_amount") or "").strip()
+        org.monthly_amount = amt or None
+        org.billing_notes = (request.POST.get("billing_notes") or "")[:2000]
+        org.save()
+        log_audit_event_safe(request, org, f"Billing updated: {org.subscription_tier}/{org.subscription_status}")
+        messages.success(request, f"Billing updated for {org.name}.")
+        return redirect("accounts:billing")
+
+    return render(request, "accounts/billing.html", {
+        "organisations": Organisation.objects.all().order_by("name"),
+        "tier_choices": SUBSCRIPTION_TIER_CHOICES,
+        "status_choices": SUBSCRIPTION_STATUS_CHOICES,
+    })
+
+
+def log_audit_event_safe(request, org, detail):
+    try:
+        from emr.services.audit import log_audit_event
+        log_audit_event(request, org, action="update", resource_type="billing", resource_id=org.pk, detail=detail)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 @_require_admin

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Billing &amp; subscriptions · WellNest{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="page-title-box">
+            <h4 class="mb-1 fw-semibold">Billing &amp; subscriptions</h4>
+            <p class="text-muted mb-0 small">
+                Manual subscription management. Set each facility's plan and status.
+                <strong>Suspending only turns off the AI scribe — EMR record access is never blocked.</strong>
+            </p>
+        </div>
+    </div>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show">
+            {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="d-flex flex-column gap-3">
+    {% for org in organisations %}
+    <div class="card">
+        <div class="card-body p-4">
+            <form method="post" class="row g-3 align-items-end">
+                {% csrf_token %}
+                <input type="hidden" name="org_id" value="{{ org.pk }}">
+                <div class="col-12 d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <h5 class="fw-semibold mb-0">
+                        {{ org.name }}
+                        {% if org.scribe_enabled %}
+                            <span class="badge bg-success-subtle text-success">Scribe on</span>
+                        {% else %}
+                            <span class="badge bg-danger-subtle text-danger">Scribe OFF</span>
+                        {% endif %}
+                        {% if not org.is_active %}<span class="badge bg-secondary-subtle text-secondary">Recycle bin</span>{% endif %}
+                    </h5>
+                    <span class="text-muted small">{{ org.memberships.count }} member{{ org.memberships.count|pluralize }} · {{ org.get_parish_display|default:org.parish|default:"—" }}</span>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">Plan / tier</label>
+                    <select name="subscription_tier" class="form-select form-select-sm">
+                        {% for value, label in tier_choices %}
+                        <option value="{{ value }}" {% if org.subscription_tier == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted">Status</label>
+                    <select name="subscription_status" class="form-select form-select-sm">
+                        {% for value, label in status_choices %}
+                        <option value="{{ value }}" {% if org.subscription_status == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Provider seats</label>
+                    <input type="number" name="provider_seats" min="0" class="form-control form-control-sm" value="{{ org.provider_seats }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Paid through</label>
+                    <input type="date" name="subscription_expires" class="form-control form-control-sm" value="{{ org.subscription_expires|date:'Y-m-d' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Monthly ({{ org.billing_currency }})</label>
+                    <input type="number" step="0.01" name="monthly_amount" class="form-control form-control-sm" value="{{ org.monthly_amount|default_if_none:'' }}">
+                </div>
+                <div class="col-12">
+                    <label class="form-label small text-muted">Billing notes (payment reference, contact, etc.)</label>
+                    <textarea name="billing_notes" class="form-control form-control-sm" rows="2">{{ org.billing_notes }}</textarea>
+                </div>
+                <div class="col-12 d-flex justify-content-end">
+                    <button class="btn btn-primary btn-sm">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% empty %}
+        <div class="emr-empty-state">
+            <h6 class="fw-semibold">No facilities yet</h6>
+            <p class="text-muted small mb-0">Add facilities from Users &amp; Orgs → Organizations.</p>
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}

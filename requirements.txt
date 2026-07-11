@@ -2,8 +2,12 @@ annotated-types==0.7.0
 anyio==4.13.0
 asgiref==3.11.1
 attrs==26.1.0
+# PyAV — bundles ffmpeg; used to downsize uploads to 16 kHz mono Opus before
+# sending to Modal (keeps long recordings under the 100 MB cap).
+av==17.0.1
 autobahn==24.4.2
 Automat==25.4.16
+Markdown==3.10.2
 azure-core==1.40.0
 azure-identity==1.25.3
 certifi==2026.4.22

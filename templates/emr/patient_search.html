@@ -8,7 +8,7 @@
         <div>
             <h4 class="mb-1 fw-semibold">Patient search</h4>
             <p class="text-muted mb-0 small">
-                Search by name, NHF number, TRN, phone, district, or parish.
+                Search by name, NHF number, TRN, phone, district, or parish — or browse all patients below.
             </p>
         </div>
         <a href="{% url 'emr:patient_create' %}{% if scribe_session_id %}?scribe={{ scribe_session_id }}{% endif %}" class="btn btn-primary btn-sm">
@@ -19,96 +19,151 @@
     <div class="card">
         <div class="card-body p-4">
             <form method="get" class="row g-3 align-items-end">
-                {% if scribe_session_id %}
-                    <input type="hidden" name="scribe" value="{{ scribe_session_id }}">
-                {% endif %}
-                <div class="col-lg-9">
+                {% if scribe_session_id %}<input type="hidden" name="scribe" value="{{ scribe_session_id }}">{% endif %}
+                <div class="col-lg-6">
                     <label class="form-label small text-muted">Search term</label>
                     <input type="search" class="form-control" name="q" value="{{ query }}" placeholder="e.g. Maria Brown, NHF number, or 876-555-1234">
                 </div>
                 <div class="col-lg-3">
-                    <button class="btn btn-primary w-100">Search patients</button>
+                    <label class="form-label small text-muted">Seen on</label>
+                    <input type="date" class="form-control" name="seen" value="{{ seen_date }}">
+                </div>
+                <div class="col-lg-3">
+                    <button class="btn btn-primary w-100">Search</button>
                 </div>
             </form>
+            <div class="d-flex align-items-center flex-wrap gap-2 mt-3">
+                <span class="small text-muted">Who was here:</span>
+                <a href="?seen=today{% if query %}&q={{ query|urlencode }}{% endif %}" class="btn btn-sm {% if seen == 'today' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Today</a>
+                <a href="?seen=yesterday{% if query %}&q={{ query|urlencode }}{% endif %}" class="btn btn-sm {% if seen == 'yesterday' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Yesterday</a>
+                <a href="?seen=7{% if query %}&q={{ query|urlencode }}{% endif %}" class="btn btn-sm {% if seen == '7' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Last 7 days</a>
+                <a href="?seen=30{% if query %}&q={{ query|urlencode }}{% endif %}" class="btn btn-sm {% if seen == '30' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Last 30 days</a>
+                {% if seen %}
+                    <a href="?{% if query %}q={{ query|urlencode }}{% endif %}" class="btn btn-sm btn-link text-danger text-decoration-none">Clear date ✕</a>
+                {% endif %}
+            </div>
         </div>
     </div>
 
-    {% if query %}
-        <div class="mt-4">
-            <h5 class="fw-semibold mb-3">Results for “{{ query }}”</h5>
-            {% if results %}
-                <div class="row g-3">
-                    {% for patient in results %}
-                        <div class="col-12 col-lg-6">
-                            <div class="card h-100">
-                                <div class="card-body p-4">
-                                    <div class="d-flex align-items-start justify-content-between gap-2">
-                                        <div>
-                                            <h6 class="fw-semibold mb-1">{{ patient.display_name }}</h6>
-                                            <div class="text-muted small">
-                                                {{ patient.age_display }} years · {{ patient.get_sex_display }} · {{ patient.parish|default:"Parish not set" }}
-                                            </div>
+    <div class="mt-4">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+            <h5 class="fw-semibold mb-0">
+                {% if query %}Results for “{{ query }}”{% elif seen_label %}Patients seen {{ seen_label }}{% else %}All patients{% endif %}
+                {% if query and seen_label %} · seen {{ seen_label }}{% endif %}
+                <span class="text-muted small">({{ patients|length }}{% if not query and not seen_label %} of {{ patient_total }}{% endif %})</span>
+            </h5>
+            <div class="btn-group btn-group-sm" role="group" aria-label="View mode">
+                <button type="button" class="btn btn-outline-secondary active" id="viewCardsBtn">Cards</button>
+                <button type="button" class="btn btn-outline-secondary" id="viewTableBtn">Table</button>
+            </div>
+        </div>
+
+        {% if patients %}
+            {# ── Card view ── #}
+            <div class="row g-3" id="patientCards">
+                {% for patient in patients %}
+                    <div class="col-12 col-lg-6">
+                        <div class="card h-100">
+                            <div class="card-body p-4">
+                                <div class="d-flex align-items-start justify-content-between gap-2">
+                                    <div>
+                                        <h6 class="fw-semibold mb-1">{{ patient.display_name }}</h6>
+                                        <div class="text-muted small">
+                                            {{ patient.age_display }} yrs · {{ patient.get_sex_display }} · {{ patient.parish|default:"Parish not set" }}
                                         </div>
-                                        {% if patient.phone_is_whatsapp %}
-                                            <span class="badge rounded-pill bg-success-subtle text-success">WhatsApp</span>
-                                        {% endif %}
                                     </div>
-                                    <div class="small text-muted mt-3">
-                                        NHF: {{ patient.nhf_card_number|default:"—" }} · TRN: {{ patient.trn|default:"—" }}<br>
-                                        Phone: {{ patient.phone_primary|default:"—" }}
-                                    </div>
-                                    <div class="d-flex gap-2 flex-wrap mt-3">
-                                        <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary btn-sm">Open chart</a>
-                                        <a href="{% url 'emr:encounter_create' patient.pk %}" class="btn btn-primary btn-sm">New encounter</a>
-                                        {% if scribe_session_id %}
-                                            <a href="{% url 'emr:encounter_create' patient.pk %}?scribe={{ scribe_session_id }}" class="btn btn-outline-secondary btn-sm">
-                                                Import scribe draft
-                                            </a>
-                                        {% endif %}
-                                    </div>
+                                    <span class="badge rounded-pill bg-secondary-subtle text-secondary">{{ patient.mrn }}</span>
+                                </div>
+                                <div class="small text-muted mt-3">
+                                    NHF: {{ patient.nhf_card_number|default:"—" }} · TRN: {{ patient.trn|default:"—" }}<br>
+                                    Phone: {{ patient.phone_primary|default:"—" }}
+                                </div>
+                                <div class="d-flex gap-2 flex-wrap mt-3">
+                                    <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary btn-sm">Open chart</a>
+                                    {% if not scribe_session_id and doctor_profile.can_use_scribe %}
+                                        <a href="{% url 'scribe:record' %}?patient={{ patient.pk }}" class="btn btn-primary btn-sm">
+                                            <iconify-icon icon="iconamoon:microphone-duotone" class="me-1"></iconify-icon>Record visit
+                                        </a>
+                                    {% endif %}
+                                    <a href="{% url 'emr:intake' patient.pk %}" class="btn btn-outline-secondary btn-sm">Intake &amp; queue</a>
+                                    {% if scribe_session_id %}
+                                        <a href="{% url 'emr:encounter_create' patient.pk %}?scribe={{ scribe_session_id }}" class="btn btn-outline-secondary btn-sm">Import scribe draft</a>
+                                    {% endif %}
                                 </div>
                             </div>
-                        </div>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <div class="emr-empty-state">
-                    <h6 class="fw-semibold">No patient matched that search</h6>
-                    <p class="text-muted small mb-3">
-                        Try a phone number, partial surname, or NHF number. If the patient is new, register them first.
-                    </p>
-                    <a href="{% url 'emr:patient_create' %}{% if scribe_session_id %}?scribe={{ scribe_session_id }}{% endif %}" class="btn btn-primary btn-sm">
-                        Register patient
-                    </a>
-                </div>
-            {% endif %}
-        </div>
-    {% else %}
-        <div class="mt-4">
-            <h5 class="fw-semibold mb-3">Recently updated charts</h5>
-            <div class="row g-3">
-                {% for patient in recent %}
-                    <div class="col-12 col-lg-4">
-                        <a href="{% url 'emr:patient_detail' patient.pk %}" class="session-row h-100">
-                            <span class="session-icon">
-                                <iconify-icon icon="iconamoon:profile-duotone"></iconify-icon>
-                            </span>
-                            <span class="flex-grow-1">
-                                <span class="d-block fw-semibold">{{ patient.display_name }}</span>
-                                <span class="d-block small text-muted">{{ patient.age_display }} years · {{ patient.parish|default:"Parish not set" }}</span>
-                            </span>
-                        </a>
-                    </div>
-                {% empty %}
-                    <div class="col-12">
-                        <div class="emr-empty-state">
-                            <h6 class="fw-semibold">No patient records yet</h6>
-                            <a href="{% url 'emr:patient_create' %}" class="btn btn-primary btn-sm">Register your first patient</a>
                         </div>
                     </div>
                 {% endfor %}
             </div>
-        </div>
-    {% endif %}
+
+            {# ── Table view (hidden until toggled) ── #}
+            <div class="card d-none" id="patientTable">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>MRN</th>
+                                    <th>Age · Sex</th>
+                                    <th>TRN / NHF</th>
+                                    <th>Phone</th>
+                                    <th>Parish</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for patient in patients %}
+                                    <tr>
+                                        <td class="fw-semibold">{{ patient.display_name }}</td>
+                                        <td class="text-muted small">{{ patient.mrn }}</td>
+                                        <td>{{ patient.age_display }} · {{ patient.get_sex_display }}</td>
+                                        <td class="small text-muted">{{ patient.trn|default:patient.nhf_card_number|default:"—" }}</td>
+                                        <td class="small">{{ patient.phone_primary|default:"—" }}</td>
+                                        <td class="small">{{ patient.parish|default:"—" }}</td>
+                                        <td class="text-end">
+                                            <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary btn-sm">Chart</a>
+                                            {% if scribe_session_id %}
+                                                <a href="{% url 'emr:encounter_create' patient.pk %}?scribe={{ scribe_session_id }}" class="btn btn-outline-secondary btn-sm">Import</a>
+                                            {% elif doctor_profile.can_use_scribe %}
+                                                <a href="{% url 'scribe:record' %}?patient={{ patient.pk }}" class="btn btn-primary btn-sm">Record</a>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <div class="emr-empty-state">
+                <h6 class="fw-semibold">{% if seen_label and not query %}No patients were seen {{ seen_label }}{% elif query %}No patient matched that search{% else %}No patients yet{% endif %}</h6>
+                <a href="{% url 'emr:patient_create' %}{% if scribe_session_id %}?scribe={{ scribe_session_id }}{% endif %}" class="btn btn-primary btn-sm">Register patient</a>
+            </div>
+        {% endif %}
+    </div>
 </div>
+
+<script>
+(function () {
+  var cardsBtn = document.getElementById('viewCardsBtn');
+  var tableBtn = document.getElementById('viewTableBtn');
+  var cards = document.getElementById('patientCards');
+  var table = document.getElementById('patientTable');
+  if (!cardsBtn || !tableBtn || !cards || !table) return;
+  var KEY = 'wn_patient_view';
+  function show(mode) {
+    var t = mode === 'table';
+    table.classList.toggle('d-none', !t);
+    cards.classList.toggle('d-none', t);
+    tableBtn.classList.toggle('active', t);
+    cardsBtn.classList.toggle('active', !t);
+    try { localStorage.setItem(KEY, mode); } catch (e) {}
+  }
+  cardsBtn.addEventListener('click', function () { show('cards'); });
+  tableBtn.addEventListener('click', function () { show('table'); });
+  try { if (localStorage.getItem(KEY) === 'table') show('table'); } catch (e) {}
+})();
+</script>
 {% endblock %}

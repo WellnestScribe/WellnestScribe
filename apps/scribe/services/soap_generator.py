@@ -111,8 +111,21 @@ def _looks_like_refusal(text: str) -> bool:
 
 
 def _is_reasoning_effort_error(exc: BadRequestError) -> bool:
+    """True when the deployment rejects our reasoning_effort value.
+
+    Covers both the old wording ('unrecognized request argument') and Azure's
+    newer one ('Unsupported value: reasoning_effort does not support minimal
+    with this model. Supported values are: medium'). In either case we drop
+    reasoning_effort and let the model use its default (medium), which works.
+    """
     message = str(exc).lower()
-    return "reasoning_effort" in message and "unrecognized request argument" in message
+    if "reasoning_effort" not in message:
+        return False
+    return (
+        "unrecognized request argument" in message
+        or "unsupported value" in message
+        or "does not support" in message
+    )
 
 
 def _chat(messages: list[dict], *, max_tokens: int | None = None, deployment: str | None = None) -> str:
