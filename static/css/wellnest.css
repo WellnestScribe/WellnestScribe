@@ -1188,10 +1188,15 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 32px;
+  padding: 16px 84px 16px 32px; /* extra right pad so buttons clear the theme toggle */
   border-bottom: 1px solid var(--bs-border-color);
   backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: color-mix(in srgb, var(--bs-body-bg) 88%, transparent);
 }
+@media (max-width: 575px) { .landing-nav { padding: 14px 20px; } }
 .landing-hero {
   text-align: center;
   padding: 72px 24px 40px;
@@ -1215,15 +1220,107 @@ kbd {
   justify-content: center;
   font-size: 1.4rem;
 }
+.landing-faq {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 24px 32px 56px;
+  width: 100%;
+}
+.landing-faq .accordion-button:not(.collapsed) {
+  background: var(--wellnest-blue-soft);
+  color: var(--wellnest-blue);
+}
 .landing-footer {
   border-top: 1px solid var(--bs-border-color);
-  padding: 18px 32px;
+  padding: 40px 32px 24px;
   margin-top: auto;
+}
+.landing-footer-grid {
+  max-width: 1120px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 32px;
+}
+.landing-footer-grid a {
+  display: block;
+  color: var(--bs-secondary-color);
+  text-decoration: none;
+  font-size: 0.88rem;
+  padding: 3px 0;
+}
+.landing-footer-grid a:hover { color: var(--wellnest-blue); }
+.landing-footer-bottom {
+  max-width: 1120px;
+  margin: 28px auto 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--bs-border-color);
   text-align: center;
 }
+@media (max-width: 767px) {
+  .landing-footer-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 420px) {
+  .landing-footer-grid { grid-template-columns: 1fr; }
+}
+/* Hero image + floating "note ready" chip */
+.landing-hero { max-width: 1120px; }
+.landing-hero-media { position: relative; }
+.landing-hero-chip {
+  position: absolute;
+  left: -12px;
+  bottom: 20px;
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 14px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* Feature-card hover lift */
+.landing-feature-card {
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.landing-feature-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.10);
+}
+/* Image band */
+.landing-band {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 32px 32px 64px;
+  width: 100%;
+}
+/* Scroll fade-in */
+[data-animate] {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+[data-animate].in-view { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  [data-animate] { opacity: 1; transform: none; transition: none; }
+}
+@media (max-width: 575px) { .landing-hero-chip { left: 8px; } }
 
 /* Auth screens */
-.auth-body { background: var(--bs-body-bg); min-height: 100vh; }
+/* Auth pages: light/whitish background + the theme's clean white `.auth-card`
+   (kept for its curvature). No blue full-bleed. We restore the `.account-pages`
+   centring here since the theme scopes it under `.authentication-bg`. */
+.auth-body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top right, rgba(12,126,194,0.10), transparent 55%),
+    radial-gradient(circle at bottom left, rgba(12,126,194,0.06), transparent 55%),
+    var(--bs-body-bg);
+}
+.auth-body .account-pages {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+}
 .auth-theme-toggle {
   position: fixed;
   top: 18px;
@@ -1239,6 +1336,12 @@ kbd {
   justify-content: center;
   z-index: 1050;
   cursor: pointer;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+}
+/* On mobile the top nav owns the top-right corner, so drop the toggle to the
+   bottom-right where it never overlaps "Create account". */
+@media (max-width: 767px) {
+  .auth-theme-toggle { top: auto; bottom: 18px; right: 18px; }
 }
 .auth-messages {
   position: fixed;
@@ -1246,57 +1349,22 @@ kbd {
   left: 50%;
   transform: translateX(-50%);
   z-index: 1040;
-  width: min(420px, calc(100% - 32px));
+  width: min(460px, calc(100% - 32px));
 }
-.auth-shell {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background:
-    radial-gradient(circle at top right, rgba(12,126,194,0.12), transparent 55%),
-    radial-gradient(circle at bottom left, rgba(12,126,194,0.08), transparent 55%);
-  padding: 24px;
-}
+/* Clean white card on the light bg — keep the curvature, add a soft lift. */
 .auth-card {
-  width: 100%;
-  max-width: 420px;
-  background: var(--bs-body-bg);
-  border-radius: 18px;
-  border: 1px solid var(--bs-border-color);
-  box-shadow: 0 20px 60px rgba(15,23,42,0.08);
-  padding: 32px;
-  position: relative;
-  overflow: hidden;
-  animation: authFadeIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-/* Thin brand accent along the top edge of the card */
-.auth-card::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--wellnest-blue, #0c7ec2), rgba(12,126,194,0.35));
+  border: 1px solid var(--bs-border-color) !important;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.10) !important;
+  border-radius: 16px;
+  animation: authFadeIn 0.45s ease both;
 }
 .auth-card .form-control { padding-top: 0.6rem; padding-bottom: 0.6rem; }
-.auth-card .btn-primary { padding-top: 0.6rem; padding-bottom: 0.6rem; font-weight: 600; }
+.auth-logo img { height: 34px; }
 @keyframes authFadeIn {
-  from { opacity: 0; transform: translateY(14px) scale(0.99); }
-  to   { opacity: 1; transform: translateY(0)    scale(1); }
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
 }
-@media (max-width: 480px) { .auth-card { padding: 24px 20px; border-radius: 16px; } }
 @media (prefers-reduced-motion: reduce) { .auth-card { animation: none; } }
-.auth-logo {
-  width: 56px;
-  height: 56px;
-  border-radius: 14px;
-  background: var(--wellnest-blue-soft);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 14px;
-}
-.auth-logo img { width: 38px; height: 38px; }
 
 /* ---- EMR surfaces ---- */
 .emr-shell {

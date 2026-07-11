@@ -13,7 +13,7 @@
                         <span class="badge bg-warning-subtle text-warning ms-1" style="font-size:0.7rem;">advisory</span>
                     </h4>
                     <p class="text-muted mb-0 small">
-                        Jamaican-context drug + bush-tea interaction screen. Brand names are resolved against an internal alias table before the AI is asked, so generics/classes drive the analysis. AI advisory only — your clinical judgment owns the prescribing decision.
+                        Jamaican-context drug + bush-tea interaction screen. Brand names are resolved against an internal alias table before the AI is asked, so generics/classes drive the analysis. AI advisory only - your clinical judgment owns the prescribing decision.
                     </p>
                 </div>
                 <a href="{% url 'scribe:record' %}" class="page-back-btn align-self-start">
@@ -37,7 +37,7 @@
                         <div class="col-6 col-md-3">
                             <label class="form-label small text-muted mb-1">Sex</label>
                             <select id="dcSex" class="form-select form-select-sm">
-                                <option value="">—</option>
+                                <option value="">-</option>
                                 <option value="F">Female</option>
                                 <option value="M">Male</option>
                                 <option value="other">Other</option>
@@ -59,12 +59,12 @@
 
                     <h6 class="fw-semibold mb-2">Current medications</h6>
                     <p class="small text-muted mb-2">
-                        Type one drug per chip — brand or generic. Hit Enter or "+" to add.
+                        Type one drug per chip - brand or generic. Hit Enter or "+" to add.
                     </p>
                     <div class="chip-row mb-2" id="dcCurrentChips"></div>
                     <div class="d-flex gap-2 mb-3 position-relative" data-typeahead="drug">
                         <input type="text" id="dcCurrentInput" class="form-control form-control-sm"
-                               placeholder="Start typing — e.g. Lisi… → Lisinopril" autocomplete="off"
+                               placeholder="Start typing - e.g. Lisi… → Lisinopril" autocomplete="off"
                                data-typeahead-input>
                         <button type="button" class="btn btn-outline-secondary btn-sm px-2" id="dcCurrentAddBtn" style="min-width:32px;">
                             <iconify-icon icon="iconamoon:add-duotone" style="font-size:1rem;"></iconify-icon>
@@ -74,12 +74,12 @@
 
                     <h6 class="fw-semibold mb-2">Bush tea / herbal remedies</h6>
                     <p class="small text-muted mb-2">
-                        Optional. Evidence for herb/drug interactions is variable — flagged as "reported" or "theoretical" where appropriate.
+                        Optional. Evidence for herb/drug interactions is variable - flagged as "reported" or "theoretical" where appropriate.
                     </p>
                     <div class="chip-row mb-2" id="dcHerbChips"></div>
                     <div class="d-flex gap-2 mb-3 position-relative" data-typeahead="herb">
                         <input type="text" id="dcHerbInput" class="form-control form-control-sm"
-                               placeholder="Start typing — e.g. cera… → cerasee" autocomplete="off"
+                               placeholder="Start typing - e.g. cera… → cerasee" autocomplete="off"
                                data-typeahead-input>
                         <button type="button" class="btn btn-outline-secondary btn-sm px-2" id="dcHerbAddBtn" style="min-width:32px;">
                             <iconify-icon icon="iconamoon:add-duotone" style="font-size:1rem;"></iconify-icon>
@@ -94,7 +94,7 @@
                     <div class="position-relative mb-3" data-typeahead="drug">
                         <div class="quick-mic-wrap">
                             <input type="text" id="dcProposed" class="form-control"
-                                   placeholder="Start typing — e.g. Dicl… → Diclofenac"
+                                   placeholder="Start typing - e.g. Dicl… → Diclofenac"
                                    autocomplete="off" data-typeahead-input>
                             <button type="button" class="quick-mic-btn" data-quick-mic="#dcProposed" aria-label="Dictate proposed med">
                                 <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon>

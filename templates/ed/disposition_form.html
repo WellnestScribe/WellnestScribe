@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Disposition — {{ visit.visit_number }} — WellNest{% endblock %}
+{% block title %}Disposition - {{ visit.visit_number }} - WellNest{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -29,7 +29,7 @@
   <div>
     <h4 class="mb-0 fw-bold">
       <iconify-icon icon="iconamoon:exit-duotone" class="me-1"></iconify-icon>
-      Disposition — {{ visit.visit_number }}
+      Disposition - {{ visit.visit_number }}
     </h4>
     <small class="text-muted">{{ visit.display_name }} · {{ visit.time_in_department_minutes }} min in department</small>
   </div>
@@ -40,7 +40,7 @@
 <div class="alert alert-danger d-flex gap-3 align-items-start mb-3" role="alert">
   <iconify-icon icon="iconamoon:alert-circle-duotone" style="font-size:1.4rem; flex-shrink:0; margin-top:2px;"></iconify-icon>
   <div>
-    <strong>Abnormal vital signs at triage</strong> — please verify before discharging.
+    <strong>Abnormal vital signs at triage</strong> - please verify before discharging.
     <div class="mt-1">
       {% for flag in vital_flags %}
       <span class="badge bg-danger-subtle text-danger border border-danger me-1">{{ flag }}</span>

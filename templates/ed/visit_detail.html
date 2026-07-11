@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}{{ visit.visit_number }} — WellNest ED{% endblock %}
+{% block title %}{{ visit.visit_number }} - WellNest ED{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -30,7 +30,7 @@
       {% else %}
       <span class="badge bg-secondary">Not triaged</span>
       {% endif %}
-      <span class="badge bg-{{ visit.zone_color_class }} px-2">{{ visit.get_current_zone_display }}{% if visit.current_bed %} — {{ visit.current_bed }}{% endif %}</span>
+      <span class="badge bg-{{ visit.zone_color_class }} px-2">{{ visit.get_current_zone_display }}{% if visit.current_bed %} - {{ visit.current_bed }}{% endif %}</span>
       <span class="badge bg-body-secondary text-body border">{{ visit.get_current_status_display }}</span>
     </div>
     <small class="text-muted">{{ visit.display_name }} · Arrived {{ visit.arrived_at|date:"H:i d M Y" }}</small>
@@ -264,7 +264,7 @@
         {% if visit.patient.phone_primary %}<div class="text-muted small">📞 {{ visit.patient.phone_primary }}</div>{% endif %}
         {% if visit.patient.emergency_contact_name %}<div class="text-muted small">NOK: {{ visit.patient.emergency_contact_name }} {% if visit.patient.emergency_contact_phone %}({{ visit.patient.emergency_contact_phone }}){% endif %}</div>{% endif %}
         {% else %}
-        <div class="badge bg-warning text-dark">Unregistered — not linked to EMR</div>
+        <div class="badge bg-warning text-dark">Unregistered - not linked to EMR</div>
         {% endif %}
         <div class="mt-2">
           <small class="text-muted d-block">Arrival mode</small>
@@ -334,15 +334,15 @@
       <div class="card-body" style="font-size:0.85rem;">
         <div class="mb-1">
           <span class="text-muted">Triage nurse:</span>
-          {% if visit.triage_nurse %}{{ visit.triage_nurse.get_full_name|default:visit.triage_nurse.username }}{% else %}—{% endif %}
+          {% if visit.triage_nurse %}{{ visit.triage_nurse.get_full_name|default:visit.triage_nurse.username }}{% else %}-{% endif %}
         </div>
         <div class="mb-1">
           <span class="text-muted">Attending:</span>
-          {% if visit.attending_physician %}{{ visit.attending_physician.get_full_name|default:visit.attending_physician.username }}{% else %}—{% endif %}
+          {% if visit.attending_physician %}{{ visit.attending_physician.get_full_name|default:visit.attending_physician.username }}{% else %}-{% endif %}
         </div>
         <div>
           <span class="text-muted">Charge nurse:</span>
-          {% if visit.charge_nurse %}{{ visit.charge_nurse.get_full_name|default:visit.charge_nurse.username }}{% else %}—{% endif %}
+          {% if visit.charge_nurse %}{{ visit.charge_nurse.get_full_name|default:visit.charge_nurse.username }}{% else %}-{% endif %}
         </div>
       </div>
     </div>

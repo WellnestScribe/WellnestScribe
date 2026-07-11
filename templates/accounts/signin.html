@@ -4,38 +4,53 @@
 {% block title %}Sign in · WellNest Scribe{% endblock %}
 
 {% block content %}
-<div class="auth-shell">
-    <div class="auth-card">
-        <div class="auth-logo">
-            <img src="{% static 'images/wellnest-logo.png' %}" alt="WellNest">
-        </div>
-        <h4 class="fw-semibold mb-1">Welcome back</h4>
-        <p class="text-muted small mb-4">Sign in to access your scribe sessions.</p>
+<div class="account-pages pt-2 pt-sm-5 pb-4 pb-sm-5">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-12" style="max-width: 428px;">
+                <div class="card auth-card">
+                    <div class="card-body px-3 py-5">
+                        <div class="mx-auto mb-4 text-center auth-logo">
+                            <img src="{% static 'images/wellnest-logo.png' %}" height="34" class="me-1" alt="WellNest">
+                            <span class="fw-bold fs-3 align-middle" style="color:#0c7ec2;">WellNest</span>
+                        </div>
 
-        <form method="post" novalidate>
-            {% csrf_token %}
-            {% if form.non_field_errors %}
-                <div class="alert alert-danger small">{{ form.non_field_errors }}</div>
-            {% endif %}
-            <div class="mb-3">
-                <label class="form-label small text-muted" for="id_username">Username or email</label>
-                {{ form.username }}
-                {% if form.username.errors %}<small class="text-danger">{{ form.username.errors|join:" " }}</small>{% endif %}
-            </div>
-            <div class="mb-3">
-                <div class="d-flex align-items-center justify-content-between">
-                    <label class="form-label small text-muted mb-1" for="id_password">Password</label>
-                    <a href="{% url 'accounts:password_help' %}" class="small text-decoration-none">Forgot password?</a>
+                        <h2 class="fw-bold text-center fs-18">Sign In</h2>
+                        <p class="text-muted text-center mt-1 mb-4">
+                            Enter your username or email and password to access your scribe.
+                        </p>
+
+                        <div class="px-4">
+                            <form method="post" class="authentication-form" novalidate>
+                                {% csrf_token %}
+                                {% if form.non_field_errors %}
+                                    <div class="alert alert-danger py-2 small">{{ form.non_field_errors }}</div>
+                                {% endif %}
+                                <div class="mb-3">
+                                    <label class="form-label" for="id_username">Username or email</label>
+                                    {{ form.username }}
+                                    {% if form.username.errors %}<small class="text-danger">{{ form.username.errors|join:" " }}</small>{% endif %}
+                                </div>
+                                <div class="mb-3">
+                                    <a href="{% url 'accounts:password_help' %}" class="float-end text-muted text-unline-dashed ms-1">Forgot password?</a>
+                                    <label class="form-label" for="id_password">Password</label>
+                                    {{ form.password }}
+                                    {% if form.password.errors %}<small class="text-danger">{{ form.password.errors|join:" " }}</small>{% endif %}
+                                </div>
+                                <div class="mb-1 text-center d-grid">
+                                    <button class="btn btn-primary fw-semibold" type="submit">Sign In</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
                 </div>
-                {{ form.password }}
-                {% if form.password.errors %}<small class="text-danger">{{ form.password.errors|join:" " }}</small>{% endif %}
-            </div>
-            <button type="submit" class="btn btn-primary w-100">Sign in</button>
-        </form>
 
-        <p class="text-center text-muted small mt-4 mb-0">
-            New to WellNest? <a href="{% url 'accounts:signup' %}">Create an account</a>.
-        </p>
+                <p class="text-muted mb-0 text-center mt-3">
+                    New to WellNest?
+                    <a href="{% url 'accounts:signup' %}" class="fw-semibold ms-1">Create an account</a>
+                </p>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}

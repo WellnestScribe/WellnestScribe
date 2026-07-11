@@ -21,7 +21,7 @@
         <strong class="d-block">First-run setup</strong>
         <span class="small">
             No administrators exist on this WellNest instance yet. As the
-            first signed-in user you can claim the admin role — this enables
+            first signed-in user you can claim the admin role - this enables
             <code>/admin/</code>, the Triage Lab sidebar entry, and the
             Patois ASR sandbox. Disappears once any admin is set.
         </span>
@@ -94,13 +94,13 @@
                         <div class="col-md-6">
                             <label class="form-label small text-muted" for="id_font_scale">Font size (%)</label>
                             {{ form.font_scale }}
-                            <small class="text-muted">80 to 160 — for screen comfort.</small>
+                            <small class="text-muted">80 to 160 - for screen comfort.</small>
                         </div>
                     </div>
 
                     <h6 class="fw-semibold">Custom instructions</h6>
                     <p class="text-muted small">
-                        Anything you&rsquo;d always like the AI to do — reminders to include
+                        Anything you&rsquo;d always like the AI to do - reminders to include
                         foot pulses on diabetic patients, preferred phrasings, etc. Appended
                         to every note-generation prompt.
                     </p>
@@ -108,7 +108,7 @@
 
                     <h6 class="fw-semibold mt-4">Custom terminology</h6>
                     <p class="text-muted small">
-                        Regional or personal abbreviations the AI should recognise — one per
+                        Regional or personal abbreviations the AI should recognise - one per
                         line. The AI uses these when interpreting your dictation and writing
                         notes. Common across Caribbean practice (e.g. Jamaican health centre
                         shorthand).
@@ -185,7 +185,7 @@
                     Demo mode <span class="badge bg-warning-subtle text-warning">Admin</span>
                 </h6>
                 <p class="text-muted small mb-3">
-                    Throttle or lock the platform for everyone except admins —
+                    Throttle or lock the platform for everyone except admins -
                     use it when a sign-up QR is on screen at an event so a bad
                     actor can&rsquo;t burn AI credits. Your own account is never
                     affected.
@@ -259,7 +259,7 @@
         return;
       }
       status.className = 'small text-success';
-      var labels = { off: 'Off — running normally', limited: 'Test mode active', locked: 'Locked' };
+      var labels = { off: 'Off - running normally', limited: 'Test mode active', locked: 'Locked' };
       status.textContent = 'Saved · ' + (labels[res.d.demo_mode] || res.d.demo_mode);
     })
     .catch(function () {

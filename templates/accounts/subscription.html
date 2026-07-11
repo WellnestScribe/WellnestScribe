@@ -55,7 +55,7 @@
                     </div>
                     <div class="col-md-6">
                         <div class="text-muted small">Paid through</div>
-                        <div class="fw-semibold">{{ org.subscription_expires|date:"M j, Y"|default:"—" }}</div>
+                        <div class="fw-semibold">{{ org.subscription_expires|date:"M j, Y"|default:"-" }}</div>
                     </div>
                 </div>
                 {% if not org.scribe_enabled %}
@@ -74,7 +74,7 @@
             <div class="card-body p-4">
                 <h5 class="fw-semibold mb-2">Export your data</h5>
                 <p class="text-muted small mb-3">
-                    Download a copy of your clinic's records — patients, encounters, diagnoses,
+                    Download a copy of your clinic's records - patients, encounters, diagnoses,
                     medications, and vitals. Yours to keep and move, any time.
                 </p>
                 <div class="d-grid gap-2">

@@ -47,7 +47,7 @@ MEMBERSHIP_ROLE_CHOICES = [
 SUBSCRIPTION_TIER_CHOICES = [
     ("trial", "Trial"),
     ("scribe", "Scribe only (per provider)"),
-    ("practice", "Practice — Scribe + EMR"),
+    ("practice", "Practice - Scribe + EMR"),
     ("emr", "EMR only (per facility)"),
 ]
 

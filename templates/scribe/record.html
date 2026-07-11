@@ -49,7 +49,7 @@
     padding-left: unset !important;
     padding-right: unset !important;
     pointer-events: auto;
-    /* expand immediately — no delay in this direction */
+    /* expand immediately - no delay in this direction */
     transition: max-width 0.2s ease 0s, opacity 0.15s ease 0s,
                 padding 0.15s ease 0s;
   }
@@ -152,7 +152,7 @@
                         Recording and note generation are off while your subscription is paused
                         {% if subscription_expires %}(since {{ subscription_expires|date:"M j, Y" }}){% endif %}.
                         <strong>Your patient records, history, and search stay fully available.</strong>
-                        Please reach out to renew — we're happy to help you get back up quickly.
+                        Please reach out to renew - we're happy to help you get back up quickly.
                     </span>
                 </div>
             </div>
@@ -165,7 +165,7 @@
           el.disabled = true;
           el.style.opacity = '.4';
           el.style.pointerEvents = 'none';
-          el.setAttribute('title', 'AI scribe paused — subscription');
+          el.setAttribute('title', 'AI scribe paused - subscription');
         });
       });
     })();
@@ -190,7 +190,7 @@
                             <iconify-icon icon="iconamoon:heart-duotone" class="me-1 align-middle text-danger"></iconify-icon>
                             <span class="fw-semibold">Nurse vitals:</span>
                             {% if selected_patient_vitals.bp_systolic and selected_patient_vitals.bp_diastolic %}BP {{ selected_patient_vitals.bp_systolic }}/{{ selected_patient_vitals.bp_diastolic }}{% endif %}{% if selected_patient_vitals.temperature_celsius %} · {{ selected_patient_vitals.temperature_celsius }}°C{% endif %}{% if selected_patient_vitals.weight_kg %} · {{ selected_patient_vitals.weight_kg }}kg{% endif %}{% if selected_patient_vitals.blood_glucose_mmol %} · Glu {{ selected_patient_vitals.blood_glucose_mmol }}{% endif %}
-                            <span class="opacity-75">— added to the note automatically</span>
+                            <span class="opacity-75">- added to the note automatically</span>
                         </span>
                         {% endif %}
                     </div>
@@ -206,7 +206,7 @@
         </div>
     </div>
 
-    {# S2: quick read of the patient's last notes before recording — no AI. #}
+    {# S2: quick read of the patient's last notes before recording - no AI. #}
     <div class="modal fade" id="recentNotesModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
             <div class="modal-content">
@@ -235,7 +235,7 @@
           .then(function (r) { return r.json(); })
           .then(function (d) {
             var notes = (d && d.notes) || [];
-            document.getElementById('recentNotesTitle').textContent = 'Past notes — ' + esc(d.patient || '');
+            document.getElementById('recentNotesTitle').textContent = 'Past notes - ' + esc(d.patient || '');
             if (!notes.length) { body.innerHTML = '<p class="text-muted small mb-0">No previous notes for this patient yet.</p>'; return; }
             var html = '<div class="d-flex flex-column gap-3">';
             notes.forEach(function (n) {
@@ -275,7 +275,7 @@
         <div class="col-12 col-xl-7">
             <div class="card h-100">
                 <div class="card-body p-4">
-                    {# Shared hidden state fields — read by wellnest.js and ambient pipeline #}
+                    {# Shared hidden state fields - read by wellnest.js and ambient pipeline #}
                     <select id="noteFormatSelect" class="d-none" aria-hidden="true" tabindex="-1">
                         {% for value, label in format_choices %}
                             <option value="{{ value }}" {% if value == profile.default_note_style %}selected{% endif %}>{{ label }}</option>
@@ -369,7 +369,7 @@
                     <div class="mode-tabs" role="tablist" aria-label="Recording mode">
                         <button type="button" class="mode-tab is-active" data-mode="ambient" role="tab" aria-selected="true"
                                 data-bs-toggle="tooltip" data-bs-placement="bottom"
-                                title="Listens to the whole room — AI writes the note for you.">
+                                title="Listens to the whole room - AI writes the note for you.">
                             <iconify-icon icon="iconamoon:chat-conversation-duotone" class="me-1 align-middle"></iconify-icon>
                             Ambient
                         </button>
@@ -412,7 +412,7 @@
                             </div>
                         </div>
                         <p class="text-muted small mt-3 mb-0 mx-auto" style="max-width: 420px;">
-                            Tap to start. Speak naturally for as long as you need — short dictations or long encounters.
+                            Tap to start. Speak naturally for as long as you need - short dictations or long encounters.
                         </p>
 
                         <div class="mt-2 text-center">
@@ -433,12 +433,12 @@
                                 <div style="height:6px; background:var(--bs-border-color); border-radius:3px; overflow:hidden; max-width:300px; margin:0 auto;">
                                     <div id="micLevelBar" style="height:100%; width:0%; background:#2d8a4e; border-radius:3px; transition:width 80ms;"></div>
                                 </div>
-                                <p class="small text-muted text-center mt-1 mb-0" id="micLevelHint">Speak — bar should move.</p>
+                                <p class="small text-muted text-center mt-1 mb-0" id="micLevelHint">Speak - bar should move.</p>
                             </div>
                         </div>
                     </div>
 
-                    {# Mobile-only: recent sessions — shown right after record button so it's visible without scrolling #}
+                    {# Mobile-only: recent sessions - shown right after record button so it's visible without scrolling #}
                     {% if recent_sessions %}
                     <div class="d-xl-none mt-4">
                         <div class="d-flex align-items-center justify-content-between mb-2">
@@ -481,7 +481,7 @@
                     <h6 class="fw-semibold mb-2">Or type the encounter</h6>
                     <p class="text-muted small mb-2">
                         Type free-form or paste a dictation. The AI fills in only what you
-                        actually state — patient name and encounter type are confirmed on the
+                        actually state - patient name and encounter type are confirmed on the
                         next screen.
                     </p>
                     <textarea id="manualTranscript"
@@ -500,7 +500,7 @@
                     {# ---- Ambient mode panel ---- #}
                     <div class="mode-panel is-active" id="panelAmbient">
 
-                        {# Backend selector — admin/debug only; hidden from regular doctors #}
+                        {# Backend selector - admin/debug only; hidden from regular doctors #}
                         <div class="d-flex align-items-center gap-2 mb-3 flex-wrap {% if not request.user.is_staff %}d-none{% endif %}">
                             <span class="small text-muted fw-semibold">Transcript source:</span>
                             <div class="btn-group btn-group-sm" role="group" id="ambientBackendGroup">
@@ -543,10 +543,10 @@
                                     class="btn btn-outline-warning btn-sm mt-1"
                                     style="display:none;">
                                 <iconify-icon icon="iconamoon:refresh-duotone" class="me-1 align-middle"></iconify-icon>
-                                Retry — audio still saved
+                                Retry - audio still saved
                             </button>
 
-                            {# Live streaming preview — Option 3 only, hidden until stream starts #}
+                            {# Live streaming preview - Option 3 only, hidden until stream starts #}
                             <div id="streamPreview" style="display:none;">
                                 <div id="streamPreviewHeader">
                                     <iconify-icon icon="iconamoon:lightning-1-duotone"></iconify-icon>
@@ -558,7 +558,7 @@
                             </div>
                         </div>
 
-                        {# TEMPORARY timing card — shown after processing completes #}
+                        {# TEMPORARY timing card - shown after processing completes #}
                         <div id="ambientTimingCard" class="card border-0 bg-light mt-3 d-none">
                             <div class="card-body py-2 px-3 small">
                                 <div class="fw-semibold mb-1 text-muted" style="font-size:0.7rem;letter-spacing:0.06em;">
@@ -624,7 +624,7 @@
         </div>
 
         <div class="col-12 col-xl-5 d-none d-xl-block">
-            {# Waiting-queue carousel — compact, right column, hidden when empty. Doctor swipes/arrows and clicks a card to record. #}
+            {# Waiting-queue carousel - compact, right column, hidden when empty. Doctor swipes/arrows and clicks a card to record. #}
             <div class="card mb-3 d-none border-primary-subtle" id="queueCarouselCard">
                 <div class="card-body p-3">
                     <div class="d-flex align-items-center justify-content-between mb-2">
@@ -846,7 +846,7 @@
                             <strong>{{ profile.get_specialty_display }}</strong>
                             &nbsp;·&nbsp;<a href="{% url 'accounts:profile' %}" class="text-decoration-none">Change</a>
                         </span>
-                        <span class="small text-muted">AI drafts — review before clinical use.</span>
+                        <span class="small text-muted">AI drafts - review before clinical use.</span>
                     </div>
                 </div>
             </div>
@@ -896,7 +896,7 @@
                     <div class="mb-3">
                         <label class="form-label small fw-semibold" for="tmplInstructions">AI instructions</label>
                         <textarea class="form-control form-control-sm" id="tmplInstructions" rows="4"
-                                  placeholder="Describe what the AI should emphasise, include, or avoid. e.g. 'This is a hypertension follow-up — always document current BP readings, medication compliance, and any side effects. Use bullet points for medications.'"></textarea>
+                                  placeholder="Describe what the AI should emphasise, include, or avoid. e.g. 'This is a hypertension follow-up - always document current BP readings, medication compliance, and any side effects. Use bullet points for medications.'"></textarea>
                         <div class="form-text">These instructions are added to every note generated with this template.</div>
                     </div>
                     <div class="mb-3">
@@ -919,7 +919,7 @@
     </div>
 </div>
 
-{# ---- Patient selection modal — shown when Record / Generate is clicked ---- #}
+{# ---- Patient selection modal - shown when Record / Generate is clicked ---- #}
 <div class="modal fade" id="patientModal" tabindex="-1"
      aria-labelledby="patientModalLabel"
      data-bs-backdrop="static" data-bs-keyboard="false">
@@ -956,7 +956,7 @@
                             Loading recent patients…
                         </li>
                     </ul>
-                    {# Gender row — visible when a patient is selected or a new name typed #}
+                    {# Gender row - visible when a patient is selected or a new name typed #}
                     <div id="patientGenderRow" class="d-none mt-2 d-flex align-items-center gap-2">
                         <span class="small text-muted fw-semibold" style="white-space:nowrap;">Patient sex:</span>
                         <div class="btn-group btn-group-sm" role="group">
@@ -968,11 +968,11 @@
                             <label class="btn btn-outline-secondary" for="mgO">Other</label>
                         </div>
                     </div>
-                    {# Disambiguation row — shown when a new patient shares a name with an existing one #}
+                    {# Disambiguation row - shown when a new patient shares a name with an existing one #}
                     <div id="patientDisambigRow" class="d-none mt-2">
                         <label class="small fw-semibold text-warning-emphasis mb-1 d-block" style="font-size:0.78rem;">
                             <iconify-icon icon="iconamoon:information-circle-duotone" class="me-1 align-middle"></iconify-icon>
-                            Same name already exists — add a note to tell them apart:
+                            Same name already exists - add a note to tell them apart:
                         </label>
                         <input type="text" id="patientDisambigInput" class="form-control form-control-sm"
                                placeholder="e.g. DOB: 1985 · infant · mother · Room 3"
@@ -984,7 +984,7 @@
                     </p>
                 </div>
 
-                {# Step 2: returning patient — skip redirect, let doctor choose inline #}
+                {# Step 2: returning patient - skip redirect, let doctor choose inline #}
                 <div id="patientReturnStep" class="d-none">
                     <div class="d-flex align-items-center gap-3 mb-3 p-2 rounded-2 border">
                         <iconify-icon icon="iconamoon:profile-circle-duotone" class="text-primary flex-shrink-0" style="font-size:2.4rem;"></iconify-icon>
@@ -1022,7 +1022,7 @@
     </div>
 </div>
 
-{# ---- Patient consent modal — shown before every new recording ---- #}
+{# ---- Patient consent modal - shown before every new recording ---- #}
 <div class="modal fade" id="consentModal" tabindex="-1"
      aria-labelledby="consentModalLabel"
      data-bs-backdrop="static" data-bs-keyboard="false">
@@ -1038,7 +1038,7 @@
 
                 {# Suggested script for the doctor to read to the patient #}
                 <p class="small fw-semibold mb-1" style="letter-spacing:0.04em;text-transform:uppercase;font-size:0.7rem;color:#6b7280;">
-                    Suggested script — read this to your patient:
+                    Suggested script - read this to your patient:
                 </p>
                 <div class="rounded-3 p-3 mb-3" style="background:#f1f3f5;border:1px solid #ced4da;font-size:0.875rem;line-height:1.6;font-style:italic;color:#212529;">
                     &ldquo;I&rsquo;m using a note-taking assistant today that listens to our conversation and writes up my notes for me. It&rsquo;s private, only used for your records, and not shared with anyone. You can say no at any time. Is that okay?&rdquo;
@@ -1139,7 +1139,7 @@
                 </h5>
             </div>
             <div class="modal-body pt-1 pb-2">
-                <p class="text-muted small mb-2">Optional — give the AI custom instructions for note generation. You can always update this later.</p>
+                <p class="text-muted small mb-2">Optional - give the AI custom instructions for note generation. You can always update this later.</p>
                 <textarea id="onboardAiTextarea"
                           class="form-control"
                           rows="5"
@@ -1174,7 +1174,7 @@
                 </h5>
             </div>
             <div class="modal-body pt-1 pb-2">
-                <p class="text-muted small mb-3">Say a few words out loud — we&rsquo;ll confirm the level is good.</p>
+                <p class="text-muted small mb-3">Say a few words out loud - we&rsquo;ll confirm the level is good.</p>
                 <div class="mb-3">
                     <label class="form-label small fw-semibold mb-1">Select microphone</label>
                     <select class="form-select form-select-sm" id="micTestDeviceSelect">
@@ -1442,7 +1442,7 @@
 (function () {
   /* ---- Patient selection modal ---- */
   var _patientProceed = null;
-  var _skipLastSessionRedirect = false; /* true when arriving via ?patient= — user already saw last session */
+  var _skipLastSessionRedirect = false; /* true when arriving via ?patient= - user already saw last session */
   var _patientsCache = null;
   var _generateBtnHandled = false;
   var _selectedPatientItem = null;
@@ -1479,7 +1479,7 @@
       var disambig = (p.ambiguous && p.identifier) ? ' <span style="font-size:0.7rem;opacity:0.65;">(' + _esc(p.identifier) + ')</span>' : '';
       var sc = p.session_count || 0;
       var visits = sc > 1 ? sc + ' visits' : (sc === 1 ? '1 visit' : 'Registered');
-      /* Arrow opens the last session — only meaningful if one exists */
+      /* Arrow opens the last session - only meaningful if one exists */
       var arrow = p.last_pk
         ? '<a href="/scribe/sessions/' + p.last_pk + '/review/" class="patient-last-link" target="_blank" ' +
              'title="Open last session" onclick="event.stopPropagation();">' +
@@ -1509,7 +1509,7 @@
         return p.name.toLowerCase() === nameQ.toLowerCase();
       });
       var conflictLabel = alreadyExact
-        ? '<span class="d-block text-warning-emphasis" style="font-size:0.73rem;margin-top:2px;">Same name exists — identifier required</span>'
+        ? '<span class="d-block text-warning-emphasis" style="font-size:0.73rem;margin-top:2px;">Same name exists - identifier required</span>'
         : '<span class="d-block text-muted" style="font-size:0.76rem;">New patient</span>';
       html += '<li class="patient-item new-patient-item" data-name="' + _esc(nameQ) + '" data-conflict="' + (alreadyExact ? '1' : '0') + '">' +
         '<div class="patient-icon' + (alreadyExact ? ' text-warning' : '') + '"><iconify-icon icon="iconamoon:sign-plus-circle-duotone"></iconify-icon></div>' +
@@ -1637,10 +1637,10 @@
         var retRecordBtn     = document.getElementById('patientRecordNewDirectBtn');
         var allVisitsLink    = document.getElementById('patientAllVisitsLink');
         var allVisitsLabel   = document.getElementById('patientAllVisitsLabel');
-        /* Name — append identifier if ambiguous so doctor knows which Mary Jane */
+        /* Name - append identifier if ambiguous so doctor knows which Mary Jane */
         if (retName) retName.textContent = name + (isAmbiguous && identifier ? '  (' + identifier + ')' : '');
         if (retMeta) retMeta.textContent = lastVisit ? 'Last visit: ' + lastVisit + (lastCc ? '  ·  ' + lastCc : '') : (lastCc || '');
-        /* "See all X visits" link — only show if more than 1 session */
+        /* "See all X visits" link - only show if more than 1 session */
         if (allVisitsLink && allVisitsLabel) {
           if (sessionCount > 1) {
             allVisitsLabel.textContent = 'See all ' + sessionCount + ' visits →';
@@ -1651,7 +1651,7 @@
           }
         }
         if (retViewBtn) retViewBtn.href = prevUrl;
-        /* "Record new session" button — just close modal and proceed directly */
+        /* "Record new session" button - just close modal and proceed directly */
         if (retRecordBtn) {
           retRecordBtn.onclick = function () {
             _skipLastSessionRedirect = true;
@@ -1689,7 +1689,7 @@
       if (disambigInput) disambigInput.classList.remove('is-invalid');
     }
 
-    /* New patient or no last session — proceed to recording as before */
+    /* New patient or no last session - proceed to recording as before */
     var patientGenderEl = document.getElementById('patientGender');
     if (!patientGenderEl) {
       patientGenderEl = document.createElement('input');
@@ -1713,7 +1713,7 @@
     if (fn) fn();
   }
 
-  /* X button = cancel everything — do not proceed, do not open consent */
+  /* X button = cancel everything - do not proceed, do not open consent */
   function cancelModal() {
     _patientProceed = null;
     if (patientModal && typeof bootstrap !== 'undefined') {
@@ -1724,7 +1724,7 @@
   if (patientSearch) {
     patientSearch.addEventListener('input', function () {
       var q = this.value;
-      _selectedPatientItem = null; /* typed a new name — clear item selection */
+      _selectedPatientItem = null; /* typed a new name - clear item selection */
       var pidEl = document.getElementById('patientId');
       if (pidEl) pidEl.value = ''; /* stop a stale chart link from carrying over */
       if (continueBtn) continueBtn.disabled = !q.trim();
@@ -1746,13 +1746,13 @@
   if (cancelBtn) cancelBtn.addEventListener('click', cancelModal);
   if (skipFooterBtn) skipFooterBtn.addEventListener('click', skipModal);
 
-  /* Intercept generateBtn — show patient modal before wellnest.js handles it */
+  /* Intercept generateBtn - show patient modal before wellnest.js handles it */
   var generateBtn = document.getElementById('generateBtn');
   if (generateBtn) {
     generateBtn.addEventListener('click', function (e) {
       if (_generateBtnHandled) { _generateBtnHandled = false; return; }
       var pid = document.getElementById('patientId');
-      if (pid && pid.value) return; /* known patient (from queue/chart) — no search needed */
+      if (pid && pid.value) return; /* known patient (from queue/chart) - no search needed */
       e.stopImmediatePropagation();
       showPatientModal(function () {
         _generateBtnHandled = true;
@@ -1763,7 +1763,7 @@
 
   window.WELLNEST_showPatientModal = showPatientModal;
 
-  /* Feature 1: patient pre-selected server-side via ?patient=<id> — #patientId is
+  /* Feature 1: patient pre-selected server-side via ?patient=<id> - #patientId is
      populated and the context bar shows them. Skip the last-session redirect; the
      search modal itself is bypassed in WELLNEST_beforeRecord. */
   (function () {
@@ -1780,7 +1780,7 @@
 </script>
 
 <script>
-/* Fix template dropdown — clamp to viewport after Popper positions it */
+/* Fix template dropdown - clamp to viewport after Popper positions it */
 document.addEventListener('DOMContentLoaded', function () {
   var dropBtn = document.getElementById('templateDropdownBtn');
   var dropMenu = document.getElementById('templateDropdownMenu');
@@ -1804,7 +1804,7 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 });
 
-/* Init tooltips on mode tabs — auto-dismiss after 5 s on touch devices */
+/* Init tooltips on mode tabs - auto-dismiss after 5 s on touch devices */
 document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('.mode-tab[data-bs-toggle="tooltip"]').forEach(function (el) {
     var tip = new bootstrap.Tooltip(el, {
@@ -1902,7 +1902,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
       }
       tick();
-    } catch (e) { /* AudioContext blocked — recording still works */ }
+    } catch (e) { /* AudioContext blocked - recording still works */ }
   }
 
   function stopAmbientWave() {
@@ -1967,7 +1967,7 @@ document.addEventListener('DOMContentLoaded', function () {
         stream.getTracks().forEach(function (t) { t.stop(); });
         if (ambientCancelled) { ambientCancelled = false; ambientChunks = []; return; }
         if (ambientElapsed < 3) {
-          ambientStatus.textContent = 'Recording too short — record at least a few seconds of speech.';
+          ambientStatus.textContent = 'Recording too short - record at least a few seconds of speech.';
           ambientRecordBtn.disabled = false;
           ambientChunks = [];
           return;
@@ -2069,7 +2069,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     /* Guard against HTML login-redirect responses that arrive with status 200 */
     if (body.trimStart().startsWith('<')) {
-      throw new Error('[' + label + '] Server returned an HTML page — session may have expired. Please reload and try again.');
+      throw new Error('[' + label + '] Server returned an HTML page - session may have expired. Please reload and try again.');
     }
     try {
       return JSON.parse(body);
@@ -2131,7 +2131,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!ambData.ok) throw new Error(ambData.error || 'Failed to start transcription.');
       var jobId = ambData.job_id;
 
-      // 3. Poll — Modal fast (~50s RTT), local CPU can be minutes
+      // 3. Poll - Modal fast (~50s RTT), local CPU can be minutes
       var pollMs = backend !== 'local' ? 2000 : 4000;
       var transcript = null;
       var jobResult = {};
@@ -2145,11 +2145,11 @@ document.addEventListener('DOMContentLoaded', function () {
         var elapsed = Math.round((job.elapsed_ms || 0) / 1000);
         if (elapsed > 20 && !_shownSlowHint) {
           _shownSlowHint = true;
-          ambientStatus.textContent = 'Processing audio — this takes about 60 s on first use…';
+          ambientStatus.textContent = 'Processing audio - this takes about 60 s on first use…';
         } else if (_shownSlowHint) {
-          ambientStatus.textContent = friendlyStage(job.stage) + ' — ' + elapsed + 's (almost done…)';
+          ambientStatus.textContent = friendlyStage(job.stage) + ' - ' + elapsed + 's (almost done…)';
         } else {
-          ambientStatus.textContent = friendlyStage(job.stage) + ' — ' + elapsed + 's';
+          ambientStatus.textContent = friendlyStage(job.stage) + ' - ' + elapsed + 's';
         }
         if (job.status === 'done') {
           transcript = job.result.raw_text;
@@ -2163,7 +2163,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (jobResult.backend && jobResult.backend !== 'local') showTimingCard(jobResult);
 
       if (!transcript || transcript.trim().length < 5) {
-        throw new Error('Transcript came back empty — try a longer recording or check audio quality.');
+        throw new Error('Transcript came back empty - try a longer recording or check audio quality.');
       }
 
       // 4. Generate note
@@ -2186,7 +2186,7 @@ document.addEventListener('DOMContentLoaded', function () {
       var USE_STREAM = _cfg && _cfg.dataset.streamGen === '1';
 
       if (USE_STREAM) {
-        // Option 3: streaming path — text appears word-by-word while generating
+        // Option 3: streaming path - text appears word-by-word while generating
         var streamResp = await fetch('/scribe/api/sessions/' + sessionId + '/generate/stream/', {
           method: 'POST', credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
@@ -2244,7 +2244,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 spViewBtn.style.display = '';
                 spViewBtn.href = reviewUrl;
               }
-              ambientStatus.textContent = 'Done — redirecting in 3 s...';
+              ambientStatus.textContent = 'Done - redirecting in 3 s...';
               // Give the user 3 s to read the preview before auto-navigating
               await new Promise(function(res) { setTimeout(res, 3000); });
             }
@@ -2274,7 +2274,7 @@ document.addEventListener('DOMContentLoaded', function () {
       var msg = err.message || '';
       /* "Failed to fetch" = connection dropped before any response */
       if (err instanceof TypeError && msg.toLowerCase().includes('fetch')) {
-        msg = 'Server unreachable — audio is saved. Tap Retry, or reload the page if the problem persists.';
+        msg = 'Server unreachable - audio is saved. Tap Retry, or reload the page if the problem persists.';
       }
       ambientStatus.textContent = 'Error: ' + msg;
       ambientRecordBtn.disabled = false;
@@ -2365,7 +2365,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // Consent gate — wrapped by patient modal script that runs after this one.
+  // Consent gate - wrapped by patient modal script that runs after this one.
   window.WELLNEST_consentGate = function (proceed) {
     if (_consentGiven) { proceed(); return; }
     showConsentModal(proceed);
@@ -2423,7 +2423,7 @@ document.addEventListener('DOMContentLoaded', function () {
     };
     var pid = document.getElementById('patientId');
     if (pid && pid.value) {
-      /* S1: patient already known (from queue/chart) — skip the search modal,
+      /* S1: patient already known (from queue/chart) - skip the search modal,
          go straight to consent → record. */
       afterPatient();
     } else if (typeof window.WELLNEST_showPatientModal === 'function') {
@@ -2483,11 +2483,11 @@ document.addEventListener('DOMContentLoaded', function () {
     /* Threshold: average voice energy > 8% = acceptable */
     if (statusEl) {
       if (_peakSeen >= 8) {
-        statusEl.textContent = '✓ Level is good — microphone is working!';
+        statusEl.textContent = '✓ Level is good - microphone is working!';
         statusEl.style.color = '#22c55e';
         if (confirmBtn) confirmBtn.disabled = false;
       } else {
-        statusEl.textContent = 'Speak a few words — listening for your voice…';
+        statusEl.textContent = 'Speak a few words - listening for your voice…';
         statusEl.style.color = '';
       }
     }
@@ -2590,11 +2590,11 @@ document.addEventListener('DOMContentLoaded', function () {
       setTimeout(showLang, 300);
     }, { once: true });
   } else {
-    /* No mic modal (already tested) — but still first time on v2 */
+    /* No mic modal (already tested) - but still first time on v2 */
     setTimeout(showLang, 600);
   }
 
-  /* Onboarding lang picker — item click */
+  /* Onboarding lang picker - item click */
   document.addEventListener('click', function (e) {
     var item = e.target.closest && e.target.closest('#onboardLangList .wn-lang-item');
     if (!item) return;

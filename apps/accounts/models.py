@@ -29,12 +29,12 @@ class DoctorProfile(models.Model):
     ROLE_CLINICIAN    = "clinician"
     ROLE_LEAD         = "lead"
     ROLE_ADMIN        = "admin"
-    ROLE_SCRIBE       = "scribe"       # Medical scribe — record + view, cannot finalize
-    ROLE_ED_NURSE     = "ed_nurse"     # ED nurse — ED board + triage access
-    ROLE_NURSE        = "nurse"        # General nurse — view & assist, no finalize
-    ROLE_RECEPTIONIST = "receptionist" # Reception — read-only session list
-    ROLE_RADIOLOGIST  = "radiologist"  # Imaging — view + report, no finalize of clinical notes
-    ROLE_PHARMACIST   = "pharmacist"   # Pharmacy — meds/prescriptions
+    ROLE_SCRIBE       = "scribe"       # Medical scribe - record + view, cannot finalize
+    ROLE_ED_NURSE     = "ed_nurse"     # ED nurse - ED board + triage access
+    ROLE_NURSE        = "nurse"        # General nurse - view & assist, no finalize
+    ROLE_RECEPTIONIST = "receptionist" # Reception - read-only session list
+    ROLE_RADIOLOGIST  = "radiologist"  # Imaging - view + report, no finalize of clinical notes
+    ROLE_PHARMACIST   = "pharmacist"   # Pharmacy - meds/prescriptions
     ROLE_LAB_TECH     = "lab_tech"     # Laboratory technician
     ROLE_CHOICES = [
         (ROLE_CLINICIAN,    "Doctor / Clinician"),
@@ -93,7 +93,7 @@ class DoctorProfile(models.Model):
         max_length=20,
         choices=LANGUAGE_CHOICES,
         default="jam_Latn",
-        help_text="Language spoken during consultations — used by the ASR model.",
+        help_text="Language spoken during consultations - used by the ASR model.",
     )
     custom_instructions = models.TextField(blank=True)
     custom_terms = models.TextField(
@@ -109,7 +109,7 @@ class DoctorProfile(models.Model):
         max_length=20, choices=ROLE_CHOICES, default=ROLE_CLINICIAN
     )
 
-    # Login tracking — shown on the dashboard so doctors can spot unexpected access
+    # Login tracking - shown on the dashboard so doctors can spot unexpected access
     last_login_ip = models.GenericIPAddressField(null=True, blank=True)
     last_login_at = models.DateTimeField(null=True, blank=True)
     previous_login_ip = models.GenericIPAddressField(null=True, blank=True)
@@ -168,7 +168,7 @@ class DoctorProfile(models.Model):
 class PlatformControl(models.Model):
     """Singleton global kill-switch for public demos.
 
-    Lets an admin throttle or lock the platform for non-admin users — e.g. when
+    Lets an admin throttle or lock the platform for non-admin users - e.g. when
     sharing a sign-up QR with a room full of strangers and you need to stop a
     bad actor from burning model credits by hammering the pipeline. Admins are
     never affected, so your own live demo always works.
@@ -180,9 +180,9 @@ class PlatformControl(models.Model):
     MODE_LIMITED = "limited"   # non-admins capped at note_limit sessions, then politely stopped
     MODE_LOCKED  = "locked"    # non-admins blocked from the whole app
     MODE_CHOICES = [
-        (MODE_OFF,     "Off — normal operation"),
-        (MODE_LIMITED, "Test mode — limit each non-admin to a few notes"),
-        (MODE_LOCKED,  "Locked — block all non-admin usage"),
+        (MODE_OFF,     "Off - normal operation"),
+        (MODE_LIMITED, "Test mode - limit each non-admin to a few notes"),
+        (MODE_LOCKED,  "Locked - block all non-admin usage"),
     ]
 
     DEFAULT_LIMITED_MESSAGE = (
@@ -191,7 +191,7 @@ class PlatformControl(models.Model):
     )
     DEFAULT_LOCKED_MESSAGE = (
         "WellNest is currently in test mode while our team applies some finishing "
-        "touches. Please check back shortly — thanks for your patience."
+        "touches. Please check back shortly - thanks for your patience."
     )
 
     demo_mode = models.CharField(

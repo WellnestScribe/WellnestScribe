@@ -57,7 +57,7 @@
                                     <tr>
                                         <td>{{ membership.user.username }}</td>
                                         <td>{{ membership.get_role_display }}</td>
-                                        <td>{% if membership.is_default %}Yes{% else %}—{% endif %}</td>
+                                        <td>{% if membership.is_default %}Yes{% else %}-{% endif %}</td>
                                     </tr>
                                 {% endfor %}
                             </tbody>

@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Appointments · WellNest{% endblock %}
+
+{% block extra_head %}
+<link href="{% static 'vendor/fullcalendar/main.min.css' %}" rel="stylesheet">
+<style>
+  #apptCalendar { --fc-border-color: var(--bs-border-color); --fc-today-bg-color: rgba(12,126,194,0.06); }
+  #apptCalendar .fc .fc-button-primary { background: var(--wellnest-blue, #0c7ec2); border-color: var(--wellnest-blue, #0c7ec2); }
+  #apptCalendar .fc .fc-button-primary:disabled { opacity: .5; }
+  #apptCalendar .fc-event { cursor: pointer; border: none; padding: 1px 4px; font-size: 0.78rem; }
+  .appt-patient-result { cursor: pointer; }
+  .appt-patient-result:hover { background: var(--wellnest-blue-soft); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="emr-shell">
+    {% csrf_token %}
+    <div class="page-title-box d-flex align-items-start justify-content-between flex-wrap gap-3">
+        <div>
+            <h4 class="mb-1 fw-semibold">Appointments</h4>
+            <p class="text-muted small mb-0">Book patients into the schedule and call them ahead of their visit.</p>
+        </div>
+        {% if can_manage %}
+        <button class="btn btn-primary btn-sm" id="apptNewBtn">
+            <iconify-icon icon="iconamoon:calendar-add-duotone" class="me-1 align-middle"></iconify-icon>New appointment
+        </button>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <div class="card-body p-3 p-md-4">
+            <div id="apptCalendar"></div>
+        </div>
+    </div>
+</div>
+
+{# ── Booking modal ── #}
+<div class="modal fade" id="apptBookModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-semibold">New appointment</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label small text-muted">Find patient</label>
+        <div class="position-relative mb-2">
+          <input type="text" class="form-control" id="apptPatientSearch" placeholder="Search by name, MRN, or TRN" autocomplete="off">
+          <div id="apptPatientResults" class="list-group position-absolute w-100 shadow-sm" style="z-index:5; max-height:220px; overflow:auto;"></div>
+        </div>
+        <div id="apptPatientChosen" class="alert alert-light border d-none mb-3 d-flex align-items-center justify-content-between">
+          <span id="apptPatientChosenName" class="fw-semibold small"></span>
+          <button type="button" class="btn btn-sm btn-link text-decoration-none p-0" id="apptPatientClear">Change</button>
+        </div>
+
+        <div class="row g-2">
+          <div class="col-12">
+            <label class="form-label small text-muted">Date &amp; time</label>
+            <input type="datetime-local" class="form-control" id="apptWhen">
+          </div>
+          <div class="col-12">
+            <label class="form-label small text-muted">Visit type</label>
+            <select class="form-select" id="apptType">
+              {% for value, label in encounter_type_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label small text-muted">Notes (optional)</label>
+            <input type="text" class="form-control" id="apptNotes" placeholder="e.g. review blood-pressure results">
+          </div>
+        </div>
+        <div id="apptBookError" class="text-danger small mt-2 d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="apptBookSubmit" disabled>Book appointment</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Event detail modal ── #}
+<div class="modal fade" id="apptEventModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-semibold" id="apptEventName">Appointment</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="small text-muted mb-2" id="apptEventMeta"></div>
+        <div class="d-flex align-items-center gap-2 mb-3" id="apptEventPhoneRow">
+          <iconify-icon icon="iconamoon:phone-duotone" class="text-primary fs-5"></iconify-icon>
+          <a href="#" id="apptEventPhone" class="fw-semibold text-decoration-none"></a>
+        </div>
+        <div id="apptEventNotes" class="small mb-2"></div>
+      </div>
+      <div class="modal-footer">
+        <a href="#" id="apptEventChart" class="btn btn-outline-secondary">Open chart</a>
+        <a href="#" id="apptEventTriage" class="btn btn-primary">Start triage</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'vendor/fullcalendar/main.min.js' %}"></script>
+<script>
+(function () {
+  var el = document.getElementById('apptCalendar');
+  if (!el || typeof FullCalendar === 'undefined') return;
+  var csrf = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
+  var canManage = {{ can_manage|yesno:"true,false" }};
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+  var calendar = new FullCalendar.Calendar(el, {
+    initialView: 'dayGridMonth',
+    headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek' },
+    height: 'auto',
+    nowIndicator: true,
+    dayMaxEvents: 3,
+    events: function (info, success, failure) {
+      fetch('{% url "emr:api_appointments_feed" %}?start=' + encodeURIComponent(info.startStr) + '&end=' + encodeURIComponent(info.endStr), { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { success(d.events || []); })
+        .catch(failure);
+    },
+    dateClick: function (info) { if (canManage) openBooking(info.dateStr); },
+    eventClick: function (info) { openEvent(info.event); }
+  });
+  calendar.render();
+
+  /* ── Booking ── */
+  var bookModal = typeof bootstrap !== 'undefined' ? new bootstrap.Modal(document.getElementById('apptBookModal')) : null;
+  var chosenId = null;
+  var searchInput = document.getElementById('apptPatientSearch');
+  var resultsBox = document.getElementById('apptPatientResults');
+  var chosenBox = document.getElementById('apptPatientChosen');
+  var whenInput = document.getElementById('apptWhen');
+  var submitBtn = document.getElementById('apptBookSubmit');
+
+  function openBooking(dateStr) {
+    chosenId = null;
+    searchInput.value = ''; resultsBox.innerHTML = '';
+    chosenBox.classList.add('d-none');
+    document.getElementById('apptBookError').classList.add('d-none');
+    submitBtn.disabled = true;
+    // Pre-fill datetime-local; default clinic-friendly 09:00 if only a date came in.
+    var dt = dateStr.length <= 10 ? (dateStr + 'T09:00') : dateStr.slice(0, 16);
+    whenInput.value = dt;
+    if (bookModal) bookModal.show();
+    setTimeout(function () { searchInput.focus(); }, 250);
+  }
+  document.getElementById('apptNewBtn') && document.getElementById('apptNewBtn').addEventListener('click', function () {
+    var today = new Date().toISOString().slice(0, 10);
+    openBooking(today);
+  });
+
+  var t = null;
+  searchInput.addEventListener('input', function () {
+    var q = this.value.trim();
+    if (t) clearTimeout(t);
+    if (q.length < 2) { resultsBox.innerHTML = ''; return; }
+    t = setTimeout(function () {
+      fetch('{% url "emr:api_patient_search" %}?q=' + encodeURIComponent(q), { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var html = '';
+          (d.patients || []).forEach(function (p) {
+            html += '<button type="button" class="list-group-item list-group-item-action appt-patient-result" data-id="' + p.id + '" data-name="' + esc(p.name) + '">' +
+              '<span class="fw-semibold">' + esc(p.name) + '</span>' +
+              '<span class="text-muted small"> · ' + esc(p.age) + ' · ' + esc(p.mrn) + '</span></button>';
+          });
+          resultsBox.innerHTML = html || '<div class="list-group-item text-muted small">No match. Register the patient first.</div>';
+          resultsBox.querySelectorAll('.appt-patient-result').forEach(function (b) {
+            b.addEventListener('click', function () {
+              chosenId = this.dataset.id;
+              document.getElementById('apptPatientChosenName').textContent = this.dataset.name;
+              chosenBox.classList.remove('d-none');
+              resultsBox.innerHTML = ''; searchInput.value = '';
+              submitBtn.disabled = false;
+            });
+          });
+        }).catch(function () {});
+    }, 200);
+  });
+  document.getElementById('apptPatientClear').addEventListener('click', function () {
+    chosenId = null; chosenBox.classList.add('d-none'); submitBtn.disabled = true;
+    setTimeout(function () { searchInput.focus(); }, 50);
+  });
+
+  submitBtn.addEventListener('click', function () {
+    if (!chosenId || !whenInput.value) return;
+    var err = document.getElementById('apptBookError');
+    err.classList.add('d-none');
+    submitBtn.disabled = true; submitBtn.textContent = 'Booking…';
+    var body = new URLSearchParams();
+    body.append('patient_id', chosenId);
+    body.append('scheduled_for', whenInput.value);
+    body.append('encounter_type', document.getElementById('apptType').value);
+    body.append('notes', document.getElementById('apptNotes').value);
+    fetch('{% url "emr:api_appointment_book" %}', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString()
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      submitBtn.disabled = false; submitBtn.textContent = 'Book appointment';
+      if (d.ok) { if (bookModal) bookModal.hide(); calendar.refetchEvents(); }
+      else { err.textContent = d.error || 'Could not book.'; err.classList.remove('d-none'); }
+    }).catch(function () {
+      submitBtn.disabled = false; submitBtn.textContent = 'Book appointment';
+      err.textContent = 'Network error.'; err.classList.remove('d-none');
+    });
+  });
+
+  /* ── Event detail ── */
+  var eventModal = typeof bootstrap !== 'undefined' ? new bootstrap.Modal(document.getElementById('apptEventModal')) : null;
+  function openEvent(ev) {
+    var p = ev.extendedProps;
+    document.getElementById('apptEventName').textContent = ev.title;
+    document.getElementById('apptEventMeta').textContent = p.time + '  ·  ' + p.type + '  ·  ' + p.status_label + '  ·  ' + p.mrn;
+    var phoneRow = document.getElementById('apptEventPhoneRow');
+    var phoneLink = document.getElementById('apptEventPhone');
+    if (p.phone) { phoneRow.classList.remove('d-none'); phoneLink.textContent = p.phone; phoneLink.href = 'tel:' + p.phone; }
+    else { phoneRow.classList.add('d-none'); }
+    document.getElementById('apptEventNotes').textContent = p.notes || '';
+    document.getElementById('apptEventChart').href = p.chart_url;
+    document.getElementById('apptEventTriage').href = p.triage_url;
+    if (eventModal) eventModal.show();
+  }
+})();
+</script>
+{% endblock %}

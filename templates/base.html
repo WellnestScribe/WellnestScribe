@@ -7,7 +7,7 @@
     <meta charset="utf-8">
     <title>{% block title %}WellNest Scribe{% endblock %}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="description" content="WellNest Scribe — voice to clinical notes for Jamaican healthcare.">
+    <meta name="description" content="WellNest Scribe - voice to clinical notes for Jamaican healthcare.">
     <meta name="theme-color" content="#0c7ec2">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -99,7 +99,7 @@
                         <iconify-icon icon="mdi:creation" class="text-primary" style="font-size:1.1rem;"></iconify-icon>
                         AI note instructions
                     </h6>
-                    <p class="small text-muted mb-2">Tell the AI how you'd like your notes written — preferred style, what to include or avoid.</p>
+                    <p class="small text-muted mb-2">Tell the AI how you'd like your notes written - preferred style, what to include or avoid.</p>
                     <textarea id="customMedAiInstructions"
                               class="form-control form-control-sm"
                               rows="4"
@@ -117,7 +117,7 @@
     <script>
       window.WELLNEST = {
         csrfToken: "{{ csrf_token }}",
-        /* Read fresh from cookie on every call — CSRF_COOKIE_HTTPONLY=False lets JS access it.
+        /* Read fresh from cookie on every call - CSRF_COOKIE_HTTPONLY=False lets JS access it.
            Falls back to the page-baked value so old cached pages still work. */
         getCsrf: function() {
           var m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);

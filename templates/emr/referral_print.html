@@ -24,7 +24,7 @@
             <div class="col-md-6">
                 <strong>Patient:</strong> {{ patient.display_name }}<br>
                 <strong>DOB:</strong> {{ patient.date_of_birth|date:"Y-m-d" }}<br>
-                <strong>NHF:</strong> {{ patient.nhf_card_number|default:"—" }}
+                <strong>NHF:</strong> {{ patient.nhf_card_number|default:"-" }}
             </div>
             <div class="col-md-6">
                 <strong>Referral date:</strong> {{ referral.referral_date|date:"Y-m-d" }}<br>
@@ -34,7 +34,7 @@
         </div>
 
         <div class="mb-3">
-            <strong>Receiving specialty:</strong> {{ referral.receiving_specialty|default:"—" }}
+            <strong>Receiving specialty:</strong> {{ referral.receiving_specialty|default:"-" }}
         </div>
         <div class="mb-3">
             <strong>Reason for referral</strong>

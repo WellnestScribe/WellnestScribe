@@ -24,12 +24,12 @@
             <div class="col-md-6">
                 <strong>Patient:</strong> {{ patient.display_name }}<br>
                 <strong>DOB:</strong> {{ patient.date_of_birth|date:"Y-m-d" }}<br>
-                <strong>NHF:</strong> {{ patient.nhf_card_number|default:"—" }}
+                <strong>NHF:</strong> {{ patient.nhf_card_number|default:"-" }}
             </div>
             <div class="col-md-6">
                 <strong>Date:</strong> {{ encounter.encounter_date|date:"Y-m-d" }}<br>
-                <strong>Prescriber:</strong> {{ encounter.provider.get_full_name|default:encounter.provider.username|default:"—" }}<br>
-                <strong>Chief complaint:</strong> {{ encounter.chief_complaint|default:"—" }}
+                <strong>Prescriber:</strong> {{ encounter.provider.get_full_name|default:encounter.provider.username|default:"-" }}<br>
+                <strong>Chief complaint:</strong> {{ encounter.chief_complaint|default:"-" }}
             </div>
         </div>
 
@@ -52,11 +52,11 @@
                                 <strong>{{ med.drug_name_generic }}</strong>
                                 {% if med.drug_name_brand %}<div class="small text-muted">{{ med.drug_name_brand }}</div>{% endif %}
                             </td>
-                            <td>{% if med.dose_amount %}{{ med.dose_amount }} {{ med.dose_unit }}{% else %}—{% endif %}</td>
-                            <td>{{ med.route|default:"—" }}</td>
-                            <td>{{ med.frequency|default:"—" }}</td>
-                            <td>{% if med.duration_days %}{{ med.duration_days }} days{% else %}—{% endif %}</td>
-                            <td>{{ med.pharmacy_instructions|default:"—" }}</td>
+                            <td>{% if med.dose_amount %}{{ med.dose_amount }} {{ med.dose_unit }}{% else %}-{% endif %}</td>
+                            <td>{{ med.route|default:"-" }}</td>
+                            <td>{{ med.frequency|default:"-" }}</td>
+                            <td>{% if med.duration_days %}{{ med.duration_days }} days{% else %}-{% endif %}</td>
+                            <td>{{ med.pharmacy_instructions|default:"-" }}</td>
                         </tr>
                     {% empty %}
                         <tr>

@@ -29,14 +29,14 @@
         </div>
     </div>
 
-    {# Conversation mode banner — single record button + final result panel. #}
+    {# Conversation mode banner - single record button + final result panel. #}
     <div id="triageConversationPanel" class="mb-4" style="display:none;">
         <div class="card">
             <div class="card-body p-4 text-center">
                 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
                     <h6 class="fw-semibold m-0">Conversation mode</h6>
                     <label class="suggestive-assist-chip" for="convoClinicalOnlyToggle"
-                           title="Hides pipeline stages and internal details — shows only the clinical summary">
+                           title="Hides pipeline stages and internal details - shows only the clinical summary">
                         <input type="checkbox" id="convoClinicalOnlyToggle">
                         <span class="suggestive-assist-chip-body">
                             <iconify-icon icon="iconamoon:eye-off-duotone" class="me-1"></iconify-icon>
@@ -45,7 +45,7 @@
                     </label>
                 </div>
                 <p class="text-muted small mb-3" id="convoModeDesc">
-                    Tap, talk, stop — your clinical summary appears when processing completes.
+                    Tap, talk, stop - your clinical summary appears when processing completes.
                 </p>
                 <div class="d-flex justify-content-center mb-2">
                     <button type="button" class="record-cta" id="convoRecordBtn" aria-label="Record">
@@ -71,7 +71,7 @@
                         <div style="height:6px; background:var(--bs-border-color); border-radius:3px; overflow:hidden; max-width:300px; margin:0 auto;">
                             <div id="micLevelBar" style="height:100%; width:0%; background:#2d8a4e; border-radius:3px; transition:width 80ms;"></div>
                         </div>
-                        <p class="small text-muted text-center mt-1 mb-0" id="micLevelHint">Speak — bar should move.</p>
+                        <p class="small text-muted text-center mt-1 mb-0" id="micLevelHint">Speak - bar should move.</p>
                     </div>
                 </div>
                 <div class="recorder-timer" id="convoTimer">0:00</div>
@@ -91,7 +91,7 @@
         </div>
 
         {% comment %}
-          Demographics panel — auto-populates from the final clinical English.
+          Demographics panel - auto-populates from the final clinical English.
           Editable, per-field mic for corrections, not persisted (verification
           aid only). Hidden until the first extraction returns.
         {% endcomment %}
@@ -101,7 +101,7 @@
                     <div>
                         <h6 class="fw-semibold mb-1">Captured from conversation</h6>
                         <p class="small text-muted mb-0">
-                            Visible the whole time. Fill in any field manually as you ask the patient — use the mic to dictate. When the pipeline finishes the AI fills the blanks but never overwrites what you already typed.
+                            Visible the whole time. Fill in any field manually as you ask the patient - use the mic to dictate. When the pipeline finishes the AI fills the blanks but never overwrites what you already typed.
                         </p>
                     </div>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="convoDemoReRun">
@@ -255,16 +255,16 @@
                             <label class="form-label small text-muted" for="triageBackend">Backend</label>
                             <select class="form-select" id="triageBackend">
                                 <option value="mms" {% if not env.transformers %}disabled{% endif %}>
-                                    MMS-1b-l1107 (Patois ASR){% if not env.transformers %} — install transformers{% endif %}
+                                    MMS-1b-l1107 (Patois ASR){% if not env.transformers %} - install transformers{% endif %}
                                 </option>
                                 <option value="omni">
-                                    omniASR CTC 1B (Meta omnilingual, Patois){% if not env.omnilingual_asr %} — paste Gradio URL or pip install omnilingual-asr{% endif %}
+                                    omniASR CTC 1B (Meta omnilingual, Patois){% if not env.omnilingual_asr %} - paste Gradio URL or pip install omnilingual-asr{% endif %}
                                 </option>
                                 <option value="parakeet" {% if not env.nemo %}disabled{% endif %}>
-                                    Parakeet TDT 0.6B v2 (NVIDIA, English){% if not env.nemo %} — install nemo_toolkit[asr]{% endif %}
+                                    Parakeet TDT 0.6B v2 (NVIDIA, English){% if not env.nemo %} - install nemo_toolkit[asr]{% endif %}
                                 </option>
                                 <option value="t5_paraphrase" {% if not env.transformers %}disabled{% endif %}>
-                                    FLAN-T5 base (text rewrite){% if not env.transformers %} — install transformers{% endif %}
+                                    FLAN-T5 base (text rewrite){% if not env.transformers %} - install transformers{% endif %}
                                 </option>
                                 <option value="cloud_interpret">Cloud LLM Patois → English</option>
                             </select>
@@ -299,7 +299,7 @@
                                 <input class="form-check-input" type="checkbox" id="triageDiarize">
                                 <label class="form-check-label small" for="triageDiarize">
                                     Speaker diarization
-                                    <span class="text-muted d-block" style="font-size:0.72rem;">Output shows SPEAKER_1 / SPEAKER_2 labels with [mm:ss–mm:ss] timestamps in a separate panel below.</span>
+                                    <span class="text-muted d-block" style="font-size:0.72rem;">Output shows SPEAKER_1 / SPEAKER_2 labels with [mm:ss-mm:ss] timestamps in a separate panel below.</span>
                                 </label>
                             </div>
                         </div>
@@ -328,7 +328,7 @@
                             <div class="col-md-8">
                                 <label class="form-label small text-muted mb-1" for="triageGradioUrl">
                                     Gradio endpoint URL
-                                    <span class="text-muted">(optional — paste Colab share URL to run on Colab GPU instead of locally)</span>
+                                    <span class="text-muted">(optional - paste Colab share URL to run on Colab GPU instead of locally)</span>
                                 </label>
                                 <input type="url" class="form-control form-control-sm" id="triageGradioUrl"
                                        placeholder="https://xxxx.gradio.live">
@@ -336,7 +336,7 @@
                         </div>
                         <div class="mt-2">
                             <label class="form-label small text-muted" for="triageReference">
-                                Reference transcript <span class="text-muted">(optional — enables WER/CER accuracy scoring)</span>
+                                Reference transcript <span class="text-muted">(optional - enables WER/CER accuracy scoring)</span>
                             </label>
                             <textarea class="note-textarea" id="triageReference" rows="2"
                                       placeholder="Paste ground-truth Patois text to score accuracy…"></textarea>
@@ -365,8 +365,8 @@
                     <p class="small text-muted mt-2" id="triageTimings"></p>
                     <div id="triageAccuracyWrap" class="alert alert-secondary small mt-2 py-2 d-none">
                         <strong>Accuracy (jiwer):</strong>
-                        CER <span id="triageCer">—</span> · WER <span id="triageWer">—</span>
-                        <span class="text-muted ms-2">CER is the headline metric for Patois — handles spelling variation</span>
+                        CER <span id="triageCer">-</span> · WER <span id="triageWer">-</span>
+                        <span class="text-muted ms-2">CER is the headline metric for Patois - handles spelling variation</span>
                     </div>
 
                     <div id="triageDiarizedWrap" class="mt-3 d-none">
@@ -391,7 +391,7 @@
                             <select class="form-select form-select-sm" id="triageInterpreter">
                                 <option value="azure" selected>Azure cloud LLM</option>
                                 <option value="gemma_local" {% if not env.transformers %}disabled{% endif %}>
-                                    Local LLM (Qwen 1.7B / configurable){% if not env.transformers %} — install transformers{% endif %}
+                                    Local LLM (Qwen 1.7B / configurable){% if not env.transformers %} - install transformers{% endif %}
                                 </option>
                             </select>
                         </div>
@@ -411,17 +411,17 @@
                                    placeholder="e.g. google/gemma-4-E2B-it"
                                    list="gemmaModelPresets" autocomplete="off">
                             <datalist id="gemmaModelPresets">
-                                <option value="google/gemma-4-E2B-it">Gemma 4 E2B — recommended, no login needed</option>
-                                <option value="google/gemma-3-4b-it">Gemma 3 4B — needs HF token</option>
-                                <option value="google/gemma-2-2b-it">Gemma 2 2B — no login needed</option>
-                                <option value="microsoft/Phi-3.5-mini-instruct">Phi-3.5 mini — 3.8B, no login needed</option>
-                                <option value="Qwen/Qwen3-1.7B">Qwen3-1.7B — fast, 1.7B</option>
+                                <option value="google/gemma-4-E2B-it">Gemma 4 E2B - recommended, no login needed</option>
+                                <option value="google/gemma-3-4b-it">Gemma 3 4B - needs HF token</option>
+                                <option value="google/gemma-2-2b-it">Gemma 2 2B - no login needed</option>
+                                <option value="microsoft/Phi-3.5-mini-instruct">Phi-3.5 mini - 3.8B, no login needed</option>
+                                <option value="Qwen/Qwen3-1.7B">Qwen3-1.7B - fast, 1.7B</option>
                             </datalist>
                         </div>
                     </div>
                     <p class="small text-muted mb-2">
-                        Azure is fast (cloud). Local models download on first use — cold start ~30–60 s, subsequent calls a few seconds.
-                        <strong>Gemma 4 E2B</strong> is the recommended local model — 2.3 B effective params, Apache 2.0, no HF token needed.
+                        Azure is fast (cloud). Local models download on first use - cold start ~30-60 s, subsequent calls a few seconds.
+                        <strong>Gemma 4 E2B</strong> is the recommended local model - 2.3 B effective params, Apache 2.0, no HF token needed.
                         Gemma 3 4B requires a HuggingFace token (<code>huggingface-cli login</code>).
                     </p>
                     <textarea class="note-textarea" id="triageCleanOut" rows="6"
@@ -436,7 +436,7 @@
                     <h6 class="fw-semibold mb-2">Environment probe</h6>
                     <ul class="list-unstyled small mb-0" id="triageEnvList">
                         <li>torch: {{ env.torch|yesno:"yes,no" }}{% if env.torch_version %} ({{ env.torch_version }}){% endif %}</li>
-                        <li>CUDA: {{ env.cuda|yesno:"yes,no" }}{% if env.cuda_device %} — {{ env.cuda_device }}{% endif %}</li>
+                        <li>CUDA: {{ env.cuda|yesno:"yes,no" }}{% if env.cuda_device %} - {{ env.cuda_device }}{% endif %}</li>
                         <li>transformers: {{ env.transformers|yesno:"yes,no" }}{% if env.transformers_version %} ({{ env.transformers_version }}){% endif %}</li>
                         <li>librosa: {{ env.librosa|yesno:"yes,no" }}</li>
                         <li>noisereduce: {{ env.noisereduce|yesno:"yes,no" }} · DeepFilterNet: {{ env.deepfilternet|yesno:"yes,no" }}</li>
@@ -470,7 +470,7 @@
                     <div class="alert alert-info small mt-2 mb-3 p-2">
                         <strong>Become admin to install:</strong>
                         {% if no_admins_exist %}
-                            no admin exists yet — click below to claim.
+                            no admin exists yet - click below to claim.
                             <form method="post" action="{% url 'accounts:bootstrap_admin' %}" class="m-0 mt-2">
                                 {% csrf_token %}
                                 <!--
@@ -489,7 +489,7 @@
 
                     {% if env.torch and not env.cuda and is_triage_admin %}
                     <div class="alert alert-info small mt-3 mb-2 p-2">
-                        torch is installed but no CUDA — likely the CPU-only build. To
+                        torch is installed but no CUDA - likely the CPU-only build. To
                         unlock your GPU{% if env.cuda_device %} ({{ env.cuda_device }}){% endif %}, force-reinstall the CUDA build:
                         <button type="button"
                                 class="btn btn-outline-primary btn-sm mt-2"
@@ -595,7 +595,7 @@
                             <li>First run downloads ~4 GB of weights to the HuggingFace cache.</li>
                             <li>CPU is fine for batch / post-encounter; CUDA needed for live streaming.</li>
                             <li>Set <code>SCRIBE_ENABLE_TRIAGE=True</code> in <code>.env</code> to share with non-staff.</li>
-                            <li><strong>Parakeet:</strong> install NeMo first — <code>pip install nemo_toolkit[asr]</code> (large, ~2 GB). Model weights (~600 MB) download on first run. Runs on CPU; English only; ~6% avg WER on HF leaderboard.</li>
+                            <li><strong>Parakeet:</strong> install NeMo first - <code>pip install nemo_toolkit[asr]</code> (large, ~2 GB). Model weights (~600 MB) download on first run. Runs on CPU; English only; ~6% avg WER on HF leaderboard.</li>
                         </ul>
                     </details>
                 </div>

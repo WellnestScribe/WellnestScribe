@@ -34,6 +34,28 @@ file exceeds it. (Browser recordings were separately being inflated by a webm→
 
 ---
 
+## ⭐ MEASURED cost data (2026-07-10, from 93 real ScribeSession.timings) — USE THESE
+- **GPU: Nvidia T4 on Modal** @ **$0.000164/GPU-sec**.
+- **omniASR transcription = ~$0.032 / audio-HOUR (MEASURED).** GPU runs ~18× realtime
+  (0.055 GPU-sec per audio-sec). Consistent for short notes, 5-min+ notes, and the 86-min upload.
+  → A full hour of speech ≈ **3¢** to transcribe. omniASR is effectively free; earlier
+  $0.12–0.16/hr estimates were **4–5× too high**.
+- **Real audio per note averages ~3 min** (median 1.4). The "20-min" figure is worst-case full
+  ambient recording, NOT the norm. Audio-min/note is THE cost variable.
+- **Pipeline is running TWO GPT-5.4 calls per note** (81/94 logged `pipeline_mode:"two-call"` =
+  Patois-interpret + SOAP-generate). `.env` sets `SCRIBE_PIPELINE_MODE=single` but two-call is still
+  live → **merging to one call halves the GPT bill (NOT Mini). Verify/wire this.**
+- **GPT-5.4 is ~90% of variable cost** (est. from list prices; tokens not yet logged):
+  ~$0.12/note two-call (~$0.35/audio-hr) → ~$0.06/note one-call (~$0.20/audio-hr).
+- **All-in variable ≈ omniASR $0.05 (measured+overhead) + GPT one-call $0.20 = ~$0.25/audio-hr**,
+  plus ~$15/mo fixed infra per doctor.
+- **Margin @ $94 by real audio-length (single-call):** 5-min/note (dictation) 30 pts/day = **69%**;
+  12-min/note 30/day = 49%; 20-min/note (full ambient) 30/day = 26%. → $94 covers a busy
+  dictation/short-ambient doctor; heavy full-ambient (20-min × 25+/day) → Professional (~$190).
+- **NEXT to make GPT measured not estimated:** log input/output/reasoning tokens per call (T5).
+- **Product changes from this:** Light plan REMOVED. Mini routing (T9) REMOVED — GPT-5.4 only.
+  Levers are now: (1) merge two-call→one-call, (2) measure audio/note, (3) price by volume.
+
 ## Decision 1 — Which cost document is most accurate?
 Three PDFs: **Business Model** (session-based, Modal L4, $0.021/note, 300 sessions + 35 JMD overage),
 **Cost & Pricing** (measured: real 15-min note = **$0.04** omniASR transcription; verified GPT-5.4
@@ -76,6 +98,68 @@ prices), **Pricing/Cost & Market-Readiness** (newest; reconciles the other two).
 - **Allowance UX:** no visible meter until ~80%; then a gentle, complimentary banner
   ("you're one of our most active clinicians — Procedural may fit you"); never a mid-consult popup;
   full usage lives in the admin/billing dashboard.
+
+#### The "don't feel ripped off" framing (FINAL — drives the T4 subscription page)
+Doctors think in **patients, not audio-hours**. Never show "120 hours" as a headline — it invites
+"I'm paying for hours I don't use." Translate the allowance into **clinic-day capacity**.
+Planning average consult ≈ **12 min** of audio.
+
+| Tier | JMD/mo | audio-hrs | ≈ consults/mo | **Say it as** |
+|---|---|---|---|---|
+| Lite | 10,000 | ~40 | ~200 | "for lighter days — around **8–10 patients/day**" |
+| **Standard** | 15,000 | ~120 | ~600 | "for a **full clinic day — ~25–30 patients/day**, every working day" |
+| Procedural | 30,000 | ~250 | ~1,250 | "**high-volume & long procedures** — 50+/day, recordings up to 5 h" |
+
+Rules so it never feels like a metered rip-off:
+1. **Sell capacity, not a meter.** Headline = "Unlimited notes · covers a full clinic day." The doctor
+   asks "does it cover my day?" → yes → no anxiety.
+2. **No depleting gauge by default.** A clinician under 80% sees a calm status: "✓ Your plan
+   comfortably covers your usage." The raw number lives in the admin/billing dashboard only.
+3. **At ~80%: a compliment, not a warning** — "You're one of our busiest clinicians this month 👏 —
+   Procedural may save you money." Dismissible. Never mid-consult.
+4. **Soft-cap at 100%, never hard-block a note in progress.** Keep working + one-tap upgrade.
+   Unused hours never surface as "wasted," because we never framed them as a spend-down.
+
+#### FINAL margins & tiers (20-min consult basis, ≥65% target)
+Cost basis: **~$0.47/audio-hr** all-in (full GPT-5.4), **~$0.35/hr** with Mini routing (T9).
+20-min consult = 1/3 audio-hr. All tiers clear 65% **at the ceiling**; typical users sit higher
+because real consults average <20 min and few hit the cap.
+
+| Tier | Price/mo | Audio-hrs | ~Patients/day (20m) | Cost@ceiling | Margin@ceiling |
+|---|---|---|---|---|---|
+| Lite | $63 | 40 | ~5–6 | ~$14 | 78% |
+| **Standard** | **$94** | **80** | **~11** | ~$28 | 70% |
+| **Scribe+EMR** | **$150** | 80 + EMR | ~11 | ~$30 | 80% |
+| Procedural | **$230** | 200 | ~27 / long ≤5h | ~$70 | 70% |
+| Institution | **$76/seat** (min 10) | 60/seat | ~8/seat | ~$21 | 72% |
+
+- **Scribe+EMR = $150 (not $188):** EMR is near-zero variable cost; price it low to spread the
+  retention moat — still 80% margin.
+- **Procedural = $230 (not $190):** long procedure notes are pure compute; $190 → only 63%.
+- **Institution = $76/seat + ~60 audio-hr/seat cap** to hold ~72% at public-sector usage.
+- **DEPENDENCY:** these margins assume **Mini routing (T9)** is live. Without it every note is full
+  GPT-5.4 → margins drop ~10 pts (Standard 60%, Procedural 59%). Either build T9 or cut allowances ~15%.
+
+#### Raspberry Pi "Clinic Resilience" — ONE-TIME hardware, off the SaaS margin
+CanaKit Pi 4 Extreme Kit ~US$190; landed in Jamaica ~$250–300 (duty + courier). Card must show it as
+**one-time hardware ~US$290 + setup**, plus optional **Resilience add-on ~$15/mo** (OTA + remote
+wipe/monitoring). Never fold hardware into the subscription margin — it's pass-through.
+
+### T9 — Mini routing (cost engineering, gates the margins above)  ·  Status: NOT STARTED
+Route routine/short notes to **GPT-5.4-Mini** (cheap), reserve full **GPT-5.4** for complex or
+Patois-heavy encounters. Add `SCRIBE_AZURE_OPENAI_FAST_DEPLOYMENT` (the current
+`AZURE_OPENAI_FAST_DEPLOYMENT_NAME` in .env is DEAD — unread by code). One quality test on real
+Patois notes to set the routing threshold. ~Halves the LLM line; required to hold ≥65% at the
+allowances above.
+
+#### Runaway restriction — how it works (FINAL)
+- **Per-session auto-stop:** a single recording auto-ends at **3 h (Standard) / 5 h (Procedural)**;
+  warn on-screen at **90 min**.
+- **Silence auto-stop:** after ~**10 min of continuous silence**, auto-end + save the note.
+- **Resume adds to the SAME session's cumulative audio** — the per-session cap counts total audio,
+  so you can't dodge it by ending + resuming. Never delete; auto-split/save instead.
+- Net effect: one forgotten/abandoned recording is bounded to a few hours max; the monthly
+  audio-hour meter bounds the total. Records are never blocked; only the AI is soft-capped.
 
 ## Decision 3 — Usage metering (the "gating item" per the docs)
 Per note, log: cold/warm, GPU active seconds, audio minutes, **resume segments**, and per GPT call

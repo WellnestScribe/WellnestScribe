@@ -9,7 +9,7 @@
             <h4 class="mb-1 fw-semibold">Billing &amp; subscriptions</h4>
             <p class="text-muted mb-0 small">
                 Manual subscription management. Set each facility's plan and status.
-                <strong>Suspending only turns off the AI scribe — EMR record access is never blocked.</strong>
+                <strong>Suspending only turns off the AI scribe - EMR record access is never blocked.</strong>
             </p>
         </div>
     </div>
@@ -40,7 +40,7 @@
                         {% endif %}
                         {% if not org.is_active %}<span class="badge bg-secondary-subtle text-secondary">Recycle bin</span>{% endif %}
                     </h5>
-                    <span class="text-muted small">{{ org.memberships.count }} member{{ org.memberships.count|pluralize }} · {{ org.get_parish_display|default:org.parish|default:"—" }}</span>
+                    <span class="text-muted small">{{ org.memberships.count }} member{{ org.memberships.count|pluralize }} · {{ org.get_parish_display|default:org.parish|default:"-" }}</span>
                 </div>
 
                 <div class="col-md-3">

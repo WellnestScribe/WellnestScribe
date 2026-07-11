@@ -333,10 +333,10 @@
                     <h5 class="fw-semibold mb-3">Most recent vitals</h5>
                     {% if last_vitals %}
                         <div class="small">
-                            BP {{ last_vitals.bp_systolic|default:"—" }}/{{ last_vitals.bp_diastolic|default:"—" }} mmHg<br>
-                            Pulse {{ last_vitals.pulse_bpm|default:"—" }} bpm<br>
-                            Temp {{ last_vitals.temperature_celsius|default:"—" }} °C<br>
-                            Glucose {{ last_vitals.blood_glucose_mmol|default:"—" }} mmol/L<br>
+                            BP {{ last_vitals.bp_systolic|default:"-" }}/{{ last_vitals.bp_diastolic|default:"-" }} mmHg<br>
+                            Pulse {{ last_vitals.pulse_bpm|default:"-" }} bpm<br>
+                            Temp {{ last_vitals.temperature_celsius|default:"-" }} °C<br>
+                            Glucose {{ last_vitals.blood_glucose_mmol|default:"-" }} mmol/L<br>
                             Recorded {{ last_vitals.recorded_at|date:"M j, g:i A" }}
                         </div>
                     {% else %}
@@ -359,7 +359,7 @@
                     {% for a in encounter.addenda.all %}
                         <div class="border-start border-3 border-primary-subtle ps-3 mb-3">
                             <div class="small text-muted">
-                                {{ a.created_at|date:"M j, Y · g:i A" }} · {{ a.author.get_full_name|default:a.author.username|default:"—" }}
+                                {{ a.created_at|date:"M j, Y · g:i A" }} · {{ a.author.get_full_name|default:a.author.username|default:"-" }}
                             </div>
                             <div style="white-space:pre-wrap;">{{ a.text }}</div>
                         </div>

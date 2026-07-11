@@ -39,7 +39,7 @@ class WellnestSignUpForm(UserCreationForm):
     organisation = forms.ModelChoiceField(
         queryset=None,
         required=False,
-        empty_label="— Default (assign later) —",
+        empty_label="Default (assign later)",
         widget=forms.Select(attrs={"class": "form-select"}),
         label="Facility",
     )
@@ -80,7 +80,7 @@ class DoctorProfileForm(forms.ModelForm):
             "custom_instructions",
             "custom_terms",
         )
-        # `role` is excluded — only admins / superusers can change roles, and
+        # `role` is excluded - only admins / superusers can change roles, and
         # they do so via /admin/ or the manage.py promote command.
         widgets = {
             "full_name": forms.TextInput(attrs={"class": "form-control"}),

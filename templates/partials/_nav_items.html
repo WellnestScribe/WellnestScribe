@@ -1,12 +1,13 @@
 {% comment %}
 Shared nav items used in both desktop sidebar and mobile bottom-sheet.
-Sections are collapsible — state saved in localStorage.
+Sections are collapsible - state saved in localStorage.
 {% endcomment %}
 {% url 'scribe:record' as record_url %}
 {% url 'scribe:history' as history_url %}
 {% url 'emr:dashboard' as emr_url %}
 {% url 'emr:patient_create' as patient_create_url %}
 {% url 'emr:patient_search' as patient_search_url %}
+{% url 'emr:appointments' as appointments_url %}
 {% url 'accounts:profile' as profile_url %}
 {% url 'ed:board' as ed_board_url %}
 {% url 'ed:new_visit' as ed_new_url %}
@@ -55,6 +56,13 @@ Sections are collapsible — state saved in localStorage.
     <a class="nav-link {% if request.path == emr_url %}active{% endif %}" href="{{ emr_url }}">
         <span class="nav-icon"><iconify-icon icon="mdi:clipboard-list-outline"></iconify-icon></span>
         <span class="nav-text">Worklist &amp; queue</span>
+    </a>
+</li>
+<li class="nav-item">
+    <a class="nav-link {% if request.path == appointments_url %}active{% endif %}" href="{{ appointments_url }}">
+        <span class="nav-icon"><iconify-icon icon="mdi:calendar-clock-outline"></iconify-icon></span>
+        <span class="nav-text">Appointments</span>
+        <span class="badge rounded-pill bg-warning text-dark ms-auto appt-due-badge d-none"></span>
     </a>
 </li>
 <li class="nav-item">
@@ -236,3 +244,28 @@ Sections are collapsible — state saved in localStorage.
         </button>
     </form>
 </li>
+
+<script>
+// Appointment "due today" bubble on the sidebar. Runs once even if the nav is
+// included twice (desktop + mobile); updates every .appt-due-badge.
+(function () {
+  if (window.__apptDuePollStarted) return;
+  window.__apptDuePollStarted = true;
+  function paint(n) {
+    document.querySelectorAll('.appt-due-badge').forEach(function (b) {
+      if (n > 0) { b.textContent = n; b.classList.remove('d-none'); }
+      else { b.classList.add('d-none'); }
+    });
+  }
+  function poll() {
+    if (document.hidden) return;
+    fetch('{% url "emr:api_appointments_due" %}', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d) paint(d.due || 0); })
+      .catch(function () {});
+  }
+  poll();
+  setInterval(poll, 60000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
+})();
+</script>

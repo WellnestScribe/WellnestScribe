@@ -49,7 +49,7 @@ _VITALS_EXTRACT_PROMPT = """\
 You are a clinical data extraction assistant for an ED triage system.
 Extract structured vital sign data and chief complaint from the nurse's transcript.
 
-Return ONLY valid JSON — no text outside the JSON object:
+Return ONLY valid JSON - no text outside the JSON object:
 {
   "chief_complaint": "<concise chief complaint or empty string>",
   "bp_systolic": <integer or null>,
@@ -139,7 +139,7 @@ class TrackingBoardView(LoginRequiredMixin, TemplateView):
 
 @login_required
 def board_json(request):
-    """AJAX endpoint — returns live board state as JSON (30-second polling)."""
+    """AJAX endpoint - returns live board state as JSON (30-second polling)."""
     org = _get_user_org(request)
     if not org:
         return JsonResponse({"error": "No organisation"}, status=400)
@@ -415,7 +415,7 @@ class TriageFormView(LoginRequiredMixin, View):
             action = "Re-triage" if is_retriage else "Triage"
             messages.success(
                 request,
-                f"{action} complete — ESI {esi}, zone: {visit.get_current_zone_display()}."
+                f"{action} complete - ESI {esi}, zone: {visit.get_current_zone_display()}."
             )
             return redirect("ed:visit_detail", pk=visit.pk)
 
@@ -465,7 +465,7 @@ class PhysicianView(LoginRequiredMixin, View):
 
 @login_required
 def zone_assign_view(request, pk):
-    """Quick zone reassignment — POST only."""
+    """Quick zone reassignment - POST only."""
     org = _get_user_org(request)
     visit = get_object_or_404(EDVisit, pk=pk, organisation=org)
 
@@ -500,7 +500,7 @@ def zone_assign_view(request, pk):
 
 @login_required
 def zone_assign_api(request, pk):
-    """AJAX zone assignment — JSON POST."""
+    """AJAX zone assignment - JSON POST."""
     if request.method != "POST":
         return JsonResponse({"error": "POST only"}, status=405)
     org = _get_user_org(request)
@@ -562,7 +562,7 @@ class DispositionView(LoginRequiredMixin, View):
         except DispositionRecord.DoesNotExist:
             form = DispositionForm()
 
-        # Discharge safety check — surface any abnormal vitals to the doctor
+        # Discharge safety check - surface any abnormal vitals to the doctor
         vital_flags: list[str] = []
         try:
             vital_flags = visit.triage.vital_flags
@@ -756,7 +756,7 @@ class ShiftOpenView(LoginRequiredMixin, View):
             messages.success(request, f"Shift opened: {shift.get_shift_type_display()} on {shift.shift_date}.")
             return redirect("ed:handover", pk=shift.pk)
 
-        messages.error(request, "Could not open shift — check the form.")
+        messages.error(request, "Could not open shift - check the form.")
         return redirect("ed:shifts")
 
 
@@ -863,7 +863,7 @@ def handover_generate_api(request, pk):
 
 
 # ---------------------------------------------------------------------------
-# Triage Voice — combined audio-to-fields (single round-trip)
+# Triage Voice - combined audio-to-fields (single round-trip)
 # ---------------------------------------------------------------------------
 
 @login_required
@@ -903,7 +903,7 @@ def triage_voice_audio_api(request, pk):
             pass
 
     if not transcript:
-        return JsonResponse({"ok": False, "error": "No speech detected — please try again."})
+        return JsonResponse({"ok": False, "error": "No speech detected - please try again."})
 
     fields: dict = {}
     try:
@@ -931,7 +931,7 @@ def triage_voice_audio_api(request, pk):
 
 
 # ---------------------------------------------------------------------------
-# ED Settings — AI voice config status
+# ED Settings - AI voice config status
 # ---------------------------------------------------------------------------
 
 @login_required
@@ -962,7 +962,7 @@ def ed_settings_view(request):
             "ok": True,
         }
     else:
-        transcription = {"provider": "Not configured", "model": "—", "endpoint": "—", "ok": False}
+        transcription = {"provider": "Not configured", "model": "-", "endpoint": "-", "ok": False}
 
     # Extraction (chat)
     if getattr(_s, "SCRIBE_AZURE_OPENAI_KEY", "") and getattr(_s, "SCRIBE_AZURE_OPENAI_ENDPOINT", ""):
@@ -973,7 +973,7 @@ def ed_settings_view(request):
             "ok": True,
         }
     else:
-        extraction = {"provider": "Not configured", "model": "—", "endpoint": "—", "ok": False}
+        extraction = {"provider": "Not configured", "model": "-", "endpoint": "-", "ok": False}
 
     return render(request, "ed/settings.html", {
         "transcription": transcription,
@@ -982,7 +982,7 @@ def ed_settings_view(request):
 
 
 # ---------------------------------------------------------------------------
-# Visit Export — FHIR R4 JSON + smart clinical summary
+# Visit Export - FHIR R4 JSON + smart clinical summary
 # ---------------------------------------------------------------------------
 
 def _build_fhir_bundle(visit: EDVisit) -> dict:
@@ -1096,20 +1096,20 @@ def _build_clinical_summary(visit: EDVisit, triage) -> str:
     ]
     if triage:
         lines += [
-            f"CHIEF COMPLAINT: {triage.chief_complaint or '—'}",
-            f"ESI Score: {triage.esi_score or '—'}",
+            f"CHIEF COMPLAINT: {triage.chief_complaint or '-'}",
+            f"ESI Score: {triage.esi_score or '-'}",
             "",
             "VITALS:",
         ]
         v_pairs = [
-            ("  BP",       f"{triage.bp_systolic}/{triage.bp_diastolic} mmHg" if triage.bp_systolic else "—"),
-            ("  HR",       f"{triage.pulse_bpm} bpm" if triage.pulse_bpm else "—"),
-            ("  RR",       f"{triage.rr_rpm} rpm" if triage.rr_rpm else "—"),
-            ("  SpO2",     f"{triage.spo2_percent}%" if triage.spo2_percent else "—"),
-            ("  Temp",     f"{triage.temp_celsius} °C" if triage.temp_celsius else "—"),
-            ("  Weight",   f"{triage.weight_kg} kg" if triage.weight_kg else "—"),
-            ("  Pain",     f"{triage.pain_score}/10" if triage.pain_score is not None else "—"),
-            ("  BGL",      f"{triage.blood_glucose_mmol} mmol/L" if triage.blood_glucose_mmol else "—"),
+            ("  BP",       f"{triage.bp_systolic}/{triage.bp_diastolic} mmHg" if triage.bp_systolic else "-"),
+            ("  HR",       f"{triage.pulse_bpm} bpm" if triage.pulse_bpm else "-"),
+            ("  RR",       f"{triage.rr_rpm} rpm" if triage.rr_rpm else "-"),
+            ("  SpO2",     f"{triage.spo2_percent}%" if triage.spo2_percent else "-"),
+            ("  Temp",     f"{triage.temp_celsius} °C" if triage.temp_celsius else "-"),
+            ("  Weight",   f"{triage.weight_kg} kg" if triage.weight_kg else "-"),
+            ("  Pain",     f"{triage.pain_score}/10" if triage.pain_score is not None else "-"),
+            ("  BGL",      f"{triage.blood_glucose_mmol} mmol/L" if triage.blood_glucose_mmol else "-"),
         ]
         if triage.gcs_total:
             v_pairs.append(("  GCS", str(triage.gcs_total)))

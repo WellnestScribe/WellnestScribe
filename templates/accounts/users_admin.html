@@ -154,7 +154,7 @@
   <div class="ua-card mb-3">
     <div class="ua-glossary">
       <div>
-        <strong>WellNest Role</strong> — what the user can <em>do</em> in the app
+        <strong>WellNest Role</strong> - what the user can <em>do</em> in the app
         (record sessions, finalize notes, access ED board, see audit log, etc.).
         {% if is_system_admin %}Change this with the dropdown in each user row.{% endif %}
         <button class="btn btn-link btn-sm p-0 ms-1 align-baseline" style="font-size:0.82rem;" onclick="showRolePerms()">
@@ -162,7 +162,7 @@
         </button>
       </div>
       <div>
-        <strong>System Type</strong> — Django's built-in access level.
+        <strong>System Type</strong> - Django's built-in access level.
         <span class="ua-badge ua-badge-superuser">Superuser</span> = full /admin/ access &amp; can manage any data.
         <span class="ua-badge ua-badge-staff">Staff</span> = limited /admin/ access.
         <span class="ua-badge ua-badge-user">User</span> = app-only, no /admin/.
@@ -225,7 +225,7 @@
                 </span>
               </th>
               <th>
-                <span class="col-help" title="Django system type — Superuser = full /admin/ access, Staff = limited, User = app-only">
+                <span class="col-help" title="Django system type - Superuser = full /admin/ access, Staff = limited, User = app-only">
                   System Type
                   <iconify-icon icon="iconamoon:information-circle-duotone" class="col-help-icon"></iconify-icon>
                 </span>
@@ -259,7 +259,7 @@
                   </div>
                 </div>
               </td>
-              <td style="color:var(--bs-secondary-color);">{{ u.email|default:"—" }}</td>
+              <td style="color:var(--bs-secondary-color);">{{ u.email|default:"-" }}</td>
               <td>
                 {% if profile %}
                 <div class="d-flex align-items-center gap-1">
@@ -430,7 +430,7 @@
                 </div>
               </td>
               <td><span class="ua-badge ua-badge-clinician">{{ org.get_organisation_type_display }}</span></td>
-              <td style="color:var(--bs-secondary-color);">{{ org.parish|default:"—" }}</td>
+              <td style="color:var(--bs-secondary-color);">{{ org.parish|default:"-" }}</td>
               <td>
                 <span class="fw-semibold">{{ org.memberships.count }}</span>
                 <span class="text-muted" style="font-size:0.8rem;"> member{{ org.memberships.count|pluralize }}</span>
@@ -491,7 +491,7 @@
                           {% with p=m.user.doctor_profile %}{% if p %}{{ p.display_name }}{% else %}{{ m.user.username }}{% endif %}{% endwith %}
                         </div>
                         <div style="font-size:0.73rem;color:var(--bs-secondary-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                          {{ m.user.email|default:"—" }}
+                          {{ m.user.email|default:"-" }}
                         </div>
                       </div>
                       {% if org.pk in managed_org_ids %}
@@ -610,7 +610,7 @@
       <div class="modal-header border-0 pb-1">
         <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="addMemberModalLabel">
           <iconify-icon icon="iconamoon:sign-plus-circle-duotone" class="text-primary" style="font-size:1.2rem;"></iconify-icon>
-          Add member — <span id="addMemberOrgName" class="ms-1 text-primary"></span>
+          Add member - <span id="addMemberOrgName" class="ms-1 text-primary"></span>
         </h5>
         <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal"></button>
       </div>
@@ -618,7 +618,7 @@
         <div class="mb-3">
           <label class="form-label small fw-semibold">User</label>
           <select class="form-select form-select-sm" id="addMemberUser">
-            <option value="">— Select user —</option>
+            <option value="">- Select user -</option>
             {% for u in users %}
             <option value="{{ u.pk }}">
               {% with p=u.doctor_profile %}{% if p %}{{ p.display_name }}{% else %}{{ u.username }}{% endif %}{% endwith %}
@@ -730,7 +730,7 @@ var ROLE_PERMS = {
   },
   lead: {
     label: 'Lead Clinician', color: '#2e7d32', bg: '#e8f5e9',
-    desc: 'Clinical team lead within their organization — supervises clinicians and documentation.',
+    desc: 'Clinical team lead within their organization - supervises clinicians and documentation.',
     can: [
       'Record sessions for any patient in their org',
       'View and finalize any note within their org',
@@ -741,7 +741,7 @@ var ROLE_PERMS = {
   },
   clinician: {
     label: 'Clinician', color: '#475569', bg: '#f1f5f9',
-    desc: 'Standard clinical user — records sessions and manages own notes.',
+    desc: 'Standard clinical user - records sessions and manages own notes.',
     can: [
       'Record sessions and dictate SOAP notes',
       'Create, edit and finalize own notes',
@@ -768,11 +768,11 @@ var ROLE_PERMS = {
       'Triage notes and rapid clinical assessments',
       'View and update ED board and patient queue',
     ],
-    cannot: ['Limited to ED workflow — no access to general clinic records']
+    cannot: ['Limited to ED workflow - no access to general clinic records']
   },
   scribe: {
     label: 'Scribe', color: '#7b1fa2', bg: '#f3e5f5',
-    desc: 'Documentation assistant. Transcription support only — cannot finalize clinical notes.',
+    desc: 'Documentation assistant. Transcription support only - cannot finalize clinical notes.',
     can: [
       'Assist with session transcription',
       'Draft SOAP note sections for clinician review',
@@ -781,7 +781,7 @@ var ROLE_PERMS = {
   },
   receptionist: {
     label: 'Receptionist', color: '#3949ab', bg: '#e8eaf6',
-    desc: 'Front-desk staff — patient intake, scheduling, and administrative support.',
+    desc: 'Front-desk staff - patient intake, scheduling, and administrative support.',
     can: [
       'Patient check-in and registration',
       'View and manage appointment schedule',
@@ -952,7 +952,7 @@ document.getElementById('addMemberConfirmBtn').addEventListener('click', functio
     .then(function (d) {
       if (d.ok) {
         bootstrap.Modal.getInstance(document.getElementById('addMemberModal')).hide();
-        uaToast('Member added — refreshing…');
+        uaToast('Member added - refreshing…');
         setTimeout(function () { location.reload(); }, 900);
       } else { uaToast(d.error || 'Error', 'error'); }
     }).catch(function () { uaToast('Network error', 'error'); });
@@ -986,7 +986,7 @@ document.getElementById('createUserConfirmBtn').addEventListener('click', functi
         errEl.textContent = d.error || 'Error creating user.';
         errEl.classList.remove('d-none');
       }
-    }).catch(function () { errEl.textContent = 'Network error — please try again.'; errEl.classList.remove('d-none'); });
+    }).catch(function () { errEl.textContent = 'Network error - please try again.'; errEl.classList.remove('d-none'); });
 });
 
 /* ── Change password modal ── */

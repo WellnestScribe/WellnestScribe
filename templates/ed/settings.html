@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}ED Voice Settings — WellNest{% endblock %}
+{% block title %}ED Voice Settings - WellNest{% endblock %}
 
 {% block content %}
 <div class="d-flex align-items-center gap-2 mb-4">
@@ -8,7 +8,7 @@
     <iconify-icon icon="iconamoon:arrow-left-2-duotone"></iconify-icon>
   </a>
   <div>
-    <h5 class="mb-0 fw-semibold">ED Voice AI — Configuration</h5>
+    <h5 class="mb-0 fw-semibold">ED Voice AI - Configuration</h5>
     <small class="text-muted">Read-only status. Edit credentials in your <code>.env</code> file.</small>
   </div>
 </div>
@@ -80,10 +80,10 @@
       <div class="card-body small text-muted">
         <strong>How it works:</strong> When the nurse clicks the mic button on the triage form, the audio is sent
         to the server in a <strong>single request</strong>. The server transcribes it via the cloud speech model,
-        then immediately passes the transcript to the extraction model to parse structured fields — both happen
+        then immediately passes the transcript to the extraction model to parse structured fields - both happen
         server-side before the response returns. No local GPU or MMS model is involved.
         <br><br>
-        <strong>Typical latency:</strong> ~1.5–3 seconds for a 10-second dictation clip (network + API dependent).
+        <strong>Typical latency:</strong> ~1.5-3 seconds for a 10-second dictation clip (network + API dependent).
       </div>
     </div>
   </div>

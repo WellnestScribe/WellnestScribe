@@ -40,7 +40,7 @@ class ScribeSession(models.Model):
     title = EncryptedCharField(max_length=160, blank=True)
     chief_complaint = EncryptedCharField(max_length=200, blank=True)
 
-    # Patient identity capture (Dr Elizabeth feedback — avoid mix-ups when
+    # Patient identity capture (Dr Elizabeth feedback - avoid mix-ups when
     # seeing many patients per day). Identifier can be DOB, hospital number,
     # ID number, or any free-text token doctor wants. Pilot rule: keep these
     # optional; if PILOT_MODE is on we discourage capturing real names.
@@ -57,7 +57,7 @@ class ScribeSession(models.Model):
 
     # Persistent patient link (Feature 1: patient records & visit history).
     # When set, this session is a "visit" under a real emr.Patient and its
-    # demographics (name, sex) are authoritative — copied into the loose
+    # demographics (name, sex) are authoritative - copied into the loose
     # patient_* fields above so note generation uses the correct sex instead
     # of inferring it. Left null for quick, unlinked sessions (no regression).
     # String ref avoids a scribe→emr import cycle; SET_NULL so deleting a
@@ -95,11 +95,11 @@ class ScribeSession(models.Model):
     error_message = models.TextField(blank=True)
 
     transcript = EncryptedTextField(blank=True)
-    # Original ASR output — never overwritten. Used to re-run the Patois
+    # Original ASR output - never overwritten. Used to re-run the Patois
     # interpreter on regeneration so prompt improvements take effect.
     raw_transcript = EncryptedTextField(blank=True)
 
-    # Sensitive-encounter flag — set by the doctor for HIV, mental health,
+    # Sensitive-encounter flag - set by the doctor for HIV, mental health,
     # reproductive health, substance use, or any encounter they judge as
     # requiring enhanced protection.  When True:
     #   • every view is written to audit.log (not just saves)
@@ -120,7 +120,7 @@ class ScribeSession(models.Model):
         help_text="Timestamp when the doctor confirmed verbal patient consent before recording.",
     )
 
-    # Pipeline timing — populated during ambient transcription and note generation.
+    # Pipeline timing - populated during ambient transcription and note generation.
     # Schema: {
     #   audio_seconds: float,       # recording duration
     #   transcription_ms: int,      # Modal GPU total RTT (ms)
@@ -183,7 +183,7 @@ class SOAPNote(models.Model):
 
     flags = models.JSONField(default=list, blank=True)
 
-    # Body diagram annotations — Dr Elizabeth feedback + NATVNS wound chart
+    # Body diagram annotations - Dr Elizabeth feedback + NATVNS wound chart
     # adaptation. Each marker is a dict with these optional fields:
     #   x, y           : 0..100, percent of image (survives resizing)
     #   label          : short tooltip
@@ -203,7 +203,7 @@ class SOAPNote(models.Model):
     #                    palliative | reduce_bacterial_load
     #   analgesia      : regular | predressing | none
     #   notes          : free text
-    # Old marker dicts (just size_cm + exudate + notes) still load fine —
+    # Old marker dicts (just size_cm + exudate + notes) still load fine -
     # missing keys are treated as blank.
     body_markers = models.JSONField(default=list, blank=True)
 
@@ -337,7 +337,7 @@ class NoteFeedback(models.Model):
         unique_together = ("session", "doctor", "section")
 
     def __str__(self) -> str:
-        return f"{self.rating} on {self.section} — session {self.session_id}"
+        return f"{self.rating} on {self.section} - session {self.session_id}"
 
 
 class ModalOmniEndpoint(models.Model):

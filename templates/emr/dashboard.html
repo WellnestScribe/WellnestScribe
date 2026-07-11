@@ -17,7 +17,7 @@
             <form method="post" action="{% url 'emr:worklist_close_day' %}" class="m-0"
                   onsubmit="return confirm('Save the worklist for the day? Everyone still waiting will be cleared from the queue.');">
                 {% csrf_token %}
-                <button class="btn btn-outline-secondary btn-sm" title="End of day — clear the queue">Save worklist for the day</button>
+                <button class="btn btn-outline-secondary btn-sm" title="End of day - clear the queue">Save worklist for the day</button>
             </form>
             {% if emr_membership.is_admin %}
                 <a href="{% url 'emr:settings' %}" class="btn btn-outline-secondary btn-sm">Clinic settings</a>
@@ -160,7 +160,7 @@
                                                 <button class="btn btn-light btn-sm border">Re-add to queue</button>
                                             </form>
                                         {% else %}
-                                            <span class="small text-muted align-self-center">Seen — start a new Intake for a return visit.</span>
+                                            <span class="small text-muted align-self-center">Seen - start a new Intake for a return visit.</span>
                                         {% endif %}
                                         <form method="post" action="{% url 'emr:appointment_delete' appointment.pk %}" class="ms-auto m-0"
                                               onsubmit="return confirm('Remove {{ appointment.patient.display_name|escapejs }} from the worklist permanently? The clinical note is kept.');">

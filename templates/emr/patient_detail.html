@@ -64,9 +64,9 @@
                             <div class="emr-summary-label">Last vitals</div>
                             {% if last_vitals %}
                                 <div class="small mt-2">
-                                    BP {{ last_vitals.bp_systolic|default:"—" }}/{{ last_vitals.bp_diastolic|default:"—" }} mmHg<br>
-                                    Pulse {{ last_vitals.pulse_bpm|default:"—" }} bpm<br>
-                                    Glucose {{ last_vitals.blood_glucose_mmol|default:"—" }} mmol/L
+                                    BP {{ last_vitals.bp_systolic|default:"-" }}/{{ last_vitals.bp_diastolic|default:"-" }} mmHg<br>
+                                    Pulse {{ last_vitals.pulse_bpm|default:"-" }} bpm<br>
+                                    Glucose {{ last_vitals.blood_glucose_mmol|default:"-" }} mmol/L
                                 </div>
                             {% else %}
                                 <div class="small text-muted mt-2">No vitals recorded yet.</div>
@@ -96,7 +96,7 @@
                                         <tr>
                                             <td>{{ encounter.encounter_date|date:"M j, Y" }}</td>
                                             <td>{{ encounter.get_encounter_type_display }}</td>
-                                            <td>{{ encounter.chief_complaint|default:"—"|truncatechars:80 }}</td>
+                                            <td>{{ encounter.chief_complaint|default:"-"|truncatechars:80 }}</td>
                                             <td>{{ encounter.get_encounter_status_display }}</td>
                                             <td class="text-end">
                                                 <a href="{% url 'emr:encounter_view' patient.pk encounter.pk %}" class="btn btn-outline-secondary btn-sm">View</a>
@@ -187,11 +187,11 @@
                 <div class="card-body p-4">
                     <h5 class="fw-semibold mb-3">Patient identity</h5>
                     <div class="small">
-                        <div><strong>NHF:</strong> {{ patient.nhf_card_number|default:"—" }}</div>
-                        <div><strong>TRN:</strong> {{ patient.trn|default:"—" }}</div>
-                        <div><strong>Phone:</strong> {{ patient.phone_primary|default:"—" }}</div>
-                        <div><strong>District:</strong> {{ patient.district|default:"—" }}</div>
-                        <div><strong>Community:</strong> {{ patient.community|default:"—" }}</div>
+                        <div><strong>NHF:</strong> {{ patient.nhf_card_number|default:"-" }}</div>
+                        <div><strong>TRN:</strong> {{ patient.trn|default:"-" }}</div>
+                        <div><strong>Phone:</strong> {{ patient.phone_primary|default:"-" }}</div>
+                        <div><strong>District:</strong> {{ patient.district|default:"-" }}</div>
+                        <div><strong>Community:</strong> {{ patient.community|default:"-" }}</div>
                         <div><strong>Language:</strong> {{ patient.language_preference }}</div>
                         <div class="mt-2"><strong>Herbal history:</strong> {{ patient.herbal_history|default:"None documented" }}</div>
                     </div>

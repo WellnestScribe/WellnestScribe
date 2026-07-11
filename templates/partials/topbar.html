@@ -29,7 +29,7 @@
             <div class="d-flex align-items-center gap-1 ms-auto">
 
                 {% if user.is_authenticated %}
-                {# ── Language picker — hidden on mobile (accessible from mobile menu) ── #}
+                {# ── Language picker - hidden on mobile (accessible from mobile menu) ── #}
                 <div class="dropdown topbar-item d-none d-md-flex me-1">
                     <button type="button"
                             class="topbar-button dropdown-toggle dropdown-toggle-nocaret"
@@ -239,7 +239,7 @@ document.addEventListener('DOMContentLoaded', function () {
 {% if user.is_authenticated %}
 <script>
 (function () {
-    /* Searchable lang picker — filter list as user types */
+    /* Searchable lang picker - filter list as user types */
     document.addEventListener('input', function (e) {
         if (!e.target.classList.contains('wn-lang-search')) return;
         var q = e.target.value.toLowerCase();
@@ -250,7 +250,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    /* Searchable lang picker — select an item */
+    /* Searchable lang picker - select an item */
     document.addEventListener('click', function (e) {
         var item = e.target.closest && e.target.closest('#topbarLangList .wn-lang-item');
         if (!item) return;

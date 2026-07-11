@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Triage — {{ visit.visit_number }} — WellNest{% endblock %}
+{% block title %}Triage - {{ visit.visit_number }} - WellNest{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -65,7 +65,7 @@
   <div class="flex-grow-1">
     <h4 class="mb-0 fw-bold">
       <iconify-icon icon="iconamoon:stethoscope-duotone" class="me-1"></iconify-icon>
-      {% if is_retriage %}Re-triage{% else %}Triage Assessment{% endif %} — {{ visit.visit_number }}
+      {% if is_retriage %}Re-triage{% else %}Triage Assessment{% endif %} - {{ visit.visit_number }}
     </h4>
     <small class="text-muted">
       {{ visit.display_name }} ·
@@ -83,7 +83,7 @@
 {% if is_retriage %}
 <div class="alert alert-warning d-flex gap-2 align-items-center mb-3">
   <iconify-icon icon="iconamoon:alert-duotone" style="font-size:1.3rem;"></iconify-icon>
-  <div><strong>Re-triage</strong> — Patient condition may have changed. Previous ESI: <strong>{{ visit.triage.esi_score }}</strong></div>
+  <div><strong>Re-triage</strong> - Patient condition may have changed. Previous ESI: <strong>{{ visit.triage.esi_score }}</strong></div>
 </div>
 {% endif %}
 
@@ -110,7 +110,7 @@
       {% for pv in prior_visits %}
       <span class="me-3">
         <span class="badge bg-secondary-subtle text-secondary border" style="font-size:0.65rem;">ESI {{ pv.esi }}</span>
-        {{ pv.date|date:"d M Y" }} — {{ pv.cc }}
+        {{ pv.date|date:"d M Y" }} - {{ pv.cc }}
       </span>
       {% endfor %}
     </div>
@@ -119,7 +119,7 @@
 </div>
 {% endif %}
 
-<!-- Listen to encounter — single button for full patient assessment recording -->
+<!-- Listen to encounter - single button for full patient assessment recording -->
 <div id="encounter-bar" class="card mb-3" style="background:rgba(13,110,253,0.03);">
   <div class="card-body py-2 px-3 d-flex align-items-start gap-3">
     <button type="button" id="encounter-listen-btn" onclick="toggleEncounterRecord()"
@@ -129,7 +129,7 @@
     </button>
     <div style="flex:1;">
       <div style="font-size:0.8rem;color:var(--bs-secondary-color);" id="encounter-hint">
-        Record the full patient encounter — AI fills complaint, vitals &amp; more in one go
+        Record the full patient encounter - AI fills complaint, vitals &amp; more in one go
       </div>
       <div class="voice-transcript-box" id="encounter-transcript-box"></div>
     </div>
@@ -145,7 +145,7 @@
       <iconify-icon icon="iconamoon:comment-duotone"></iconify-icon>
       Presenting Problem
       <span class="ms-auto">
-        <button type="button" class="mic-btn" id="complaint-mic-btn" onclick="startComplaintRecord()" title="Record patient conversation — AI extracts chief complaint">
+        <button type="button" class="mic-btn" id="complaint-mic-btn" onclick="startComplaintRecord()" title="Record patient conversation - AI extracts chief complaint">
           <span class="mic-dot"></span> Record conversation
         </button>
       </span>
@@ -163,7 +163,7 @@
           {% endif %}
           <div class="voice-transcript-box" id="complaint-transcript-box"></div>
         </div>
-        {# ── Protocol nudges — fire on chief complaint + PMH + vitals ── #}
+        {# ── Protocol nudges - fire on chief complaint + PMH + vitals ── #}
         <div class="col-12" id="protocol-nudges-container" style="display:none;">
           <div id="protocol-nudges" class="d-flex flex-wrap gap-2"></div>
         </div>
@@ -193,7 +193,7 @@
       <iconify-icon icon="iconamoon:chart-bar-duotone"></iconify-icon>
       Vital Signs
       <span class="ms-2">
-        <button type="button" class="mic-btn" id="vitals-mic-btn" onclick="startVitalsRecord()" title="Dictate vitals — AI auto-fills fields">
+        <button type="button" class="mic-btn" id="vitals-mic-btn" onclick="startVitalsRecord()" title="Dictate vitals - AI auto-fills fields">
           <span class="mic-dot"></span> Dictate vitals
         </button>
       </span>
@@ -247,7 +247,7 @@
         </div>
         <!-- Pain -->
         <div class="col-6 col-md-2">
-          <label class="form-label">Pain score (0–10)</label>
+          <label class="form-label">Pain score (0-10)</label>
           {{ form.pain_score }}
         </div>
         <!-- Glucose -->
@@ -262,7 +262,7 @@
             {{ form.gcs_eye }}
             {{ form.gcs_verbal }}
             {{ form.gcs_motor }}
-            <span class="input-group-text" id="gcs-total-display">Total: —</span>
+            <span class="input-group-text" id="gcs-total-display">Total: -</span>
           </div>
         </div>
       </div>
@@ -343,7 +343,7 @@
         <div class="form-check mb-2">
           {{ form.allergy_nkda }}
           <label class="form-check-label" for="{{ form.allergy_nkda.id_for_label }}">
-            NKDA — No known drug allergies
+            NKDA - No known drug allergies
           </label>
         </div>
         <div id="allergy-detail" {% if form.allergy_nkda.value %}style="display:none;"{% endif %}>
@@ -435,7 +435,7 @@ function updateGCSTotal() {
   var m = parseInt(motEl.value) || 0;
   var total = (e && v && m) ? e + v + m : null;
   var el = document.getElementById("gcs-total-display");
-  if (el) el.textContent = total ? "Total: " + total + "/15" : "Total: —";
+  if (el) el.textContent = total ? "Total: " + total + "/15" : "Total: -";
 }
 ["id_gcs_eye","id_gcs_verbal","id_gcs_motor"].forEach(function(id) {
   var el = document.getElementById(id);
@@ -559,7 +559,7 @@ function getAIESI() {
     document.getElementById("ai-confidence-badge").textContent = d.confidence || "";
     var rationaleEl = document.getElementById("ai-esi-rationale");
     if (d.error && !d.rationale) {
-      rationaleEl.textContent = "AI service not configured — showing clinical default. (" + d.error + ")";
+      rationaleEl.textContent = "AI service not configured - showing clinical default. (" + d.error + ")";
     } else {
       rationaleEl.textContent = d.rationale || "";
     }
@@ -595,7 +595,7 @@ function getAIESI() {
 }
 
 // ----------------------------------------------------------------
-// Voice capture — shared MediaRecorder utility
+// Voice capture - shared MediaRecorder utility
 // ----------------------------------------------------------------
 var VOICE_AUDIO_URL = "{% url 'ed:api_triage_voice_audio' visit.pk %}";
 
@@ -659,12 +659,12 @@ function _setMicState(mode, recording) {
       if (bar) bar.classList.add("is-recording");
       if (btn) { btn.classList.add("btn-danger"); btn.classList.remove("btn-primary"); }
       if (txt) txt.textContent = "Stop listening";
-      if (hint) hint.textContent = "Recording encounter — tap to stop";
+      if (hint) hint.textContent = "Recording encounter - tap to stop";
     } else {
       if (bar) bar.classList.remove("is-recording");
       if (btn) { btn.classList.remove("btn-danger"); btn.classList.add("btn-primary"); }
       if (txt) txt.textContent = "Listen to encounter";
-      if (hint) hint.textContent = "Record the full patient encounter — AI fills complaint, vitals & more in one go";
+      if (hint) hint.textContent = "Record the full patient encounter - AI fills complaint, vitals & more in one go";
     }
     return;
   }
@@ -774,14 +774,14 @@ function _transcribeAndExtract(blob, mode) {
 // ----------------------------------------------------------------
 // Clinical protocol nudges
 // (Dr Yom: "You need a way to make it unobtrusive but still prominent enough
-//  to be incorporated into habits" — these fire silently, no popups.)
+//  to be incorporated into habits" - these fire silently, no popups.)
 // ----------------------------------------------------------------
 var NUDGE_RULES = [
   {
     id: "dka",
     level: "warning",
     label: "DKA risk",
-    msg: "Nausea/vomiting in known diabetic — consider DKA. Check BGL, ketones.",
+    msg: "Nausea/vomiting in known diabetic - consider DKA. Check BGL, ketones.",
     check: function(cc, pmh, vitals) {
       return /nausea|vomit|abdom|stomach|belly|cramp/i.test(cc) && pmh.dm;
     },
@@ -790,7 +790,7 @@ var NUDGE_RULES = [
     id: "dka-bgl",
     level: "danger",
     label: "High BGL + DM",
-    msg: "BGL >20 in diabetic — urgent DKA/HHS assessment. IV fluids, insulin protocol.",
+    msg: "BGL >20 in diabetic - urgent DKA/HHS assessment. IV fluids, insulin protocol.",
     check: function(cc, pmh, vitals) {
       return pmh.dm && vitals.bgl && vitals.bgl > 20;
     },
@@ -799,7 +799,7 @@ var NUDGE_RULES = [
     id: "sepsis",
     level: "danger",
     label: "Sepsis screen",
-    msg: "Tachycardia with infection source — apply qSOFA (RR>22, AMS, SBP<100). Don't delay antibiotics.",
+    msg: "Tachycardia with infection source - apply qSOFA (RR>22, AMS, SBP<100). Don't delay antibiotics.",
     check: function(cc, pmh, vitals) {
       return /fever|infect|uti|urine|pee|burn|wound|cough|pneumon|cellulitis|sepsis|dysuria/i.test(cc)
              && vitals.hr && vitals.hr > 100;
@@ -809,7 +809,7 @@ var NUDGE_RULES = [
     id: "heart",
     level: "info",
     label: "HEART score",
-    msg: "Chest pain — consider HEART score (History / ECG / Age / Risk factors / Troponin) for ACS stratification.",
+    msg: "Chest pain - consider HEART score (History / ECG / Age / Risk factors / Troponin) for ACS stratification.",
     check: function(cc, pmh, vitals) {
       return /chest pain|chest tight|chest pressure|cardiac|heart attack/i.test(cc);
     },
@@ -818,7 +818,7 @@ var NUDGE_RULES = [
     id: "stroke",
     level: "info",
     label: "Stroke screen",
-    msg: "Neuro presentation — apply FAST (Face, Arms, Speech, Time). NIH stroke scale if FAST positive. Window: 4.5 h.",
+    msg: "Neuro presentation - apply FAST (Face, Arms, Speech, Time). NIH stroke scale if FAST positive. Window: 4.5 h.",
     check: function(cc, pmh, vitals) {
       return /dizz|vertigo|facial droop|arm.*weak|speech.*slur|slurr|sudden headache|thunderclap|vision.*loss|one.*side/i.test(cc)
              || (pmh.stroke && /headache|weak|numb|confus/i.test(cc));
@@ -828,7 +828,7 @@ var NUDGE_RULES = [
     id: "hypotension",
     level: "danger",
     label: "Hypotension",
-    msg: "SBP <90 — assess for shock. IV access, fluid challenge. Consider: sepsis, hemorrhage, cardiac tamponade, PE.",
+    msg: "SBP <90 - assess for shock. IV access, fluid challenge. Consider: sepsis, hemorrhage, cardiac tamponade, PE.",
     check: function(cc, pmh, vitals) {
       return vitals.sbp && vitals.sbp < 90;
     },
@@ -837,7 +837,7 @@ var NUDGE_RULES = [
     id: "sickle",
     level: "warning",
     label: "Sickle cell crisis",
-    msg: "Pain in known sickle cell patient — consider VOC, acute chest syndrome, stroke. Analgesia should not be delayed.",
+    msg: "Pain in known sickle cell patient - consider VOC, acute chest syndrome, stroke. Analgesia should not be delayed.",
     check: function(cc, pmh, vitals) {
       return pmh.sickle_cell && /pain|chest|breath|back|leg|arm/i.test(cc);
     },
@@ -846,7 +846,7 @@ var NUDGE_RULES = [
     id: "asthma",
     level: "warning",
     label: "Severe asthma",
-    msg: "Respiratory distress in asthmatic — check SpO₂ <92%, can't complete sentences, silent chest = SEVERE. IV salbutamol + MgSO₄.",
+    msg: "Respiratory distress in asthmatic - check SpO₂ <92%, can't complete sentences, silent chest = SEVERE. IV salbutamol + MgSO₄.",
     check: function(cc, pmh, vitals) {
       return pmh.asthma && (/breath|wheeze|tight|resp/i.test(cc) || (vitals.spo2 && vitals.spo2 < 92));
     },
@@ -855,7 +855,7 @@ var NUDGE_RULES = [
     id: "renal",
     level: "info",
     label: "Renal caution",
-    msg: "Known renal disease — avoid nephrotoxic agents (NSAIDs, contrast, aminoglycosides). Review hydration status.",
+    msg: "Known renal disease - avoid nephrotoxic agents (NSAIDs, contrast, aminoglycosides). Review hydration status.",
     check: function(cc, pmh, vitals) {
       return pmh.renal;
     },
@@ -906,7 +906,7 @@ function runNudges() {
     var c = NUDGE_COLORS[r.level] || "secondary";
     return '<div class="d-flex align-items-start gap-2 p-2 rounded border border-' + c + ' bg-' + c + '-subtle" style="font-size:0.78rem;max-width:100%;">'
       + '<iconify-icon icon="iconamoon:alert-circle-duotone" style="color:var(--bs-' + c + ');font-size:1rem;flex-shrink:0;margin-top:1px;"></iconify-icon>'
-      + '<div><strong class="text-' + c + '-emphasis">' + r.label + '</strong> — ' + r.msg + '</div></div>';
+      + '<div><strong class="text-' + c + '-emphasis">' + r.label + '</strong> - ' + r.msg + '</div></div>';
   }).join("");
 }
 

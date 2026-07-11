@@ -32,7 +32,7 @@
 
     <div class="alert alert-light border small d-flex align-items-center gap-2">
         <iconify-icon icon="iconamoon:eye-duotone"></iconify-icon>
-        Read-only view — this is the record as documented. {% if encounter.encounter_status == 'signed' %}Signed records cannot be changed; add an addendum from the chart if needed.{% else %}Use the Advanced editor to make changes.{% endif %}
+        Read-only view - this is the record as documented. {% if encounter.encounter_status == 'signed' %}Signed records cannot be changed; add an addendum from the chart if needed.{% else %}Use the Advanced editor to make changes.{% endif %}
     </div>
 
     <div class="row g-4">
@@ -43,16 +43,16 @@
                     <h5 class="fw-semibold mb-3">Vitals</h5>
                     {% if vitals %}
                         <div class="row g-3 small">
-                            <div class="col-6 col-md-3"><span class="text-muted d-block">BP</span>{{ vitals.bp_systolic|default:"—" }}/{{ vitals.bp_diastolic|default:"—" }} mmHg</div>
-                            <div class="col-6 col-md-3"><span class="text-muted d-block">Pulse</span>{{ vitals.pulse_bpm|default:"—" }} bpm</div>
-                            <div class="col-6 col-md-3"><span class="text-muted d-block">Temp</span>{{ vitals.temperature_celsius|default:"—" }} °C</div>
-                            <div class="col-6 col-md-3"><span class="text-muted d-block">SpO₂</span>{{ vitals.oxygen_saturation|default:"—" }} %</div>
-                            <div class="col-6 col-md-3"><span class="text-muted d-block">Resp rate</span>{{ vitals.respiratory_rate|default:"—" }} /min</div>
-                            <div class="col-6 col-md-3"><span class="text-muted d-block">Weight</span>{{ vitals.weight_kg|default:"—" }} kg</div>
-                            <div class="col-6 col-md-3"><span class="text-muted d-block">Height</span>{{ vitals.height_cm|default:"—" }} cm</div>
-                            <div class="col-6 col-md-3"><span class="text-muted d-block">BMI</span>{{ vitals.bmi|default:"—" }}</div>
-                            <div class="col-6 col-md-3"><span class="text-muted d-block">Glucose</span>{{ vitals.blood_glucose_mmol|default:"—" }} mmol/L</div>
-                            <div class="col-6 col-md-3"><span class="text-muted d-block">Pain</span>{{ vitals.pain_score|default:"—" }}/10</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">BP</span>{{ vitals.bp_systolic|default:"-" }}/{{ vitals.bp_diastolic|default:"-" }} mmHg</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">Pulse</span>{{ vitals.pulse_bpm|default:"-" }} bpm</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">Temp</span>{{ vitals.temperature_celsius|default:"-" }} °C</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">SpO₂</span>{{ vitals.oxygen_saturation|default:"-" }} %</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">Resp rate</span>{{ vitals.respiratory_rate|default:"-" }} /min</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">Weight</span>{{ vitals.weight_kg|default:"-" }} kg</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">Height</span>{{ vitals.height_cm|default:"-" }} cm</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">BMI</span>{{ vitals.bmi|default:"-" }}</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">Glucose</span>{{ vitals.blood_glucose_mmol|default:"-" }} mmol/L</div>
+                            <div class="col-6 col-md-3"><span class="text-muted d-block">Pain</span>{{ vitals.pain_score|default:"-" }}/10</div>
                         </div>
                     {% else %}
                         <p class="text-muted small mb-0">No vitals recorded for this encounter.</p>
@@ -141,7 +141,7 @@
                         <div class="d-flex justify-content-between py-1"><span class="text-muted">Date</span><span>{{ encounter.encounter_date|date:"M j, Y" }}</span></div>
                         <div class="d-flex justify-content-between py-1"><span class="text-muted">Type</span><span>{{ encounter.get_encounter_type_display }}</span></div>
                         <div class="d-flex justify-content-between py-1"><span class="text-muted">Status</span><span>{{ encounter.get_encounter_status_display }}</span></div>
-                        <div class="d-flex justify-content-between py-1"><span class="text-muted">Provider</span><span>{% if encounter.provider %}{{ encounter.provider.get_full_name|default:encounter.provider.username }}{% else %}—{% endif %}</span></div>
+                        <div class="d-flex justify-content-between py-1"><span class="text-muted">Provider</span><span>{% if encounter.provider %}{{ encounter.provider.get_full_name|default:encounter.provider.username }}{% else %}-{% endif %}</span></div>
                         {% if encounter.signed_by %}
                             <div class="d-flex justify-content-between py-1"><span class="text-muted">Signed by</span><span>{{ encounter.signed_by.get_full_name|default:encounter.signed_by.username }}</span></div>
                             <div class="d-flex justify-content-between py-1"><span class="text-muted">Signed at</span><span>{{ encounter.signed_at|date:"M j, g:i A" }}</span></div>
@@ -169,7 +169,7 @@
             <div class="card mb-4">
                 <div class="card-body p-4">
                     <h6 class="fw-semibold mb-2">Sick leave</h6>
-                    <div class="small">{{ encounter.sick_leave_start|date:"M j" }} – {{ encounter.sick_leave_end|date:"M j, Y" }}</div>
+                    <div class="small">{{ encounter.sick_leave_start|date:"M j" }} - {{ encounter.sick_leave_end|date:"M j, Y" }}</div>
                     {% if encounter.sick_leave_diagnosis %}<div class="small text-muted">{{ encounter.sick_leave_diagnosis }}</div>{% endif %}
                 </div>
             </div>

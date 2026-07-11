@@ -35,7 +35,7 @@
             {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
             <div class="alert alert-danger small mb-0">
                 <iconify-icon icon="iconamoon:information-circle-duotone" class="me-1 align-middle"></iconify-icon>
-                Some required details are missing or invalid — see the highlighted fields below.
+                Some required details are missing or invalid - see the highlighted fields below.
             </div>
         </div>
         {% endif %}
@@ -201,16 +201,16 @@
           .then(function (d) {
             var ps = (d && d.patients) || [];
             if (!ps.length) {
-              dupeResults.innerHTML = '<div class="small text-success"><iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon>No existing match — go ahead and register.</div>';
+              dupeResults.innerHTML = '<div class="small text-success"><iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon>No existing match - go ahead and register.</div>';
               return;
             }
-            var html = '<div class="small text-warning-emphasis mb-1">⚠ Possible existing patient(s) — open the chart instead of re-registering:</div>';
+            var html = '<div class="small text-warning-emphasis mb-1">⚠ Possible existing patient(s) - open the chart instead of re-registering:</div>';
             ps.forEach(function (p) {
               html += '<a href="' + escd(p.chart_url) + '" class="session-row text-decoration-none">' +
                 '<span class="session-icon"><iconify-icon icon="iconamoon:profile-duotone"></iconify-icon></span>' +
                 '<span class="flex-grow-1">' +
                   '<span class="d-block fw-semibold">' + escd(p.name) +
-                    ' <span class="text-muted fw-normal" style="font-size:.75rem;">' + escd(p.mrn) + ' · DOB ' + escd(p.dob || '—') + ' · ' + escd(p.age) + 'y · ' + escd(p.sex) + '</span></span>' +
+                    ' <span class="text-muted fw-normal" style="font-size:.75rem;">' + escd(p.mrn) + ' · DOB ' + escd(p.dob || '-') + ' · ' + escd(p.age) + 'y · ' + escd(p.sex) + '</span></span>' +
                   '<span class="d-block small text-muted">' + escd(p.community || '') + (p.visits ? ' · ' + p.visits + ' visit(s)' : '') + '</span>' +
                 '</span>' +
                 '<span class="btn btn-outline-secondary btn-sm align-self-center">Open chart</span></a>';

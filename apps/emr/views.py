@@ -202,7 +202,7 @@ def waiting_queue_api(request):
     cancelled=left), ordered by queue position, with a vitals snapshot so the
     doctor can read the docket at a glance. Polled by the record page, so any
     nurse change (reorder, patient left, new arrival, vitals) reflects within
-    seconds. No AI — plain DB reads.
+    seconds. No AI - plain DB reads.
     """
     emr = membership_for_request(request)
     today = timezone.localdate()
@@ -686,7 +686,7 @@ def worklist_close_day_view(request):
         request, emr.organisation, action="update", resource_type="worklist",
         resource_id="", detail=f"Closed worklist for the day ({n} cleared)",
     )
-    messages.success(request, f"Worklist saved for the day — {n} patient(s) cleared from the queue.")
+    messages.success(request, f"Worklist saved for the day - {n} patient(s) cleared from the queue.")
     return redirect("emr:dashboard")
 
 
@@ -697,7 +697,7 @@ def appointment_reorder_view(request, pk):
 
     Normalises today's waiting appointments to 1..N by current order, then
     swaps the target with its neighbour. The doctor's record-screen poll picks
-    up the new order within seconds — no push needed.
+    up the new order within seconds - no push needed.
     """
     emr = _require(
         lambda membership: membership.can_manage_schedule(),
@@ -738,6 +738,113 @@ def appointment_reorder_view(request, pk):
     if request.headers.get("x-requested-with") == "XMLHttpRequest":
         return JsonResponse({"ok": True})
     return redirect(request.POST.get("next") or reverse("emr:dashboard"))
+
+
+# ── Appointments calendar (T1) ───────────────────────────────────────────────
+def _parse_appt_dt(raw):
+    """Parse a FullCalendar / booking datetime string to an aware datetime."""
+    if not raw:
+        return None
+    from django.utils.dateparse import parse_date, parse_datetime
+    dt = parse_datetime(raw)
+    if dt is None:
+        d = parse_date(raw)
+        if d is not None:
+            dt = datetime.combine(d, datetime.min.time())
+    if dt is not None and timezone.is_naive(dt):
+        dt = timezone.make_aware(dt)
+    return dt
+
+
+@login_required
+def appointments_calendar_view(request):
+    """Full-page calendar: click a slot -> search a patient -> book them in."""
+    emr = membership_for_request(request)
+    return render(request, "emr/appointments.html", {
+        **_base_context(request),
+        "encounter_type_choices": Encounter._meta.get_field("encounter_type").choices,
+        "can_manage": emr.membership.can_manage_schedule(),
+    })
+
+
+@login_required
+def appointments_feed_api(request):
+    """FullCalendar event feed for the clinic, filtered to the requested range."""
+    emr = membership_for_request(request)
+    qs = Appointment.objects.filter(organisation=emr.organisation).select_related("patient")
+    start = _parse_appt_dt(request.GET.get("start"))
+    end = _parse_appt_dt(request.GET.get("end"))
+    if start:
+        qs = qs.filter(scheduled_for__gte=start)
+    if end:
+        qs = qs.filter(scheduled_for__lte=end)
+    colours = {
+        "scheduled": "#0c7ec2", "checked_in": "#16a34a", "triage": "#f59e0b",
+        "with_doctor": "#7c3aed", "complete": "#64748b", "cancelled": "#ef4444",
+    }
+    events = []
+    for a in qs.order_by("scheduled_for")[:1000]:
+        events.append({
+            "id": a.pk,
+            "title": a.patient.display_name,
+            "start": a.scheduled_for.isoformat(),
+            "color": colours.get(a.status, "#0c7ec2"),
+            "extendedProps": {
+                "patient_id": a.patient_id,
+                "phone": a.patient.phone_primary or "",
+                "mrn": a.patient.mrn,
+                "status": a.status,
+                "status_label": a.get_status_display(),
+                "type": a.get_encounter_type_display(),
+                "notes": a.notes or "",
+                "time": a.scheduled_for.strftime("%b %d, %Y at %I:%M %p"),
+                "chart_url": reverse("emr:patient_detail", args=[a.patient_id]),
+                "triage_url": reverse("emr:triage", args=[a.pk]),
+            },
+        })
+    return JsonResponse({"events": events})
+
+
+@login_required
+@require_POST
+def appointment_book_api(request):
+    """Create an appointment from the calendar (patient + datetime + type)."""
+    emr = _require(lambda m: m.can_manage_schedule(), request, "Your role cannot manage the schedule.")
+    if emr is None:
+        return JsonResponse({"ok": False, "error": "Your role cannot manage the schedule."}, status=403)
+    patient = get_object_or_404(Patient, pk=request.POST.get("patient_id"), organisation=emr.organisation)
+    when = _parse_appt_dt(request.POST.get("scheduled_for"))
+    if when is None:
+        return JsonResponse({"ok": False, "error": "Pick a valid date and time."}, status=400)
+    etype = request.POST.get("encounter_type") or "acute"
+    valid_types = {c[0] for c in Encounter._meta.get_field("encounter_type").choices}
+    if etype not in valid_types:
+        etype = "acute"
+    appt = Appointment.objects.create(
+        organisation=emr.organisation, patient=patient, scheduled_for=when,
+        encounter_type=etype, status="scheduled",
+        notes=(request.POST.get("notes") or "")[:500], created_by=request.user,
+    )
+    log_audit_event(
+        request, emr.organisation, action="create", resource_type="appointment",
+        resource_id=appt.pk, detail=f"Booked {patient.display_name} for {when:%Y-%m-%d %H:%M}",
+    )
+    return JsonResponse({"ok": True, "id": appt.pk})
+
+
+@login_required
+def appointments_due_api(request):
+    """Count of today's upcoming (not-yet-seen) appointments - sidebar bubble."""
+    emr = membership_for_request(request)
+    today = timezone.localdate()
+    day_start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
+    day_end = timezone.make_aware(datetime.combine(today, datetime.max.time()))
+    n = Appointment.objects.filter(
+        organisation=emr.organisation,
+        scheduled_for__range=(day_start, day_end),
+        status__in=["scheduled", "checked_in"],
+    ).count()
+    return JsonResponse({"due": n})
 
 
 @login_required
@@ -821,7 +928,7 @@ def encounter_edit_view(request, patient_pk, encounter_pk):
 @login_required
 @require_http_methods(["GET"])
 def encounter_view(request, patient_pk, encounter_pk):
-    """Read-only view of a past encounter — full clinical detail, no editing.
+    """Read-only view of a past encounter - full clinical detail, no editing.
 
     Anyone in the clinic can open it (org-scoped); the editable Advanced editor
     stays behind can_edit_encounters, so nurses/pharmacists can read a chart
@@ -1059,7 +1166,7 @@ def _encounter_editor(request, *, patient_pk, encounter_pk=None):
 def intake_view(request, patient_pk):
     """Nurse intake: capture chief complaint + vitals, then send to the queue.
 
-    Deliberately light — the nurse does NOT do ROS / physical exam / signing.
+    Deliberately light - the nurse does NOT do ROS / physical exam / signing.
     On submit it puts the patient in the doctor's waiting queue (today's
     appointment → 'triage') with the vitals attached, exactly like the paper
     docket flow: weigh, take BP, jot the complaint, hand to the doctor.
@@ -1233,7 +1340,7 @@ def scribe_link_patient_view(request, session_pk):
     """Link a scribe session to an existing patient (opt-in 'Add to EMR').
 
     Sets ScribeSession.patient so the note joins that patient's history and
-    becomes findable in the EMR — without forcing every scribe note into the
+    becomes findable in the EMR - without forcing every scribe note into the
     EMR (scribe-only stays the default).
     """
     emr = membership_for_request(request)
@@ -1258,7 +1365,7 @@ def scribe_link_patient_view(request, session_pk):
 @login_required
 @require_POST
 def encounter_addendum_view(request, encounter_pk):
-    """Append an addendum to an encounter (allowed even when signed — the
+    """Append an addendum to an encounter (allowed even when signed - the
     original record is never altered)."""
     emr = _require(
         lambda membership: membership.can_edit_encounters(),
@@ -1474,7 +1581,7 @@ def organisation_settings_view(request):
 @login_required
 @require_http_methods(["GET"])
 def gnuhealth_status_api(request):
-    """GET /emr/api/gnuhealth/status/ — check connection to configured EMR backend."""
+    """GET /emr/api/gnuhealth/status/ - check connection to configured EMR backend."""
     from .backends import get_backend
 
     try:
@@ -1488,7 +1595,7 @@ def gnuhealth_status_api(request):
 @login_required
 @require_http_methods(["GET"])
 def gnuhealth_patient_search_api(request):
-    """GET /emr/api/gnuhealth/patients/?q=... — search patients in configured backend."""
+    """GET /emr/api/gnuhealth/patients/?q=... - search patients in configured backend."""
     from .backends import get_backend
 
     q = request.GET.get("q", "").strip()

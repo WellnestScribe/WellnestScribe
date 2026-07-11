@@ -8,7 +8,7 @@
         <div>
             <h4 class="mb-1 fw-semibold">Patient search</h4>
             <p class="text-muted mb-0 small">
-                Search by name, NHF number, TRN, phone, district, or parish — or browse all patients below.
+                Search by name, NHF number, TRN, phone, district, or parish - or browse all patients below.
             </p>
         </div>
         <a href="{% url 'emr:patient_create' %}{% if scribe_session_id %}?scribe={{ scribe_session_id }}{% endif %}" class="btn btn-primary btn-sm">
@@ -75,8 +75,8 @@
                                     <span class="badge rounded-pill bg-secondary-subtle text-secondary">{{ patient.mrn }}</span>
                                 </div>
                                 <div class="small text-muted mt-3">
-                                    NHF: {{ patient.nhf_card_number|default:"—" }} · TRN: {{ patient.trn|default:"—" }}<br>
-                                    Phone: {{ patient.phone_primary|default:"—" }}
+                                    NHF: {{ patient.nhf_card_number|default:"-" }} · TRN: {{ patient.trn|default:"-" }}<br>
+                                    Phone: {{ patient.phone_primary|default:"-" }}
                                 </div>
                                 <div class="d-flex gap-2 flex-wrap mt-3">
                                     <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary btn-sm">Open chart</a>
@@ -118,9 +118,9 @@
                                         <td class="fw-semibold">{{ patient.display_name }}</td>
                                         <td class="text-muted small">{{ patient.mrn }}</td>
                                         <td>{{ patient.age_display }} · {{ patient.get_sex_display }}</td>
-                                        <td class="small text-muted">{{ patient.trn|default:patient.nhf_card_number|default:"—" }}</td>
-                                        <td class="small">{{ patient.phone_primary|default:"—" }}</td>
-                                        <td class="small">{{ patient.parish|default:"—" }}</td>
+                                        <td class="small text-muted">{{ patient.trn|default:patient.nhf_card_number|default:"-" }}</td>
+                                        <td class="small">{{ patient.phone_primary|default:"-" }}</td>
+                                        <td class="small">{{ patient.parish|default:"-" }}</td>
                                         <td class="text-end">
                                             <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary btn-sm">Chart</a>
                                             {% if scribe_session_id %}

@@ -57,7 +57,7 @@
   .bracket-mirror .bk-hl.drug-hl { background: rgba(220,120,0,0.15); }
   .bracket-mirror .bk-hl.test-hl { background: rgba(16,185,129,0.15); }
   .note-textarea[data-note-field] { position: relative; z-index: 1; background: transparent !important; }
-  /* Inside SOAP sections the textarea has padding: 2px 0 and no border — mirror must match */
+  /* Inside SOAP sections the textarea has padding: 2px 0 and no border - mirror must match */
   .note-section-body .bracket-mirror { padding: 2px 0; border: none; border-radius: 0; }
 }
 /* Missing bracket badge */
@@ -349,7 +349,7 @@
         </div>
     </div>
 
-    {# Patient info bar — fills from session data; editable inline; saves on blur via save_note_api #}
+    {# Patient info bar - fills from session data; editable inline; saves on blur via save_note_api #}
     <div class="patient-review-bar" id="patientReviewBar">
         <span class="prb-label">
             <iconify-icon icon="iconamoon:profile-duotone" class="me-1 align-middle"></iconify-icon>
@@ -518,7 +518,7 @@
 
                         <div class="tab-pane fade" id="tab-transcript">
                             <p class="text-muted small mb-2">
-                                Interpreted transcript — the AI's English reading of what was recorded.
+                                Interpreted transcript - the AI's English reading of what was recorded.
                                 Read-only. Edit the SOAP note directly if corrections are needed.
                             </p>
                             <textarea class="note-textarea" id="transcriptArea" readonly
@@ -528,12 +528,12 @@
                         <div class="tab-pane fade" id="tab-bodydiagram">
                             <p class="text-muted small mb-2">
                                 Click on the diagram to drop a marker for a wound / ulcer / pain
-                                site. NATVNS-style fields appear below — fill in only what you
+                                site. NATVNS-style fields appear below - fill in only what you
                                 need (most encounters only need the basics). Markers auto-save
                                 with the note. Right-click a marker on the diagram to delete it.
                             </p>
 
-                            {# Factors that delay healing — quick check chips (from NATVNS chart). #}
+                            {# Factors that delay healing - quick check chips (from NATVNS chart). #}
                             <div class="mb-3">
                                 <h6 class="fw-semibold mb-1 small text-uppercase text-muted" style="letter-spacing:0.06em;">
                                     Factors delaying healing
@@ -552,7 +552,7 @@
                             Serialise the marker list + wound_chart as proper JSON so the JS
                             can parse them safely even when notes contain apostrophes or quotes.
                             Previously the template used `|stringformat:'s'` which gave Python's
-                            str() of the list — single-quoted, breaks JSON.parse.
+                            str() of the list - single-quoted, breaks JSON.parse.
                             {% endcomment %}
                             {% if note %}
                                 {{ note.body_markers|json_script:"bodyMarkersData" }}
@@ -604,7 +604,7 @@
                             New recording
                         </button>
                         <p class="small text-muted text-center mt-1 mb-0" id="recordNewSubtext" style="font-size:0.76rem;">
-                            Reviewing previous visit — tap above to start new session
+                            Reviewing previous visit - tap above to start new session
                         </p>
                     </div>
 
@@ -743,9 +743,9 @@
                     <details class="mt-2">
                         <summary class="small text-muted" style="cursor:pointer;">Keyboard shortcuts</summary>
                         <ul class="list-unstyled small text-muted mt-1 mb-0">
-                            <li><kbd>Ctrl</kbd> + <kbd>S</kbd> — save now</li>
-                            <li><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd> — copy note</li>
-                            <li><kbd>Esc</kbd> — stop dictation</li>
+                            <li><kbd>Ctrl</kbd> + <kbd>S</kbd> - save now</li>
+                            <li><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd> - copy note</li>
+                            <li><kbd>Esc</kbd> - stop dictation</li>
                         </ul>
                     </details>
                 </div>
@@ -807,7 +807,7 @@
             </div>
             <div class="modal-body pt-2">
                 <p class="text-muted small mb-3">
-                    Optional — describe what was wrong or missing. This helps improve future notes.
+                    Optional - describe what was wrong or missing. This helps improve future notes.
                     <span id="feedbackSectionLabel" class="fw-semibold text-primary"></span>
                 </p>
                 <textarea id="feedbackComment"
@@ -822,7 +822,7 @@
             </div>
             <div class="modal-footer border-0 pt-0 gap-2">
                 <button type="button" class="btn btn-outline-secondary btn-sm" id="feedbackSkipBtn">
-                    Skip — just mark it
+                    Skip - just mark it
                 </button>
                 <button type="button" class="btn btn-danger btn-sm" id="feedbackSubmitBtn">
                     <iconify-icon icon="iconamoon:send-duotone" class="me-1 align-middle"></iconify-icon>
@@ -900,7 +900,7 @@
                            value="{{ session.patient_name }}" placeholder="Name / initials" maxlength="120">
                 </div>
                 <div class="mb-3">
-                    <label class="form-label small fw-semibold mb-1">DOB / ID # <span class="text-muted fw-normal">(optional — helps distinguish same-name patients)</span></label>
+                    <label class="form-label small fw-semibold mb-1">DOB / ID # <span class="text-muted fw-normal">(optional - helps distinguish same-name patients)</span></label>
                     <input type="text" id="resumePatientId" class="form-control form-control-sm"
                            value="{{ session.patient_identifier }}" placeholder="e.g. 1990-04-21 or #MRN-001" maxlength="120">
                 </div>
@@ -931,7 +931,7 @@
 </div>
 
 <script>
-/* ── Suite alert/confirm helpers — replaces native alert()/confirm() ── */
+/* ── Suite alert/confirm helpers - replaces native alert()/confirm() ── */
 function _suiteAlert(msg, icon) {
   icon = icon || 'info';
   if (window.Swal) {
@@ -969,7 +969,7 @@ function _suiteConfirm(title, text) {
     var name = (document.getElementById('prbName') || {}).value || '';
     var complaint = (document.getElementById('prbComplaint') || {}).value || '';
     name = name.trim(); complaint = complaint.trim();
-    /* Timestamp lives in the subtitle line below — no need to repeat it in the title */
+    /* Timestamp lives in the subtitle line below - no need to repeat it in the title */
     var parts = [];
     if (name) parts.push(name);
     if (complaint) parts.push(complaint);
@@ -1077,7 +1077,7 @@ function _suiteConfirm(title, text) {
     el.style.height = (el.scrollHeight + 2) + 'px';
   }
 
-  /* Run on page load — note content already in DOM after redirect from record */
+  /* Run on page load - note content already in DOM after redirect from record */
   document.addEventListener('DOMContentLoaded', function () {
     /* Auto-resize transcript area when its tab is first shown */
     var transcriptArea = document.getElementById('transcriptArea');
@@ -1181,7 +1181,7 @@ function _suiteConfirm(title, text) {
       regenFormat = window.WELLNEST_regenFormat = this.value;
     });
   }
-  /* Length selector sync — also nudges the Regenerate button when changed */
+  /* Length selector sync - also nudges the Regenerate button when changed */
   var lengthSelect = document.getElementById('reviewLengthSelector');
   if (lengthSelect) {
     lengthSelect.addEventListener('change', function () {
@@ -1433,7 +1433,7 @@ function _suiteConfirm(title, text) {
           ? 'btn btn-warning btn-sm'
           : 'btn btn-outline-secondary btn-sm';
         sensitiveBtn.innerHTML = newVal
-          ? '<iconify-icon icon="iconamoon:lock-duotone" class="me-1 align-middle"></iconify-icon>Sensitive — click to unmark'
+          ? '<iconify-icon icon="iconamoon:lock-duotone" class="me-1 align-middle"></iconify-icon>Sensitive - click to unmark'
           : '<iconify-icon icon="iconamoon:lock-duotone" class="me-1 align-middle"></iconify-icon>Mark as sensitive';
         if (newVal) {
           var badge = document.createElement('span');
@@ -1450,7 +1450,7 @@ function _suiteConfirm(title, text) {
           if (p) p.remove();
         }
       })
-      .catch(function () { _suiteAlert('Network error — could not save.', 'error'); });
+      .catch(function () { _suiteAlert('Network error - could not save.', 'error'); });
     });
   }
 })();
@@ -1463,7 +1463,7 @@ function _suiteConfirm(title, text) {
 
   var isFinalized = (document.querySelector('[data-finalized]') || {dataset:{}}).dataset.finalized === '1';
 
-  /* Drug list — common Jamaican primary/secondary care formulary */
+  /* Drug list - common Jamaican primary/secondary care formulary */
   var DRUGS_BASE = [
     /* Antihypertensives */
     'Amlodipine','Nifedipine','Atenolol','Bisoprolol','Carvedilol','Metoprolol',
@@ -1506,7 +1506,7 @@ function _suiteConfirm(title, text) {
     'Chloramphenicol eye drops','Prednisolone eye drops',
   ];
 
-  /* Custom drugs — DB-backed (per-doctor) with localStorage cache/fallback */
+  /* Custom drugs - DB-backed (per-doctor) with localStorage cache/fallback */
   var CUSTOM_DRUGS_KEY = 'wellnest_custom_drugs_v2';
   var _customDrugsCache = (function () {
     try { return JSON.parse(localStorage.getItem(CUSTOM_DRUGS_KEY) || '[]'); } catch (e) { return []; }
@@ -1605,21 +1605,21 @@ function _suiteConfirm(title, text) {
     'Sputum AFB ×3',
     'Sputum C&S',
     /* Imaging */
-    'X-ray — Chest (PA)',
-    'X-ray — Hands / Wrists',
-    'X-ray — Foot / Ankle',
-    'X-ray — Lumbar spine',
-    'X-ray — Cervical spine',
-    'X-ray — Abdomen (erect & supine)',
-    'Ultrasound — Abdomen',
-    'Ultrasound — Pelvis',
-    'Ultrasound — Thyroid',
-    'Ultrasound — Renal tract',
-    'CT scan — Brain (non-contrast)',
-    'CT scan — Chest',
-    'CT scan — Abdomen & Pelvis',
-    'MRI — Brain',
-    'MRI — Spine',
+    'X-ray - Chest (PA)',
+    'X-ray - Hands / Wrists',
+    'X-ray - Foot / Ankle',
+    'X-ray - Lumbar spine',
+    'X-ray - Cervical spine',
+    'X-ray - Abdomen (erect & supine)',
+    'Ultrasound - Abdomen',
+    'Ultrasound - Pelvis',
+    'Ultrasound - Thyroid',
+    'Ultrasound - Renal tract',
+    'CT scan - Brain (non-contrast)',
+    'CT scan - Chest',
+    'CT scan - Abdomen & Pelvis',
+    'MRI - Brain',
+    'MRI - Spine',
     'Echocardiogram',
     'Mammogram',
     'DEXA bone density scan',
@@ -2012,7 +2012,7 @@ function _suiteConfirm(title, text) {
 {% block extra_scripts %}
 <script>
 (function () {
-  /* Capture-phase listener for #regenerateAllBtn — fires before both the
+  /* Capture-phase listener for #regenerateAllBtn - fires before both the
      wellnest.js handler and any inline handler, gives us a single clean
      entry point that respects the current regenFormat + regenLength. */
   var regenBtn = document.getElementById('regenerateAllBtn');
@@ -2348,7 +2348,7 @@ function _suiteConfirm(title, text) {
     ta.focus();
   }
 
-  /* Global selectionchange handler — more reliable than per-textarea mouseup.
+  /* Global selectionchange handler - more reliable than per-textarea mouseup.
      Fires as the user drags to select, immediately after entering edit mode. */
   var _selChangeTimer;
   document.addEventListener('selectionchange', function () {
@@ -2423,7 +2423,7 @@ function _suiteConfirm(title, text) {
         showRich(ta, rd, wrap);
       };
 
-      /* Undo button — use a verified iconamoon icon + give it a visible accent color */
+      /* Undo button - use a verified iconamoon icon + give it a visible accent color */
       var section = ta.closest('.note-section');
       if (section) {
         var actions = section.querySelector('.note-section-actions');
@@ -2495,7 +2495,7 @@ function _suiteConfirm(title, text) {
     stepPatient.classList.toggle('d-none', step !== 'patient');
     stepRecord.classList.toggle('d-none', step !== 'record');
     if (_newSessionMode) {
-      resumeTitle.textContent = 'New recording' + (_resumePatient.name ? ' — ' + _resumePatient.name : '');
+      resumeTitle.textContent = 'New recording' + (_resumePatient.name ? ' - ' + _resumePatient.name : '');
     } else {
       resumeTitle.textContent = step === 'patient' ? 'Who is this session for?' : 'Resume session';
     }
@@ -2531,7 +2531,7 @@ function _suiteConfirm(title, text) {
       _running = true;
       resumeLabel.textContent = 'Stop';
       resumeRecordBtn.classList.add('is-recording');
-      resumeStatus.textContent = 'Recording — speak clearly.';
+      resumeStatus.textContent = 'Recording - speak clearly.';
       startWave(stream);
       _timerInt = setInterval(function () { _elapsed++; resumeTimer.textContent = fmt(_elapsed); }, 1000);
     }).catch(function (err) { resumeStatus.textContent = 'Microphone denied: ' + err.message; });
@@ -2580,7 +2580,7 @@ function _suiteConfirm(title, text) {
       });
       var d2 = await r2.json();
       if (!d2.ok) throw new Error(d2.error || 'Generation failed');
-      resumeStatus.textContent = 'Done — reloading…';
+      resumeStatus.textContent = 'Done - reloading…';
       if (_bsModal) _bsModal.hide();
       window.location.reload();
     } catch (err) {
@@ -2603,7 +2603,7 @@ function _suiteConfirm(title, text) {
       });
       var d = await r.json();
       if (!d.ok) throw new Error(d.error || 'Session creation failed');
-      resumeStatus.textContent = 'New session created — opening…';
+      resumeStatus.textContent = 'New session created - opening…';
       setTimeout(function () {
         if (_bsModal) _bsModal.hide();
         window.location.href = '/scribe/sessions/' + d.session_id + '/review/';
@@ -2686,7 +2686,7 @@ function _suiteConfirm(title, text) {
   btn.dataset.patientGender = gender;
   if (sub) sub.textContent = 'Reviewing previous visit for ' + newFor;
   banner.classList.remove('d-none');
-  /* Resume is only meaningful for in-progress sessions — hide it here */
+  /* Resume is only meaningful for in-progress sessions - hide it here */
   if (resumeBtn) resumeBtn.classList.add('d-none');
   history.replaceState(null, '', window.location.pathname);
 })();
@@ -2707,7 +2707,7 @@ function _suiteConfirm(title, text) {
   var feedbackSubmitBtn = document.getElementById('feedbackSubmitBtn');
   var feedbackSkipBtn = document.getElementById('feedbackSkipBtn');
 
-  // Hidden trigger button — opens the modal using Bootstrap's own data-API
+  // Hidden trigger button - opens the modal using Bootstrap's own data-API
   // instead of calling new bootstrap.Modal() which can fail on load order.
   var _fbTrigger = document.createElement('button');
   _fbTrigger.type = 'button';
@@ -2759,7 +2759,7 @@ function _suiteConfirm(title, text) {
       postRating(section, 'up', '');
       markBtn(btn, 'up');
     } else {
-      // thumbs down — show optional comment modal
+      // thumbs down - show optional comment modal
       _pendingSection = { section: section, btn: btn };
       if (feedbackComment) feedbackComment.value = '';
       if (feedbackCharCount) feedbackCharCount.textContent = '0';
@@ -2803,7 +2803,7 @@ function _suiteConfirm(title, text) {
 [data-thumb].thumb-active-down { color: #dc3545; }
 [data-thumb].thumb-active-up iconify-icon,
 [data-thumb].thumb-active-down iconify-icon { filter: drop-shadow(0 0 3px currentColor); }
-/* Bracket placeholders — visual cue that they're clickable */
+/* Bracket placeholders - visual cue that they're clickable */
 .bk-hl { cursor: pointer; text-decoration: underline dotted rgba(13,110,253,0.5); }
 </style>
 {% endblock %}

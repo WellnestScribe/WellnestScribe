@@ -40,7 +40,7 @@ class NewVisitForm(BootstrapMixin, forms.ModelForm):
         max_length=200,
         required=False,
         label="Patient name (if not in EMR)",
-        widget=forms.TextInput(attrs={"placeholder": "John Doe — fill if not found in EMR search"}),
+        widget=forms.TextInput(attrs={"placeholder": "John Doe - fill if not found in EMR search"}),
     )
 
     class Meta:
@@ -99,18 +99,18 @@ class TriageAssessmentForm(BootstrapMixin, forms.ModelForm):
             "rr_rpm": forms.NumberInput(attrs={"placeholder": "16"}),
             "spo2_percent": forms.NumberInput(attrs={"step": "0.1", "placeholder": "98"}),
             "weight_kg": forms.NumberInput(attrs={"step": "0.1", "placeholder": "70"}),
-            "pain_score": forms.NumberInput(attrs={"min": 0, "max": 10, "placeholder": "0–10"}),
+            "pain_score": forms.NumberInput(attrs={"min": 0, "max": 10, "placeholder": "0-10"}),
             "blood_glucose_mmol": forms.NumberInput(attrs={"step": "0.1", "placeholder": "5.5"}),
             "gcs_eye": forms.Select(
-                choices=[("", "—")] + [(i, f"{i}") for i in range(1, 5)],
+                choices=[("", "-")] + [(i, f"{i}") for i in range(1, 5)],
                 attrs={"class": "form-select"},
             ),
             "gcs_verbal": forms.Select(
-                choices=[("", "—")] + [(i, f"{i}") for i in range(1, 6)],
+                choices=[("", "-")] + [(i, f"{i}") for i in range(1, 6)],
                 attrs={"class": "form-select"},
             ),
             "gcs_motor": forms.Select(
-                choices=[("", "—")] + [(i, f"{i}") for i in range(1, 7)],
+                choices=[("", "-")] + [(i, f"{i}") for i in range(1, 7)],
                 attrs={"class": "form-select"},
             ),
             "allergies": forms.TextInput(attrs={"placeholder": "e.g. Penicillin (anaphylaxis), Ibuprofen (rash)"}),
@@ -129,25 +129,25 @@ class TriageAssessmentForm(BootstrapMixin, forms.ModelForm):
     def clean_pain_score(self):
         val = self.cleaned_data.get("pain_score")
         if val is not None and not (0 <= val <= 10):
-            raise forms.ValidationError("Pain score must be 0–10.")
+            raise forms.ValidationError("Pain score must be 0-10.")
         return val
 
     def clean_gcs_eye(self):
         val = self.cleaned_data.get("gcs_eye")
         if val is not None and not (1 <= val <= 4):
-            raise forms.ValidationError("GCS Eye must be 1–4.")
+            raise forms.ValidationError("GCS Eye must be 1-4.")
         return val
 
     def clean_gcs_verbal(self):
         val = self.cleaned_data.get("gcs_verbal")
         if val is not None and not (1 <= val <= 5):
-            raise forms.ValidationError("GCS Verbal must be 1–5.")
+            raise forms.ValidationError("GCS Verbal must be 1-5.")
         return val
 
     def clean_gcs_motor(self):
         val = self.cleaned_data.get("gcs_motor")
         if val is not None and not (1 <= val <= 6):
-            raise forms.ValidationError("GCS Motor must be 1–6.")
+            raise forms.ValidationError("GCS Motor must be 1-6.")
         return val
 
 

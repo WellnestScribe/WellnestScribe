@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Note Feedback — WellNest Scribe{% endblock %}
+{% block title %}Note Feedback - WellNest Scribe{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-4">
@@ -26,13 +26,13 @@
     </div>
     <div class="col-auto">
       <div class="card border-0 shadow-sm px-4 py-3 text-center">
-        <div class="fw-bold fs-4 text-danger" id="downCount">—</div>
+        <div class="fw-bold fs-4 text-danger" id="downCount">-</div>
         <div class="small text-muted">Needs improvement</div>
       </div>
     </div>
     <div class="col-auto">
       <div class="card border-0 shadow-sm px-4 py-3 text-center">
-        <div class="fw-bold fs-4 text-primary" id="commentCount">—</div>
+        <div class="fw-bold fs-4 text-primary" id="commentCount">-</div>
         <div class="small text-muted">With comments</div>
       </div>
     </div>
@@ -94,7 +94,7 @@
                 {% if fb.comment %}
                   <span style="white-space:pre-wrap;">{{ fb.comment }}</span>
                 {% else %}
-                  <span class="text-muted" style="font-style:italic;">—</span>
+                  <span class="text-muted" style="font-style:italic;">-</span>
                 {% endif %}
               </td>
               <td class="text-muted text-nowrap">{{ fb.created_at|date:"M d, H:i" }}</td>

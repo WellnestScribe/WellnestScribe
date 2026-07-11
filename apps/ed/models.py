@@ -29,9 +29,9 @@ ARRIVAL_MODE_CHOICES = [
 ]
 
 VISIT_STATUS_CHOICES = [
-    ("arrived", "Arrived – awaiting triage"),
-    ("triaged", "Triaged – awaiting zone"),
-    ("in_zone", "In zone – awaiting doctor"),
+    ("arrived", "Arrived - awaiting triage"),
+    ("triaged", "Triaged - awaiting zone"),
+    ("in_zone", "In zone - awaiting doctor"),
     ("with_doctor", "With doctor"),
     ("disposition_pending", "Disposition pending"),
     ("discharged", "Discharged"),
@@ -51,11 +51,11 @@ ZONE_CHOICES = [
 ]
 
 ESI_CHOICES = [
-    (1, "ESI 1 — Immediate"),
-    (2, "ESI 2 — Emergent"),
-    (3, "ESI 3 — Urgent"),
-    (4, "ESI 4 — Less Urgent"),
-    (5, "ESI 5 — Non-urgent"),
+    (1, "ESI 1 - Immediate"),
+    (2, "ESI 2 - Emergent"),
+    (3, "ESI 3 - Urgent"),
+    (4, "ESI 4 - Less Urgent"),
+    (5, "ESI 5 - Non-urgent"),
 ]
 
 MECHANISM_CHOICES = [
@@ -86,22 +86,22 @@ PREGNANT_CHOICES = [
 ]
 
 DISPOSITION_CHOICES = [
-    ("discharge_home", "DH — Discharge home"),
-    ("admit_general", "AW — Admit: general ward"),
-    ("admit_icu", "AI — Admit: ICU"),
-    ("admit_hdu", "AH — Admit: HDU"),
-    ("admit_paeds", "AP — Admit: paediatric ward"),
-    ("admit_maternity", "AM — Admit: maternity"),
-    ("transfer", "TR — Transfer to facility"),
-    ("dama", "DA — Discharged against medical advice"),
-    ("absconded", "AB — Absconded"),
-    ("deceased", "DC — Deceased"),
+    ("discharge_home", "DH - Discharge home"),
+    ("admit_general", "AW - Admit: general ward"),
+    ("admit_icu", "AI - Admit: ICU"),
+    ("admit_hdu", "AH - Admit: HDU"),
+    ("admit_paeds", "AP - Admit: paediatric ward"),
+    ("admit_maternity", "AM - Admit: maternity"),
+    ("transfer", "TR - Transfer to facility"),
+    ("dama", "DA - Discharged against medical advice"),
+    ("absconded", "AB - Absconded"),
+    ("deceased", "DC - Deceased"),
 ]
 
 SHIFT_TYPE_CHOICES = [
-    ("day", "Day (07:00 – 15:00)"),
-    ("evening", "Evening (15:00 – 23:00)"),
-    ("night", "Night (23:00 – 07:00)"),
+    ("day", "Day (07:00 - 15:00)"),
+    ("evening", "Evening (15:00 - 23:00)"),
+    ("night", "Night (23:00 - 07:00)"),
 ]
 
 
@@ -223,7 +223,7 @@ class EDVisit(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.visit_number} — {self.display_name}"
+        return f"{self.visit_number} - {self.display_name}"
 
     def save(self, *args, **kwargs):
         if not self.visit_number:
@@ -557,7 +557,7 @@ class EDShift(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.get_shift_type_display()} — {self.shift_date}"
+        return f"{self.get_shift_type_display()} - {self.shift_date}"
 
     @property
     def is_open(self) -> bool:
@@ -602,4 +602,4 @@ class ShiftHandoverNote(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"Handover {self.outgoing_shift} — {self.visit.visit_number}"
+        return f"Handover {self.outgoing_shift} - {self.visit.visit_number}"

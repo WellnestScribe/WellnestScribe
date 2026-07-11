@@ -90,7 +90,7 @@ class Organisation(TimestampedModel):
     @property
     def scribe_enabled(self) -> bool:
         """AI scribe (note generation) allowed? Off only when explicitly
-        suspended/cancelled — EMR record access is NEVER gated on billing."""
+        suspended/cancelled - EMR record access is NEVER gated on billing."""
         return self.subscription_status not in {"suspended", "cancelled"}
 
 
@@ -129,7 +129,7 @@ class OrganisationMembership(TimestampedModel):
         """Django superuser/staff bypass every EMR role gate.
 
         A platform owner (superuser) must never be blocked from clinical
-        actions by their organisation membership role — otherwise a solo
+        actions by their organisation membership role - otherwise a solo
         admin-owner can't document their own encounters.
         """
         u = self.user
@@ -256,7 +256,7 @@ class Patient(OrganisationScopedModel):
 
     @property
     def mrn(self) -> str:
-        """Docket / medical record number — stable, unique, human-friendly.
+        """Docket / medical record number - stable, unique, human-friendly.
 
         Derived from the row id so it never collides and needs no migration.
         Shown in the record picker and chart so two same-name patients are
@@ -428,7 +428,7 @@ class EncounterAddendum(OrganisationScopedModel):
     """Append-only note added to an encounter after it was signed.
 
     Lets a clinician add a correction/addition without altering the immutable
-    signed record — the original stays intact; addenda are shown alongside it.
+    signed record - the original stays intact; addenda are shown alongside it.
     """
 
     encounter = models.ForeignKey(

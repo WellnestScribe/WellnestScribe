@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Latency Log — WellNest Scribe{% endblock %}
+{% block title %}Latency Log - WellNest Scribe{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-4">
@@ -62,7 +62,7 @@
               <td class="text-center">
                 {% if t.audio_seconds %}
                   <span class="badge bg-secondary bg-opacity-25 text-body">{{ t.audio_seconds|floatformat:0 }} s</span>
-                {% else %}—{% endif %}
+                {% else %}-{% endif %}
               </td>
 
               {# Transcription RTT (Modal GPU) #}
@@ -73,7 +73,7 @@
                     {{ ms|floatformat:"-0" }} ms
                   </span>
                   {% endwith %}
-                {% else %}—{% endif %}
+                {% else %}-{% endif %}
               </td>
 
               {# RTFx #}
@@ -82,7 +82,7 @@
                   <span class="text-{% if t.realtime_factor >= 8 %}success{% elif t.realtime_factor >= 4 %}warning{% else %}danger{% endif %}">
                     {{ t.realtime_factor|floatformat:1 }}×
                   </span>
-                {% else %}—{% endif %}
+                {% else %}-{% endif %}
               </td>
 
               {# Interpret (GPT-5 call 1) #}
@@ -93,7 +93,7 @@
                     {{ ms|floatformat:"-0" }} ms
                   </span>
                   {% endwith %}
-                {% else %}<span class="text-muted">—</span>{% endif %}
+                {% else %}<span class="text-muted">-</span>{% endif %}
               </td>
 
               {# SOAP generation (GPT-5 call 2) #}
@@ -104,7 +104,7 @@
                     {{ ms|floatformat:"-0" }} ms
                   </span>
                   {% endwith %}
-                {% else %}<span class="text-muted">—</span>{% endif %}
+                {% else %}<span class="text-muted">-</span>{% endif %}
               </td>
 
               {# Total generation (interpret + SOAP) #}
@@ -115,7 +115,7 @@
                     {{ ms|floatformat:"-0" }} ms
                   </span>
                   {% endwith %}
-                {% else %}—{% endif %}
+                {% else %}-{% endif %}
               </td>
 
               {# Pipeline mode #}
@@ -126,7 +126,7 @@
                   <span class="badge bg-purple text-white" style="background:#6f42c1!important">stream</span>
                 {% elif t.pipeline_mode %}
                   <span class="badge bg-primary bg-opacity-25 text-primary">{{ t.pipeline_mode }}</span>
-                {% else %}—{% endif %}
+                {% else %}-{% endif %}
               </td>
 
               <td class="text-muted">{{ session.created_at|date:"M d, H:i" }}</td>

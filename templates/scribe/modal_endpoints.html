@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Modal Endpoints — WellNest Scribe{% endblock %}
+{% block title %}Modal Endpoints - WellNest Scribe{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-4">
@@ -27,19 +27,19 @@
     </div>
     <div class="col-auto">
       <div class="card border-0 shadow-sm px-4 py-3 text-center">
-        <div class="fw-bold fs-4 text-success" id="statActiveCount">—</div>
+        <div class="fw-bold fs-4 text-success" id="statActiveCount">-</div>
         <div class="small text-muted">Active</div>
       </div>
     </div>
     <div class="col-auto">
       <div class="card border-0 shadow-sm px-4 py-3 text-center">
-        <div class="fw-bold fs-4 text-danger" id="statExhausted">—</div>
+        <div class="fw-bold fs-4 text-danger" id="statExhausted">-</div>
         <div class="small text-muted">Exhausted</div>
       </div>
     </div>
     <div class="col-auto">
       <div class="card border-0 shadow-sm px-4 py-3 text-center">
-        <div class="fw-bold fs-4 text-secondary" id="statDisabled">—</div>
+        <div class="fw-bold fs-4 text-secondary" id="statDisabled">-</div>
         <div class="small text-muted">Disabled</div>
       </div>
     </div>
@@ -63,12 +63,12 @@
             <li>Authenticate: <code>modal token new</code></li>
             <li>Deploy the Omni app from the <code>deploy/lightning_speech_api/</code> folder:<br>
                 <code>modal deploy modal_app_omni.py</code></li>
-            <li>Copy the URL printed after deploy — it looks like:<br>
+            <li>Copy the URL printed after deploy - it looks like:<br>
                 <code>https://&lt;workspace&gt;--wellnest-speech-api-modal-omni-fastapi-app-omni.modal.run</code></li>
             <li>Find your API key in Modal dashboard → <strong>Settings → API tokens</strong>, or create one.</li>
             <li>Paste the URL and key into the <strong>Add endpoint</strong> form above and click <strong>Test endpoint</strong> first.</li>
           </ol>
-          <p class="mb-0 text-muted">You can paste the full URL with any path (e.g. <code>/health</code>, <code>/transcribe/omni/file</code>) — we extract the base automatically.</p>
+          <p class="mb-0 text-muted">You can paste the full URL with any path (e.g. <code>/health</code>, <code>/transcribe/omni/file</code>) - we extract the base automatically.</p>
         </div>
       </div>
     </div>
@@ -253,7 +253,7 @@
         <div class="mb-3">
           <label class="form-label fw-semibold">Modal URL <span class="text-danger">*</span></label>
           <input type="url" id="addUrl" class="form-control" placeholder="https://workspace--wellnest-speech-api-modal-omni-fastapi-app-omni.modal.run">
-          <div class="form-text">Paste any URL from the Modal deploy — we strip the path automatically.</div>
+          <div class="form-text">Paste any URL from the Modal deploy - we strip the path automatically.</div>
         </div>
         <div class="mb-3">
           <label class="form-label fw-semibold">API Key <span class="text-danger">*</span></label>
@@ -272,7 +272,7 @@
         </div>
         <div class="mb-3">
           <label class="form-label fw-semibold">Notes</label>
-          <input type="text" id="addNotes" class="form-control" placeholder="Optional — e.g. manidoncreed workspace">
+          <input type="text" id="addNotes" class="form-control" placeholder="Optional - e.g. manidoncreed workspace">
         </div>
 
         {# Validation result area #}
@@ -347,7 +347,7 @@
     })
     .then(function (r) { return r.json(); })
     .then(function (d) {
-      d.ok ? showValidateResult(true, 'Endpoint reachable — health check passed.', d.health)
+      d.ok ? showValidateResult(true, 'Endpoint reachable - health check passed.', d.health)
            : showValidateResult(false, d.error || 'Health check failed.');
     })
     .catch(function (e) { showValidateResult(false, 'Network error: ' + e.message); })

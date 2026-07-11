@@ -60,10 +60,10 @@
                         {% for m in note.body_markers %}
                             <tr>
                                 <td class="fw-semibold">{{ forloop.counter }}</td>
-                                <td>{{ m.wound_type|default:"—" }}</td>
+                                <td>{{ m.wound_type|default:"-" }}</td>
                                 <td>{{ m.length_cm|default:"" }}{% if m.width_cm %}×{{ m.width_cm }}{% endif %}{% if m.depth_cm %}×{{ m.depth_cm }}{% endif %}</td>
                                 <td>{{ m.exudate|default:"" }}{% if m.exudate_type %} / {{ m.exudate_type }}{% endif %}</td>
-                                <td>{{ m.treatment_goal|default:"—" }}</td>
+                                <td>{{ m.treatment_goal|default:"-" }}</td>
                                 <td>{{ m.notes|default:"" }}{% if m.referred_to %}<br><span class="text-muted">→ {{ m.referred_to }}</span>{% endif %}</td>
                             </tr>
                         {% endfor %}
@@ -81,7 +81,7 @@
             {% endif %}
 
             <p class="text-muted small mt-3 mb-0">
-                AI-generated draft — review and edit required before clinical use.
+                AI-generated draft - review and edit required before clinical use.
             </p>
         </div>
     </div>

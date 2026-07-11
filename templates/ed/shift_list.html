@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Shifts — WellNest ED{% endblock %}
+{% block title %}Shifts - WellNest ED{% endblock %}
 
 {% block content %}
 <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
@@ -19,8 +19,8 @@
 <div class="alert alert-success d-flex align-items-center gap-3 mb-3">
   <iconify-icon icon="iconamoon:time-duotone" style="font-size:1.5rem;"></iconify-icon>
   <div class="flex-grow-1">
-    <strong>Open shift:</strong> {{ current_shift.get_shift_type_display }} — {{ current_shift.shift_date|date:"d M Y" }}
-    · Charge: {{ current_shift.charge_nurse.get_full_name|default:current_shift.charge_nurse.username|default:"—" }}
+    <strong>Open shift:</strong> {{ current_shift.get_shift_type_display }} - {{ current_shift.shift_date|date:"d M Y" }}
+    · Charge: {{ current_shift.charge_nurse.get_full_name|default:current_shift.charge_nurse.username|default:"-" }}
     · Opened: {{ current_shift.opened_at|date:"H:i" }}
   </div>
   <div class="d-flex gap-2">
@@ -95,10 +95,10 @@
         <tr>
           <td>{{ shift.shift_date|date:"d M Y" }}</td>
           <td>{{ shift.get_shift_type_display }}</td>
-          <td>{{ shift.charge_nurse.get_full_name|default:shift.charge_nurse.username|default:"—" }}</td>
+          <td>{{ shift.charge_nurse.get_full_name|default:shift.charge_nurse.username|default:"-" }}</td>
           <td>{{ shift.opened_at|date:"H:i" }}</td>
           <td>{% if shift.closed_at %}{{ shift.closed_at|date:"H:i" }}{% else %}<span class="badge bg-success">Open</span>{% endif %}</td>
-          <td>{{ shift.census_at_close|default:"—" }}</td>
+          <td>{{ shift.census_at_close|default:"-" }}</td>
           <td>
             <a href="{% url 'ed:handover' shift.pk %}" class="btn btn-sm btn-outline-secondary">Handover</a>
           </td>

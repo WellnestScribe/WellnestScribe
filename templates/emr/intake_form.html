@@ -7,8 +7,8 @@
     <div class="page-title-box d-flex align-items-start justify-content-between flex-wrap gap-3">
         <div>
             <h4 class="mb-1 fw-semibold">
-                Intake — {{ patient.display_name }}
-                {% if already_in_queue %}<span class="badge bg-info-subtle text-info align-middle">Already in queue — editing</span>{% endif %}
+                Intake - {{ patient.display_name }}
+                {% if already_in_queue %}<span class="badge bg-info-subtle text-info align-middle">Already in queue - editing</span>{% endif %}
             </h4>
             <p class="text-muted small mb-0">
                 {{ patient.age_display }} yrs · {{ patient.get_sex_display }} · MRN {{ patient.mrn }}
@@ -37,7 +37,7 @@
                         <div class="col-12">
                             <div class="d-flex align-items-center justify-content-between">
                                 <label class="form-label small text-muted mb-1" for="chief_complaint">
-                                    Chief complaint — what the patient says is wrong
+                                    Chief complaint - what the patient says is wrong
                                 </label>
                                 <button type="button" id="chiefComplaintMic" class="btn btn-outline-secondary btn-sm py-0 px-2"
                                         title="Dictate the complaint">
@@ -60,7 +60,7 @@
                         <div class="col-6 col-md-3"><label class="form-label small text-muted">Glucose (mmol/L)</label>{{ vitals_form.blood_glucose_mmol }}</div>
                     </div>
                     <p class="text-muted small mb-0 mt-3">
-                        Fill only what you measured — every field is optional. Diagnosis, exam, and the note are the doctor's part.
+                        Fill only what you measured - every field is optional. Diagnosis, exam, and the note are the doctor's part.
                     </p>
                 </div>
             </div>
@@ -76,7 +76,7 @@
                     </p>
                     {% if last_vitals %}
                         <div class="alert alert-light border small mb-3">
-                            Last vitals: BP {{ last_vitals.bp_systolic|default:"—" }}/{{ last_vitals.bp_diastolic|default:"—" }},
+                            Last vitals: BP {{ last_vitals.bp_systolic|default:"-" }}/{{ last_vitals.bp_diastolic|default:"-" }},
                             {{ last_vitals.recorded_at|date:"M j" }}
                         </div>
                     {% endif %}
@@ -93,7 +93,7 @@
 </div>
 
 <script>
-// Placeholder mic — voice dictation for the chief complaint is on the roadmap.
+// Placeholder mic - voice dictation for the chief complaint is on the roadmap.
 // No recording happens yet; this just tells the nurse it's coming.
 (function () {
   var mic = document.getElementById('chiefComplaintMic');

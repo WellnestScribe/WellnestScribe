@@ -221,7 +221,7 @@ def demo_control_api(request):
     """Admin-only: set the platform-wide demo mode (off / limited / locked).
 
     Powers the 'Demo mode' card on the profile page so an admin can lock the
-    platform down from the UI during a public pitch — no redeploy needed.
+    platform down from the UI during a public pitch - no redeploy needed.
     """
     try:
         body = json.loads(request.body)
@@ -553,7 +553,7 @@ def billing_view(request):
     """Manual subscription / billing management (no processor yet).
 
     Admins set each facility's tier, status, seats, paid-through date and notes.
-    Suspending a facility turns OFF the AI scribe only — EMR record access is
+    Suspending a facility turns OFF the AI scribe only - EMR record access is
     never gated on billing (patient safety).
     """
     profile = getattr(request.user, "doctor_profile", None)

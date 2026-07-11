@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Export — {{ visit.visit_number }} — WellNest{% endblock %}
+{% block title %}Export - {{ visit.visit_number }} - WellNest{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -23,7 +23,7 @@
     <iconify-icon icon="iconamoon:arrow-left-2-duotone"></iconify-icon>
   </a>
   <div>
-    <h5 class="mb-0 fw-semibold">Export &amp; Transfer — {{ visit.visit_number }}</h5>
+    <h5 class="mb-0 fw-semibold">Export &amp; Transfer - {{ visit.visit_number }}</h5>
     <small class="text-muted">{{ visit.display_name }} · {{ visit.arrived_at|date:"d M Y H:i" }}</small>
   </div>
 </div>
@@ -40,7 +40,7 @@
           <iconify-icon icon="iconamoon:clipboard-duotone" style="font-size:1.6rem; flex-shrink:0; margin-top:2px;"></iconify-icon>
           <div class="flex-grow-1">
             <div class="fw-semibold">Clinical Summary</div>
-            <div class="small text-muted mb-2">Formatted text block — paste into any EHR notes field or referral letter.</div>
+            <div class="small text-muted mb-2">Formatted text block - paste into any EHR notes field or referral letter.</div>
             <button class="btn btn-sm btn-outline-primary copy-btn" onclick="copySummary('text')">
               <iconify-icon icon="iconamoon:copy-duotone" class="me-1"></iconify-icon>Copy text
             </button>

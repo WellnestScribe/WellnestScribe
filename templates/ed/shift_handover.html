@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Shift Handover — {{ shift }} — WellNest{% endblock %}
+{% block title %}Shift Handover - {{ shift }} - WellNest{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -23,11 +23,11 @@
   <div class="flex-grow-1">
     <h4 class="mb-0 fw-bold">
       <iconify-icon icon="iconamoon:swap-duotone" class="me-1"></iconify-icon>
-      Shift Handover — {{ shift }}
+      Shift Handover - {{ shift }}
     </h4>
     <small class="text-muted">
       {{ active_count }} active patient{{ active_count|pluralize }} ·
-      Charge nurse: {{ shift.charge_nurse.get_full_name|default:shift.charge_nurse.username|default:"—" }} ·
+      Charge nurse: {{ shift.charge_nurse.get_full_name|default:shift.charge_nurse.username|default:"-" }} ·
       Opened: {{ shift.opened_at|date:"H:i" }}
     </small>
   </div>
@@ -74,22 +74,22 @@
 
           <!-- SBAR fields -->
           <div class="sbar-section">
-            <div class="sbar-label">S — Situation</div>
+            <div class="sbar-label">S - Situation</div>
             <textarea name="{{ item.form.situation.html_name }}" class="form-control form-control-sm border-0 p-0" rows="2"
                       style="background:transparent;resize:none;">{{ item.form.situation.value|default:'' }}</textarea>
           </div>
           <div class="sbar-section">
-            <div class="sbar-label">B — Background</div>
+            <div class="sbar-label">B - Background</div>
             <textarea name="{{ item.form.background.html_name }}" class="form-control form-control-sm border-0 p-0" rows="2"
                       style="background:transparent;resize:none;">{{ item.form.background.value|default:'' }}</textarea>
           </div>
           <div class="sbar-section">
-            <div class="sbar-label">A — Assessment</div>
+            <div class="sbar-label">A - Assessment</div>
             <textarea name="{{ item.form.assessment.html_name }}" class="form-control form-control-sm border-0 p-0" rows="2"
                       style="background:transparent;resize:none;">{{ item.form.assessment.value|default:'' }}</textarea>
           </div>
           <div class="sbar-section">
-            <div class="sbar-label">R — Recommendation</div>
+            <div class="sbar-label">R - Recommendation</div>
             <textarea name="{{ item.form.recommendation.html_name }}" class="form-control form-control-sm border-0 p-0" rows="2"
                       style="background:transparent;resize:none;">{{ item.form.recommendation.value|default:'' }}</textarea>
           </div>
@@ -120,7 +120,7 @@
   {% else %}
   <div class="alert alert-success text-center py-4">
     <iconify-icon icon="iconamoon:check-circle-1-duotone" style="font-size:2rem;"></iconify-icon>
-    <div class="mt-2">No active patients — department is clear.</div>
+    <div class="mt-2">No active patients - department is clear.</div>
   </div>
   {% endif %}
 </form>

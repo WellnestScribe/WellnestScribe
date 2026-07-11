@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}ED Tracking Board — WellNest{% endblock %}
+{% block title %}ED Tracking Board - WellNest{% endblock %}
 
 {% block extra_head %}
 <style>
   /* Board scrolls horizontally when font scale is large or viewport is narrow */
   #zone-board-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  /* Hide scrollbar when not needed — visible only while actually scrolling */
+  /* Hide scrollbar when not needed - visible only while actually scrolling */
   #zone-board-scroll::-webkit-scrollbar { height: 4px; }
   #zone-board-scroll::-webkit-scrollbar-thumb { background: var(--bs-secondary-bg); border-radius: 4px; }
   #zone-board-scroll { scrollbar-width: thin; scrollbar-color: var(--bs-secondary-bg) transparent; }
@@ -70,7 +70,7 @@
       <iconify-icon icon="iconamoon:monitor-duotone" class="me-1"></iconify-icon>
       ED Tracking Board
     </h4>
-    <small id="board-timestamp" class="text-muted">Live — refreshes every 30 s</small>
+    <small id="board-timestamp" class="text-muted">Live - refreshes every 30 s</small>
   </div>
   <div class="d-flex gap-2 align-items-center flex-wrap">
     {% if current_shift %}
@@ -108,7 +108,7 @@
 </div>
 {% else %}
 
-<!-- Board grid — horizontal scroll at large font or narrow viewport -->
+<!-- Board grid - horizontal scroll at large font or narrow viewport -->
 <div id="zone-board-scroll">
 <div id="zone-board" style="display:flex;gap:8px;flex-wrap:nowrap;align-items:stretch;">
 

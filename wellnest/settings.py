@@ -482,3 +482,27 @@ LOGGING = {
         },
     },
 }
+
+# ── Email / SMTP (appointment reminders, notifications) ──────────────────────
+# Credentials are set later via env vars. Until EMAIL_HOST is provided, email
+# falls back to the console backend so the reminder feature runs end-to-end in
+# dev (messages print to the server log) without silently failing.
+EMAIL_HOST = config("EMAIL_HOST", default="")
+EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
+EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
+EMAIL_USE_SSL = config("EMAIL_USE_SSL", default=False, cast=bool)
+DEFAULT_FROM_EMAIL = config(
+    "DEFAULT_FROM_EMAIL", default="WellNest <no-reply@wellnest.health>"
+)
+EMAIL_BACKEND = config(
+    "EMAIL_BACKEND",
+    default=(
+        "django.core.mail.backends.smtp.EmailBackend"
+        if EMAIL_HOST
+        else "django.core.mail.backends.console.EmailBackend"
+    ),
+)
+# Clinic-facing base URL used in reminder emails (links back to the app).
+WELLNEST_PUBLIC_BASE_URL = config("WELLNEST_PUBLIC_BASE_URL", default="")

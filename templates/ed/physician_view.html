@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Physician View — {{ visit.visit_number }} — WellNest{% endblock %}
+{% block title %}Physician View - {{ visit.visit_number }} - WellNest{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -25,7 +25,7 @@
   <div class="flex-grow-1">
     <h4 class="mb-0 fw-bold">
       <iconify-icon icon="iconamoon:profile-duotone" class="me-1"></iconify-icon>
-      Physician View — {{ visit.visit_number }}
+      Physician View - {{ visit.visit_number }}
     </h4>
     <small class="text-muted">
       {{ visit.display_name }} ·
@@ -50,7 +50,7 @@
 {% elif triage and triage.allergy_nkda %}
 <div class="alert alert-success-subtle border border-success-subtle py-2 mb-3 d-flex align-items-center gap-2">
   <iconify-icon icon="iconamoon:check-circle-1-duotone" class="text-success"></iconify-icon>
-  NKDA — No known drug allergies
+  NKDA - No known drug allergies
 </div>
 {% endif %}
 
@@ -72,7 +72,7 @@
           <div class="abcde-item p-2 rounded border" id="check-a">
             <div class="d-flex align-items-center gap-2 mb-1">
               <input class="form-check-input abcde-check" type="checkbox" id="cb-a">
-              <label class="fw-bold text-danger mb-0" for="cb-a">A — Airway</label>
+              <label class="fw-bold text-danger mb-0" for="cb-a">A - Airway</label>
             </div>
             <div class="text-muted ps-4">Patent? Stridor? Swelling? Obstruction? Can they speak?</div>
           </div>
@@ -81,10 +81,10 @@
           <div class="abcde-item p-2 rounded border" id="check-b">
             <div class="d-flex align-items-center gap-2 mb-1">
               <input class="form-check-input abcde-check" type="checkbox" id="cb-b">
-              <label class="fw-bold text-warning mb-0" for="cb-b">B — Breathing</label>
+              <label class="fw-bold text-warning mb-0" for="cb-b">B - Breathing</label>
             </div>
             <div class="text-muted ps-4">RR · SpO₂ · Breath sounds · Chest rise · Accessory muscles?
-              {% if triage %}<span class="badge bg-body border ms-1">RR {{ triage.rr_rpm|default:"—" }} · SpO₂ {{ triage.spo2_percent|default:"—" }}%</span>{% endif %}
+              {% if triage %}<span class="badge bg-body border ms-1">RR {{ triage.rr_rpm|default:"-" }} · SpO₂ {{ triage.spo2_percent|default:"-" }}%</span>{% endif %}
             </div>
           </div>
         </div>
@@ -92,10 +92,10 @@
           <div class="abcde-item p-2 rounded border" id="check-c">
             <div class="d-flex align-items-center gap-2 mb-1">
               <input class="form-check-input abcde-check" type="checkbox" id="cb-c">
-              <label class="fw-bold text-primary mb-0" for="cb-c">C — Circulation</label>
+              <label class="fw-bold text-primary mb-0" for="cb-c">C - Circulation</label>
             </div>
             <div class="text-muted ps-4">HR · BP · Capillary refill · Skin colour · Bleeding?
-              {% if triage %}<span class="badge bg-body border ms-1">HR {{ triage.pulse_bpm|default:"—" }} · BP {{ triage.bp_systolic|default:"—" }}/{{ triage.bp_diastolic|default:"—" }}</span>{% endif %}
+              {% if triage %}<span class="badge bg-body border ms-1">HR {{ triage.pulse_bpm|default:"-" }} · BP {{ triage.bp_systolic|default:"-" }}/{{ triage.bp_diastolic|default:"-" }}</span>{% endif %}
             </div>
           </div>
         </div>
@@ -103,10 +103,10 @@
           <div class="abcde-item p-2 rounded border" id="check-d">
             <div class="d-flex align-items-center gap-2 mb-1">
               <input class="form-check-input abcde-check" type="checkbox" id="cb-d">
-              <label class="fw-bold text-success mb-0" for="cb-d">D — Disability (Neuro)</label>
+              <label class="fw-bold text-success mb-0" for="cb-d">D - Disability (Neuro)</label>
             </div>
             <div class="text-muted ps-4">GCS · Pupils · AVPU · Focal deficits? Blood glucose?
-              {% if triage %}<span class="badge bg-body border ms-1">GCS {{ triage.gcs_total|default:"—" }} · BGL {{ triage.blood_glucose_mmol|default:"—" }}</span>{% endif %}
+              {% if triage %}<span class="badge bg-body border ms-1">GCS {{ triage.gcs_total|default:"-" }} · BGL {{ triage.blood_glucose_mmol|default:"-" }}</span>{% endif %}
             </div>
           </div>
         </div>
@@ -114,10 +114,10 @@
           <div class="abcde-item p-2 rounded border" id="check-e">
             <div class="d-flex align-items-center gap-2 mb-1">
               <input class="form-check-input abcde-check" type="checkbox" id="cb-e">
-              <label class="fw-bold text-info mb-0" for="cb-e">E — Exposure / Environment</label>
+              <label class="fw-bold text-info mb-0" for="cb-e">E - Exposure / Environment</label>
             </div>
             <div class="text-muted ps-4">Temp · Rashes · Wounds · Toxins? Full skin exposure?
-              {% if triage %}<span class="badge bg-body border ms-1">Temp {{ triage.temp_celsius|default:"—" }}°C</span>{% endif %}
+              {% if triage %}<span class="badge bg-body border ms-1">Temp {{ triage.temp_celsius|default:"-" }}°C</span>{% endif %}
             </div>
           </div>
         </div>
@@ -125,10 +125,10 @@
           <div class="abcde-item p-2 rounded border" id="check-fg">
             <div class="d-flex align-items-center gap-2 mb-1">
               <input class="form-check-input abcde-check" type="checkbox" id="cb-fg">
-              <label class="fw-bold text-secondary mb-0" for="cb-fg">F — FAST · G — Glucose</label>
+              <label class="fw-bold text-secondary mb-0" for="cb-fg">F - FAST · G - Glucose</label>
             </div>
             <div class="text-muted ps-4">Bedside ultrasound (FAST) if haemodynamic instability. Glucose if AMS or DM.
-              {% if triage %}<span class="badge bg-body border ms-1">BGL {{ triage.blood_glucose_mmol|default:"—" }}</span>{% endif %}
+              {% if triage %}<span class="badge bg-body border ms-1">BGL {{ triage.blood_glucose_mmol|default:"-" }}</span>{% endif %}
             </div>
           </div>
         </div>
@@ -151,7 +151,7 @@
       </div>
       <div class="card-body">
         <textarea class="form-control" id="hpi-field" name="hpi" rows="5"
-                  placeholder="Document HPI here — dictate or type. Chief complaint: {{ visit.chief_complaint }}"></textarea>
+                  placeholder="Document HPI here - dictate or type. Chief complaint: {{ visit.chief_complaint }}"></textarea>
         <div class="text-end mt-1">
           <small class="text-muted">Links to EMR encounter on disposition sign-off.</small>
         </div>
@@ -178,7 +178,7 @@
         <div class="mb-3">
           <label class="form-label fw-semibold small">Working diagnosis / Assessment</label>
           <textarea class="form-control" name="assessment" rows="3"
-                    placeholder="e.g. 1. Hypertensive emergency (BP 220/130) — history of poorly controlled hypertension&#10;2. Rule out hypertensive encephalopathy"></textarea>
+                    placeholder="e.g. 1. Hypertensive emergency (BP 220/130) - history of poorly controlled hypertension&#10;2. Rule out hypertensive encephalopathy"></textarea>
         </div>
         <div>
           <label class="form-label fw-semibold small">Management plan / Orders</label>

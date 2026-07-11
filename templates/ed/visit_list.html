@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Today's Visits — WellNest ED{% endblock %}
+{% block title %}Today's Visits - WellNest ED{% endblock %}
 
 {% block extra_head %}
 <style>
-  /* ESI tooltip — 2-second hover delay so it doesn't flash constantly */
+  /* ESI tooltip - 2-second hover delay so it doesn't flash constantly */
   .esi-tip { position: relative; display: inline-block; }
   .esi-tip .esi-tip-box {
     visibility: hidden; opacity: 0;
@@ -97,12 +97,12 @@
             <span class="esi-tip">
               <span class="badge bg-{{ v.esi_color_class }}">{{ v.esi_score }}</span>
               <div class="esi-tip-box">
-                <strong>ESI {{ v.esi_score }}</strong> —
-                {% if v.esi_score == 1 %}Immediate — life threat{% elif v.esi_score == 2 %}Emergent — high risk{% elif v.esi_score == 3 %}Urgent — stable{% elif v.esi_score == 4 %}Less urgent{% elif v.esi_score == 5 %}Non-urgent{% endif %}
+                <strong>ESI {{ v.esi_score }}</strong> -
+                {% if v.esi_score == 1 %}Immediate - life threat{% elif v.esi_score == 2 %}Emergent - high risk{% elif v.esi_score == 3 %}Urgent - stable{% elif v.esi_score == 4 %}Less urgent{% elif v.esi_score == 5 %}Non-urgent{% endif %}
               </div>
             </span>
             {% else %}
-            <span class="text-muted">—</span>
+            <span class="text-muted">-</span>
             {% endif %}
           </td>
           <td>{{ v.chief_complaint|truncatechars:35 }}</td>
@@ -118,7 +118,7 @@
               {{ v.time_in_department_minutes }} min
             </span>
           </td>
-          <td>{% if v.attending_physician %}{{ v.attending_physician.get_full_name|default:v.attending_physician.username }}{% else %}—{% endif %}</td>
+          <td>{% if v.attending_physician %}{{ v.attending_physician.get_full_name|default:v.attending_physician.username }}{% else %}-{% endif %}</td>
           <td>
             <a href="{% url 'ed:visit_detail' v.pk %}" class="btn btn-sm btn-outline-secondary">View</a>
           </td>
