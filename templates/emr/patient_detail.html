@@ -13,6 +13,9 @@
         </div>
         <div class="d-flex gap-2 flex-wrap">
             <a href="{% url 'emr:patient_edit' patient.pk %}" class="btn btn-outline-secondary btn-sm">Edit details</a>
+            <a href="{% url 'emr:appointments' %}?patient={{ patient.pk }}" class="btn btn-outline-secondary btn-sm">
+                <iconify-icon icon="mdi:calendar-plus" class="me-1"></iconify-icon>Add appointment
+            </a>
             <a href="{% url 'emr:encounter_create' patient.pk %}" class="btn btn-outline-secondary btn-sm">Advanced record</a>
             {% if doctor_profile.can_use_scribe %}
             <a href="{% url 'scribe:record' %}?patient={{ patient.pk }}" class="btn btn-outline-primary btn-sm">
@@ -99,10 +102,12 @@
                                             <td>{{ encounter.chief_complaint|default:"-"|truncatechars:80 }}</td>
                                             <td>{{ encounter.get_encounter_status_display }}</td>
                                             <td class="text-end">
-                                                <a href="{% url 'emr:encounter_view' patient.pk encounter.pk %}" class="btn btn-outline-secondary btn-sm">View</a>
-                                                {% if encounter.encounter_status != 'signed' and doctor_profile.can_use_scribe %}
-                                                    <a href="{% url 'emr:encounter_edit' patient.pk encounter.pk %}" class="btn btn-outline-primary btn-sm">Edit</a>
-                                                {% endif %}
+                                                <div class="d-inline-flex gap-2 justify-content-end">
+                                                    <a href="{% url 'emr:encounter_view' patient.pk encounter.pk %}" class="btn btn-outline-secondary btn-sm">View</a>
+                                                    {% if encounter.encounter_status != 'signed' and doctor_profile.can_use_scribe %}
+                                                        <a href="{% url 'emr:encounter_edit' patient.pk encounter.pk %}" class="btn btn-outline-primary btn-sm">Edit</a>
+                                                    {% endif %}
+                                                </div>
                                             </td>
                                         </tr>
                                     {% endfor %}
@@ -160,7 +165,12 @@
 
             <div class="card mb-4">
                 <div class="card-body p-4">
-                    <h5 class="fw-semibold mb-3">Upcoming visits</h5>
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <h5 class="fw-semibold mb-0">Upcoming visits</h5>
+                        <a href="{% url 'emr:appointments' %}?patient={{ patient.pk }}" class="btn btn-outline-primary btn-sm">
+                            <iconify-icon icon="mdi:calendar-plus" class="me-1"></iconify-icon>Add appointment
+                        </a>
+                    </div>
                     {% if upcoming_appointments %}
                         <div class="d-flex flex-column gap-2">
                             {% for appointment in upcoming_appointments %}

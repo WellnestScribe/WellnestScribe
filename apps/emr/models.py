@@ -317,6 +317,8 @@ class Appointment(OrganisationScopedModel):
     )
     queue_number = models.PositiveIntegerField(null=True, blank=True)
     notes = models.TextField(blank=True)
+    # Optional custom calendar colour (hex). Blank falls back to the status colour.
+    color = models.CharField(max_length=9, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

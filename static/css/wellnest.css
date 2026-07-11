@@ -1359,7 +1359,9 @@ kbd {
   animation: authFadeIn 0.45s ease both;
 }
 .auth-card .form-control { padding-top: 0.6rem; padding-bottom: 0.6rem; }
-.auth-logo img { height: 34px; }
+/* One clean form - remove the theme's stacked-card illusion above the card. */
+.auth-card::before, .auth-card::after { display: none !important; content: none !important; }
+.auth-logo img { height: 46px; }
 @keyframes authFadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: none; }

@@ -758,12 +758,23 @@ def _parse_appt_dt(raw):
 
 @login_required
 def appointments_calendar_view(request):
-    """Full-page calendar: click a slot -> search a patient -> book them in."""
+    """Full-page calendar: click a slot -> search a patient -> book them in.
+
+    A ?patient=<id> query (from a chart's "Add appointment" button) pre-selects
+    that patient and auto-opens the booking dialog.
+    """
     emr = membership_for_request(request)
+    prefill = None
+    pid = request.GET.get("patient")
+    if pid:
+        p = Patient.objects.filter(pk=pid, organisation=emr.organisation).first()
+        if p is not None:
+            prefill = {"id": p.pk, "name": p.display_name}
     return render(request, "emr/appointments.html", {
         **_base_context(request),
         "encounter_type_choices": Encounter._meta.get_field("encounter_type").choices,
         "can_manage": emr.membership.can_manage_schedule(),
+        "prefill_patient": prefill,
     })
 
 
@@ -788,16 +799,20 @@ def appointments_feed_api(request):
             "id": a.pk,
             "title": a.patient.display_name,
             "start": a.scheduled_for.isoformat(),
-            "color": colours.get(a.status, "#0c7ec2"),
+            "color": a.color or colours.get(a.status, "#0c7ec2"),
             "extendedProps": {
                 "patient_id": a.patient_id,
+                "patient_name": a.patient.display_name,
                 "phone": a.patient.phone_primary or "",
                 "mrn": a.patient.mrn,
                 "status": a.status,
                 "status_label": a.get_status_display(),
+                "encounter_type": a.encounter_type,
                 "type": a.get_encounter_type_display(),
                 "notes": a.notes or "",
-                "time": a.scheduled_for.strftime("%b %d, %Y at %I:%M %p"),
+                "color": a.color or "",
+                "scheduled_for": timezone.localtime(a.scheduled_for).strftime("%Y-%m-%dT%H:%M"),
+                "time": timezone.localtime(a.scheduled_for).strftime("%b %d, %Y at %I:%M %p"),
                 "chart_url": reverse("emr:patient_detail", args=[a.patient_id]),
                 "triage_url": reverse("emr:triage", args=[a.pk]),
             },
@@ -823,13 +838,64 @@ def appointment_book_api(request):
     appt = Appointment.objects.create(
         organisation=emr.organisation, patient=patient, scheduled_for=when,
         encounter_type=etype, status="scheduled",
-        notes=(request.POST.get("notes") or "")[:500], created_by=request.user,
+        notes=(request.POST.get("notes") or "")[:500],
+        color=(request.POST.get("color") or "").strip()[:9],
+        created_by=request.user,
     )
     log_audit_event(
         request, emr.organisation, action="create", resource_type="appointment",
         resource_id=appt.pk, detail=f"Booked {patient.display_name} for {when:%Y-%m-%d %H:%M}",
     )
     return JsonResponse({"ok": True, "id": appt.pk})
+
+
+@login_required
+@require_POST
+def appointment_update_api(request, pk):
+    """Edit an appointment from the calendar: reschedule, type, status, notes, colour."""
+    emr = _require(lambda m: m.can_manage_schedule(), request, "Your role cannot manage the schedule.")
+    if emr is None:
+        return JsonResponse({"ok": False, "error": "Your role cannot manage the schedule."}, status=403)
+    appt = get_object_or_404(Appointment, pk=pk, organisation=emr.organisation)
+    fields = []
+    when = _parse_appt_dt(request.POST.get("scheduled_for"))
+    if when is not None:
+        appt.scheduled_for = when; fields.append("scheduled_for")
+    etype = request.POST.get("encounter_type")
+    if etype and etype in {c[0] for c in Encounter._meta.get_field("encounter_type").choices}:
+        appt.encounter_type = etype; fields.append("encounter_type")
+    status = request.POST.get("status")
+    if status and status in {c[0] for c in Appointment._meta.get_field("status").choices}:
+        appt.status = status; fields.append("status")
+    if "notes" in request.POST:
+        appt.notes = (request.POST.get("notes") or "")[:500]; fields.append("notes")
+    if "color" in request.POST:
+        appt.color = (request.POST.get("color") or "").strip()[:9]; fields.append("color")
+    if fields:
+        fields.append("updated_at")
+        appt.save(update_fields=fields)
+        log_audit_event(
+            request, emr.organisation, action="update", resource_type="appointment",
+            resource_id=appt.pk, detail=f"Updated appointment for {appt.patient.display_name}",
+        )
+    return JsonResponse({"ok": True, "id": appt.pk})
+
+
+@login_required
+@require_POST
+def appointment_delete_api(request, pk):
+    """Delete an appointment from the calendar (JSON)."""
+    emr = _require(lambda m: m.can_manage_schedule(), request, "Your role cannot manage the schedule.")
+    if emr is None:
+        return JsonResponse({"ok": False, "error": "Your role cannot manage the schedule."}, status=403)
+    appt = get_object_or_404(Appointment, pk=pk, organisation=emr.organisation)
+    name = appt.patient.display_name
+    appt.delete()
+    log_audit_event(
+        request, emr.organisation, action="delete", resource_type="appointment",
+        resource_id=pk, detail=f"Deleted appointment for {name}",
+    )
+    return JsonResponse({"ok": True})
 
 
 @login_required

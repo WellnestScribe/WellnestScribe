@@ -18,6 +18,7 @@
 {% block content %}
 <div class="emr-shell">
     {% csrf_token %}
+    {% if prefill_patient %}{{ prefill_patient|json_script:"apptPrefill" }}{% endif %}
     <div class="page-title-box d-flex align-items-start justify-content-between flex-wrap gap-3">
         <div>
             <h4 class="mb-1 fw-semibold">Appointments</h4>
@@ -42,14 +43,16 @@
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title fw-semibold">New appointment</h5>
+        <h5 class="modal-title fw-semibold" id="apptBookTitle">New appointment</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <label class="form-label small text-muted">Find patient</label>
-        <div class="position-relative mb-2">
-          <input type="text" class="form-control" id="apptPatientSearch" placeholder="Search by name, MRN, or TRN" autocomplete="off">
-          <div id="apptPatientResults" class="list-group position-absolute w-100 shadow-sm" style="z-index:5; max-height:220px; overflow:auto;"></div>
+        <div id="apptPatientPick">
+          <label class="form-label small text-muted">Find patient</label>
+          <div class="position-relative mb-2">
+            <input type="text" class="form-control" id="apptPatientSearch" placeholder="Search by name, MRN, or TRN" autocomplete="off">
+            <div id="apptPatientResults" class="list-group position-absolute w-100 shadow-sm" style="z-index:5; max-height:220px; overflow:auto;"></div>
+          </div>
         </div>
         <div id="apptPatientChosen" class="alert alert-light border d-none mb-3 d-flex align-items-center justify-content-between">
           <span id="apptPatientChosenName" class="fw-semibold small"></span>
@@ -61,11 +64,26 @@
             <label class="form-label small text-muted">Date &amp; time</label>
             <input type="datetime-local" class="form-control" id="apptWhen">
           </div>
-          <div class="col-12">
+          <div class="col-12 col-sm-6">
             <label class="form-label small text-muted">Visit type</label>
             <select class="form-select" id="apptType">
               {% for value, label in encounter_type_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
             </select>
+          </div>
+          <div class="col-12 col-sm-6" id="apptStatusWrap" style="display:none;">
+            <label class="form-label small text-muted">Status</label>
+            <select class="form-select" id="apptStatus">
+              <option value="scheduled">Scheduled</option>
+              <option value="checked_in">Checked in</option>
+              <option value="triage">In triage</option>
+              <option value="with_doctor">With doctor</option>
+              <option value="complete">Complete</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label small text-muted d-block">Colour</label>
+            <div class="d-flex gap-2 flex-wrap" id="apptColorSwatches"></div>
           </div>
           <div class="col-12">
             <label class="form-label small text-muted">Notes (optional)</label>
@@ -74,9 +92,12 @@
         </div>
         <div id="apptBookError" class="text-danger small mt-2 d-none"></div>
       </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary" id="apptBookSubmit" disabled>Book appointment</button>
+      <div class="modal-footer d-flex justify-content-between">
+        <button type="button" class="btn btn-outline-danger" id="apptDeleteBtn" style="display:none;">Delete</button>
+        <div class="d-flex gap-2 ms-auto">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="apptBookSubmit" disabled>Book appointment</button>
+        </div>
       </div>
     </div>
   </div>
@@ -98,9 +119,12 @@
         </div>
         <div id="apptEventNotes" class="small mb-2"></div>
       </div>
-      <div class="modal-footer">
-        <a href="#" id="apptEventChart" class="btn btn-outline-secondary">Open chart</a>
-        <a href="#" id="apptEventTriage" class="btn btn-primary">Start triage</a>
+      <div class="modal-footer d-flex justify-content-between">
+        {% if can_manage %}<button type="button" class="btn btn-outline-secondary" id="apptEventEdit">Edit</button>{% else %}<span></span>{% endif %}
+        <div class="d-flex gap-2">
+          <a href="#" id="apptEventChart" class="btn btn-outline-secondary">Open chart</a>
+          <a href="#" id="apptEventTriage" class="btn btn-primary">Start triage</a>
+        </div>
       </div>
     </div>
   </div>
@@ -115,8 +139,18 @@
   if (!el || typeof FullCalendar === 'undefined') return;
   var csrf = (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '';
   var canManage = {{ can_manage|yesno:"true,false" }};
+  var _pfEl = document.getElementById('apptPrefill');
+  var prefill = _pfEl ? JSON.parse(_pfEl.textContent) : null;
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function post(url, body) {
+    return fetch(url, { method: 'POST', credentials: 'same-origin',
+      headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString() }).then(function (r) { return r.json(); });
+  }
+
+  var COLORS = ['', '#0c7ec2', '#16a34a', '#f59e0b', '#7c3aed', '#ef4444', '#0d9488', '#db2777', '#64748b'];
+  var selectedColor = '';
 
   var calendar = new FullCalendar.Calendar(el, {
     initialView: 'dayGridMonth',
@@ -124,6 +158,8 @@
     height: 'auto',
     nowIndicator: true,
     dayMaxEvents: 3,
+    editable: canManage,           // drag an event to reschedule it
+    eventStartEditable: canManage,
     events: function (info, success, failure) {
       fetch('{% url "emr:api_appointments_feed" %}?start=' + encodeURIComponent(info.startStr) + '&end=' + encodeURIComponent(info.endStr), { credentials: 'same-origin' })
         .then(function (r) { return r.json(); })
@@ -131,31 +167,98 @@
         .catch(failure);
     },
     dateClick: function (info) { if (canManage) openBooking(info.dateStr); },
-    eventClick: function (info) { openEvent(info.event); }
+    eventClick: function (info) { openEvent(info.event); },
+    eventDrop: function (info) {
+      // Reschedule on drag. Send local Y-m-dTH:M.
+      var d = info.event.start;
+      var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+      var local = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+      var body = new URLSearchParams(); body.append('scheduled_for', local);
+      post('/emr/api/appointments/' + info.event.id + '/update/', body).then(function (r) {
+        if (!r.ok) info.revert();
+      }).catch(function () { info.revert(); });
+    }
   });
   calendar.render();
 
-  /* ── Booking ── */
+  /* ── Booking / editing ── */
   var bookModal = typeof bootstrap !== 'undefined' ? new bootstrap.Modal(document.getElementById('apptBookModal')) : null;
-  var chosenId = null;
+  var chosenId = null;      // patient id
+  var editId = null;        // appointment id (edit mode) or null (new)
   var searchInput = document.getElementById('apptPatientSearch');
   var resultsBox = document.getElementById('apptPatientResults');
   var chosenBox = document.getElementById('apptPatientChosen');
   var whenInput = document.getElementById('apptWhen');
   var submitBtn = document.getElementById('apptBookSubmit');
+  var deleteBtn = document.getElementById('apptDeleteBtn');
+  var statusWrap = document.getElementById('apptStatusWrap');
+  var patientPick = document.getElementById('apptPatientPick');
 
-  function openBooking(dateStr) {
-    chosenId = null;
+  function renderSwatches() {
+    var box = document.getElementById('apptColorSwatches');
+    box.innerHTML = '';
+    COLORS.forEach(function (c) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.title = c ? c : 'Auto (by status)';
+      b.style.cssText = 'width:26px;height:26px;border-radius:50%;cursor:pointer;border:2px solid ' +
+        (selectedColor === c ? 'var(--bs-body-color)' : 'transparent') + ';outline:1px solid var(--bs-border-color);' +
+        'background:' + (c || 'conic-gradient(#0c7ec2,#16a34a,#f59e0b,#ef4444,#7c3aed,#0c7ec2))');
+      b.addEventListener('click', function () { selectedColor = c; renderSwatches(); });
+      box.appendChild(b);
+    });
+  }
+
+  function resetModal() {
+    chosenId = null; editId = null; selectedColor = '';
     searchInput.value = ''; resultsBox.innerHTML = '';
     chosenBox.classList.add('d-none');
+    patientPick.style.display = '';
+    statusWrap.style.display = 'none';
+    deleteBtn.style.display = 'none';
     document.getElementById('apptBookError').classList.add('d-none');
-    submitBtn.disabled = true;
-    // Pre-fill datetime-local; default clinic-friendly 09:00 if only a date came in.
+    document.getElementById('apptNotes').value = '';
+    submitBtn.disabled = true; submitBtn.textContent = 'Book appointment';
+    document.getElementById('apptBookTitle').textContent = 'New appointment';
+    renderSwatches();
+  }
+
+  function setChosen(id, name) {
+    chosenId = id;
+    document.getElementById('apptPatientChosenName').textContent = name;
+    chosenBox.classList.remove('d-none');
+    resultsBox.innerHTML = ''; searchInput.value = '';
+    submitBtn.disabled = false;
+  }
+
+  function openBooking(dateStr, patient) {
+    resetModal();
     var dt = dateStr.length <= 10 ? (dateStr + 'T09:00') : dateStr.slice(0, 16);
     whenInput.value = dt;
+    if (patient) setChosen(patient.id, patient.name);
     if (bookModal) bookModal.show();
-    setTimeout(function () { searchInput.focus(); }, 250);
+    setTimeout(function () { (patient ? whenInput : searchInput).focus(); }, 250);
   }
+
+  function openEdit(ev) {
+    resetModal();
+    editId = ev.id;
+    var p = ev.extendedProps;
+    document.getElementById('apptBookTitle').textContent = 'Edit appointment';
+    setChosen(p.patient_id, p.patient_name || ev.title);
+    patientPick.style.display = 'none';           // patient is fixed when editing
+    document.getElementById('apptPatientClear').style.display = 'none';
+    whenInput.value = p.scheduled_for || '';
+    document.getElementById('apptType').value = p.encounter_type || 'acute';
+    statusWrap.style.display = '';
+    document.getElementById('apptStatus').value = p.status || 'scheduled';
+    document.getElementById('apptNotes').value = p.notes || '';
+    selectedColor = p.color || ''; renderSwatches();
+    deleteBtn.style.display = '';
+    submitBtn.textContent = 'Save changes'; submitBtn.disabled = false;
+    if (bookModal) bookModal.show();
+  }
+
   document.getElementById('apptNewBtn') && document.getElementById('apptNewBtn').addEventListener('click', function () {
     var today = new Date().toISOString().slice(0, 10);
     openBooking(today);
@@ -178,13 +281,7 @@
           });
           resultsBox.innerHTML = html || '<div class="list-group-item text-muted small">No match. Register the patient first.</div>';
           resultsBox.querySelectorAll('.appt-patient-result').forEach(function (b) {
-            b.addEventListener('click', function () {
-              chosenId = this.dataset.id;
-              document.getElementById('apptPatientChosenName').textContent = this.dataset.name;
-              chosenBox.classList.remove('d-none');
-              resultsBox.innerHTML = ''; searchInput.value = '';
-              submitBtn.disabled = false;
-            });
+            b.addEventListener('click', function () { setChosen(this.dataset.id, this.dataset.name); });
           });
         }).catch(function () {});
     }, 200);
@@ -196,31 +293,45 @@
 
   submitBtn.addEventListener('click', function () {
     if (!chosenId || !whenInput.value) return;
-    var err = document.getElementById('apptBookError');
-    err.classList.add('d-none');
-    submitBtn.disabled = true; submitBtn.textContent = 'Booking…';
+    var err = document.getElementById('apptBookError'); err.classList.add('d-none');
+    var wasText = submitBtn.textContent;
+    submitBtn.disabled = true; submitBtn.textContent = 'Saving…';
     var body = new URLSearchParams();
-    body.append('patient_id', chosenId);
     body.append('scheduled_for', whenInput.value);
     body.append('encounter_type', document.getElementById('apptType').value);
     body.append('notes', document.getElementById('apptNotes').value);
-    fetch('{% url "emr:api_appointment_book" %}', {
-      method: 'POST', credentials: 'same-origin',
-      headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString()
-    }).then(function (r) { return r.json(); }).then(function (d) {
-      submitBtn.disabled = false; submitBtn.textContent = 'Book appointment';
+    body.append('color', selectedColor);
+    var url;
+    if (editId) {
+      url = '/emr/api/appointments/' + editId + '/update/';
+      body.append('status', document.getElementById('apptStatus').value);
+    } else {
+      url = '{% url "emr:api_appointment_book" %}';
+      body.append('patient_id', chosenId);
+    }
+    post(url, body).then(function (d) {
+      submitBtn.disabled = false; submitBtn.textContent = wasText;
       if (d.ok) { if (bookModal) bookModal.hide(); calendar.refetchEvents(); }
-      else { err.textContent = d.error || 'Could not book.'; err.classList.remove('d-none'); }
+      else { err.textContent = d.error || 'Could not save.'; err.classList.remove('d-none'); }
     }).catch(function () {
-      submitBtn.disabled = false; submitBtn.textContent = 'Book appointment';
+      submitBtn.disabled = false; submitBtn.textContent = wasText;
       err.textContent = 'Network error.'; err.classList.remove('d-none');
+    });
+  });
+
+  deleteBtn.addEventListener('click', function () {
+    if (!editId) return;
+    if (!window.confirm('Delete this appointment? This cannot be undone.')) return;
+    post('/emr/api/appointments/' + editId + '/delete/', new URLSearchParams()).then(function (d) {
+      if (d.ok) { if (bookModal) bookModal.hide(); calendar.refetchEvents(); }
     });
   });
 
   /* ── Event detail ── */
   var eventModal = typeof bootstrap !== 'undefined' ? new bootstrap.Modal(document.getElementById('apptEventModal')) : null;
+  var currentEvent = null;
   function openEvent(ev) {
+    currentEvent = ev;
     var p = ev.extendedProps;
     document.getElementById('apptEventName').textContent = ev.title;
     document.getElementById('apptEventMeta').textContent = p.time + '  ·  ' + p.type + '  ·  ' + p.status_label + '  ·  ' + p.mrn;
@@ -232,6 +343,17 @@
     document.getElementById('apptEventChart').href = p.chart_url;
     document.getElementById('apptEventTriage').href = p.triage_url;
     if (eventModal) eventModal.show();
+  }
+  var editBtn = document.getElementById('apptEventEdit');
+  if (editBtn) editBtn.addEventListener('click', function () {
+    if (eventModal) eventModal.hide();
+    if (currentEvent) setTimeout(function () { openEdit(currentEvent); }, 300);
+  });
+
+  /* Prefill from a chart's "Add appointment" link (?patient=<id>). */
+  if (prefill && canManage) {
+    var today = new Date().toISOString().slice(0, 10);
+    setTimeout(function () { openBooking(today, prefill); }, 300);
   }
 })();
 </script>

@@ -10,10 +10,13 @@
             <div class="col-12" style="max-width: 428px;">
                 <div class="card auth-card">
                     <div class="card-body px-3 py-5">
-                        <div class="mx-auto mb-4 text-center auth-logo">
-                            <img src="{% static 'images/wellnest-logo.png' %}" height="34" class="me-1" alt="WellNest">
+                        <a href="/" class="d-inline-flex align-items-center gap-1 small text-muted text-decoration-none mb-3">
+                            <iconify-icon icon="iconamoon:arrow-left-2-duotone"></iconify-icon>Back to home
+                        </a>
+                        <a href="/" class="d-block mx-auto mb-4 text-center auth-logo text-decoration-none">
+                            <img src="{% static 'images/wellnest-logo.png' %}" height="46" class="me-1" alt="WellNest">
                             <span class="fw-bold fs-3 align-middle" style="color:#0c7ec2;">WellNest</span>
-                        </div>
+                        </a>
 
                         <h2 class="fw-bold text-center fs-18">Sign In</h2>
                         <p class="text-muted text-center mt-1 mb-4">
