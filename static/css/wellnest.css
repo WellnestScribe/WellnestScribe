@@ -1945,3 +1945,23 @@ kbd {
   display: none;
 }
 @media (min-width: 992px) { .wn-last-login-chip { display: inline-block; } }
+
+/* ── Eye comfort: softer, warmer off-white surfaces to cut glare (toggle in topbar) ── */
+html.wn-eyecomfort:not([data-bs-theme="dark"]) {
+  --bs-body-bg: #ecebe4;
+  --bs-body-bg-rgb: 236, 235, 228;
+  --bs-secondary-bg: #e4e2da;
+  --bs-tertiary-bg: #e9e7df;
+}
+html.wn-eyecomfort:not([data-bs-theme="dark"]) .card,
+html.wn-eyecomfort:not([data-bs-theme="dark"]) .topbar,
+html.wn-eyecomfort:not([data-bs-theme="dark"]) .main-nav,
+html.wn-eyecomfort:not([data-bs-theme="dark"]) .modal-content,
+html.wn-eyecomfort:not([data-bs-theme="dark"]) .dropdown-menu,
+html.wn-eyecomfort:not([data-bs-theme="dark"]) .form-control,
+html.wn-eyecomfort:not([data-bs-theme="dark"]) .form-select {
+  background-color: #f5f3ec !important;
+}
+/* Dark mode: just take the harshest edge off bright text. */
+html.wn-eyecomfort[data-bs-theme="dark"] { --bs-emphasis-color: #dee2e8; }
+.topbar-button.active { color: var(--wellnest-blue, #0c7ec2); }

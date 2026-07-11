@@ -173,10 +173,13 @@ def dashboard_view(request):
         "patients": Patient.objects.filter(organisation=emr.organisation).count(),
     }
 
+    # Recently-touched patients. Ordered by updated_at (bounded to the org's own
+    # rows) - deliberately NOT a Max(encounters__...) annotation, which forces a
+    # JOIN over the whole encounters table + GROUP BY + filesort and can hang the
+    # worklist on a large hosted dataset. The template only needs name/age/parish.
     recent_patients = (
         Patient.objects.filter(organisation=emr.organisation)
-        .annotate(last_encounter=Max("encounters__encounter_date"))
-        .order_by("-last_encounter", "-updated_at")[:6]
+        .order_by("-updated_at")[:6]
     )
 
     return render(

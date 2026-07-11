@@ -20,6 +20,13 @@
                     </button>
                 </div>
 
+                {# Universal back button - goes to the previous page #}
+                <div class="topbar-item">
+                    <button type="button" class="topbar-button" id="wn-back-btn" aria-label="Go back" title="Back">
+                        <iconify-icon icon="iconamoon:arrow-left-2-bold" class="fs-22 align-middle"></iconify-icon>
+                    </button>
+                </div>
+
                 <a href="{% url 'scribe:record' %}" class="d-lg-none d-flex align-items-center text-decoration-none">
                     <img src="{% static 'images/wellnest-logo.png' %}" alt="WellNest" height="26" class="me-1">
                     <span class="fw-semibold text-body d-none d-sm-inline">WellNest</span>
@@ -71,6 +78,14 @@
                 <div class="topbar-item">
                     <button type="button" class="topbar-button" id="light-dark-mode" aria-label="Toggle theme">
                         <iconify-icon icon="iconamoon:mode-dark-duotone" class="fs-22 align-middle"></iconify-icon>
+                    </button>
+                </div>
+
+                {# Eye-comfort: softens harsh whites app-wide (not a night filter) #}
+                <div class="topbar-item">
+                    <button type="button" class="topbar-button" id="eye-comfort-toggle"
+                            aria-label="Eye comfort" title="Eye comfort - softer whites">
+                        <iconify-icon icon="mdi:brightness-6" class="fs-22 align-middle"></iconify-icon>
                     </button>
                 </div>
 
@@ -295,3 +310,28 @@ document.addEventListener('DOMContentLoaded', function () {
 })();
 </script>
 {% endif %}
+
+<script>
+(function () {
+  // Universal back button - previous page, or home if none.
+  var back = document.getElementById('wn-back-btn');
+  if (back) back.addEventListener('click', function () {
+    if (window.history.length > 1) window.history.back();
+    else window.location.href = '/';
+  });
+  // Eye-comfort: softens harsh whites app-wide (persisted). Not a night filter.
+  var ec = document.getElementById('eye-comfort-toggle');
+  function apply(on) {
+    document.documentElement.classList.toggle('wn-eyecomfort', on);
+    if (ec) ec.classList.toggle('active', on);
+  }
+  if (ec) {
+    apply(localStorage.getItem('wn_eyecomfort') === '1');
+    ec.addEventListener('click', function () {
+      var on = !document.documentElement.classList.contains('wn-eyecomfort');
+      apply(on);
+      try { localStorage.setItem('wn_eyecomfort', on ? '1' : '0'); } catch (e) {}
+    });
+  }
+})();
+</script>

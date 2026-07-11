@@ -51,7 +51,7 @@
       <hr class="my-3">
       <div class="fw-semibold small mb-2">Recent written feedback</div>
       <div class="table-responsive" style="max-height:340px;overflow:auto;">
-        <table class="table table-sm align-middle small">
+        <table class="table table-sm align-middle small" id="expTable">
           <thead><tr><th>Doctor</th><th>Would pay</th><th>Feature wanted</th><th>Improve</th><th>Liked least</th><th>Liked most</th></tr></thead>
           <tbody>
             {% for f in exp_recent %}
@@ -99,7 +99,7 @@
 
   {# Filter bar #}
   <div class="d-flex gap-2 mb-3 flex-wrap">
-    <input type="search" id="fbSearch" class="form-control form-control-sm" style="max-width:280px;" placeholder="Search doctor, section, comment…">
+    <input type="search" id="fbSearch" class="form-control" style="max-width:320px;" placeholder="Search feedback (doctor, comment, feature…)">
     <select id="fbRatingFilter" class="form-select form-select-sm" style="max-width:160px;">
       <option value="">All ratings</option>
       <option value="down">👎 Needs improvement</option>
@@ -186,18 +186,23 @@
   if (dc) dc.textContent = downCount;
   if (cc) cc.textContent = commentCount;
 
+  // Also filter the pilot survey table (the populated one) by the search text.
+  var expRows = document.querySelectorAll('#expTable tbody tr');
+
   function filterTable() {
     var q = (document.getElementById('fbSearch').value || '').toLowerCase();
     var ratingF = document.getElementById('fbRatingFilter').value;
     var sectionF = document.getElementById('fbSectionFilter').value;
     rows.forEach(function (r) {
       var text = r.textContent.toLowerCase();
-      var rating = r.dataset.rating;
-      var section = r.dataset.section;
       var show = (!q || text.includes(q))
-               && (!ratingF || rating === ratingF)
-               && (!sectionF || section === sectionF);
+               && (!ratingF || r.dataset.rating === ratingF)
+               && (!sectionF || r.dataset.section === sectionF);
       r.style.display = show ? '' : 'none';
+    });
+    // Survey rows respond to the text search only (rating/section don't apply).
+    expRows.forEach(function (r) {
+      r.style.display = (!q || r.textContent.toLowerCase().includes(q)) ? '' : 'none';
     });
   }
 

@@ -87,7 +87,15 @@ def get_membership(user, organisation_id=None) -> EMRContext:
 
 
 def membership_for_request(request, organisation_id=None) -> EMRContext:
-    return get_membership(request.user, organisation_id=organisation_id)
+    # Cache the default-org resolution on the request so the view, context
+    # processor, and middleware don't each re-query it (saves DB round-trips,
+    # which matter most against a remote/hosted database).
+    if organisation_id is None and getattr(request, "_emr_membership_ctx", None) is not None:
+        return request._emr_membership_ctx
+    ctx = get_membership(request.user, organisation_id=organisation_id)
+    if organisation_id is None:
+        request._emr_membership_ctx = ctx
+    return ctx
 
 
 def user_choices_for_organisation(organisation):
