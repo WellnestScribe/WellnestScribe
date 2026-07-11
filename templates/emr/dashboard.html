@@ -27,50 +27,56 @@
 
     <div class="row g-3 mb-4">
         <div class="col-sm-6 col-xl-2">
-            <div class="card emr-stat-card">
+            <div class="card emr-stat-card h-100">
                 <div class="card-body">
-                    <div class="emr-stat-label">Today's visits</div>
+                    <span class="emr-stat-icon emr-stat-icon--blue"><iconify-icon icon="mdi:calendar-today"></iconify-icon></span>
                     <div class="emr-stat-value">{{ stats.today }}</div>
+                    <div class="emr-stat-label">Today's visits</div>
                 </div>
             </div>
         </div>
         <div class="col-sm-6 col-xl-2">
-            <div class="card emr-stat-card">
+            <div class="card emr-stat-card h-100">
                 <div class="card-body">
-                    <div class="emr-stat-label">Checked in</div>
+                    <span class="emr-stat-icon emr-stat-icon--green"><iconify-icon icon="mdi:account-check-outline"></iconify-icon></span>
                     <div class="emr-stat-value">{{ stats.checked_in }}</div>
+                    <div class="emr-stat-label">Checked in</div>
                 </div>
             </div>
         </div>
         <div class="col-sm-6 col-xl-2">
-            <div class="card emr-stat-card">
+            <div class="card emr-stat-card h-100">
                 <div class="card-body">
-                    <div class="emr-stat-label">In triage</div>
+                    <span class="emr-stat-icon emr-stat-icon--amber"><iconify-icon icon="mdi:clipboard-pulse-outline"></iconify-icon></span>
                     <div class="emr-stat-value">{{ stats.triage }}</div>
+                    <div class="emr-stat-label">In triage</div>
                 </div>
             </div>
         </div>
         <div class="col-sm-6 col-xl-2">
-            <div class="card emr-stat-card">
+            <div class="card emr-stat-card h-100">
                 <div class="card-body">
-                    <div class="emr-stat-label">With doctor</div>
+                    <span class="emr-stat-icon emr-stat-icon--purple"><iconify-icon icon="mdi:doctor"></iconify-icon></span>
                     <div class="emr-stat-value">{{ stats.with_doctor }}</div>
+                    <div class="emr-stat-label">With doctor</div>
                 </div>
             </div>
         </div>
         <div class="col-sm-6 col-xl-2">
-            <div class="card emr-stat-card">
+            <div class="card emr-stat-card h-100">
                 <div class="card-body">
-                    <div class="emr-stat-label">Completed</div>
+                    <span class="emr-stat-icon emr-stat-icon--teal"><iconify-icon icon="mdi:check-circle-outline"></iconify-icon></span>
                     <div class="emr-stat-value">{{ stats.complete }}</div>
+                    <div class="emr-stat-label">Completed</div>
                 </div>
             </div>
         </div>
         <div class="col-sm-6 col-xl-2">
-            <div class="card emr-stat-card">
+            <div class="card emr-stat-card h-100">
                 <div class="card-body">
-                    <div class="emr-stat-label">Patients</div>
+                    <span class="emr-stat-icon emr-stat-icon--slate"><iconify-icon icon="mdi:account-group-outline"></iconify-icon></span>
                     <div class="emr-stat-value">{{ stats.patients }}</div>
+                    <div class="emr-stat-label">Patients</div>
                 </div>
             </div>
         </div>
