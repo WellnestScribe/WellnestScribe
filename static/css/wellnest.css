@@ -76,14 +76,16 @@ a { color: var(--wellnest-blue); }
 .wellnest-logo-box a:hover { color: inherit; }
 
 .main-nav .navbar-nav .nav-item .nav-link {
-  border-radius: 10px;
-  margin: 2px 8px;
-  padding: 9px 12px;
+  border-radius: 0;
+  margin: 0;
+  padding: 10px 20px;
   font-weight: 500;
 }
 .main-nav .navbar-nav .nav-item .nav-link.active {
   background: var(--wellnest-blue-soft);
   color: var(--wellnest-blue);
+  border-radius: 0;
+  box-shadow: inset 3px 0 0 var(--wellnest-blue);  /* flat square highlight + left accent */
 }
 .main-nav .menu-title {
   font-size: 0.7rem;
@@ -222,7 +224,7 @@ a { color: var(--wellnest-blue); }
   background: var(--bs-body-bg);
   color: var(--bs-body-color);
   border-radius: 999px;
-  padding: 8px 20px;
+  padding: 9px 26px;
   font-size: 0.88rem;
   font-weight: 600;
   line-height: 1;
@@ -528,18 +530,18 @@ a { color: var(--wellnest-blue); }
   opacity: 0.6;
 }
 .main-nav .navbar-nav .nav-item .nav-link {
-  border-radius: 8px;
-  margin: 1px 8px;
-  padding: 7px 12px;
-  font-size: 0.875rem;
+  border-radius: 0;
+  margin: 0;
+  padding: 10px 20px;
+  font-size: 0.925rem;
   font-weight: 500;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 11px;
 }
 .main-nav .navbar-nav .nav-item .nav-link iconify-icon,
 .main-nav .navbar-nav .nav-item .nav-link .nav-icon iconify-icon {
-  font-size: 1.05rem;
+  font-size: 1.18rem;
   flex-shrink: 0;
   opacity: 0.75;
 }

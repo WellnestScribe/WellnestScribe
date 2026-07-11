@@ -9,7 +9,13 @@
   #apptCalendar { --fc-border-color: var(--bs-border-color); --fc-today-bg-color: rgba(12,126,194,0.06); }
   #apptCalendar .fc .fc-button-primary { background: var(--wellnest-blue, #0c7ec2); border-color: var(--wellnest-blue, #0c7ec2); }
   #apptCalendar .fc .fc-button-primary:disabled { opacity: .5; }
-  #apptCalendar .fc-event { cursor: pointer; border: none; padding: 1px 4px; font-size: 0.78rem; }
+  #apptCalendar .fc-event { cursor: pointer; border: none; padding: 2px 6px; font-size: 0.8rem; border-radius: 4px; }
+  /* Force readable white text on any event colour, in light OR dark mode. */
+  #apptCalendar .fc-event, #apptCalendar .fc-event .fc-event-title,
+  #apptCalendar .fc-event .fc-event-time, #apptCalendar .fc-event .fc-event-title-container {
+    color: #fff !important; font-weight: 600; text-shadow: 0 1px 1.5px rgba(0,0,0,0.4);
+  }
+  #apptCalendar .fc-daygrid-event { white-space: normal; }
   .appt-patient-result { cursor: pointer; }
   .appt-patient-result:hover { background: var(--wellnest-blue-soft); }
 </style>
@@ -111,16 +117,31 @@
         <h5 class="modal-title fw-semibold" id="apptEventName">Appointment</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
+      <div id="apptEventColorBar" style="height:6px;"></div>
       <div class="modal-body">
-        <div class="small text-muted mb-2" id="apptEventMeta"></div>
-        <div class="d-flex align-items-center gap-2 mb-3" id="apptEventPhoneRow">
-          <iconify-icon icon="iconamoon:phone-duotone" class="text-primary fs-5"></iconify-icon>
-          <a href="#" id="apptEventPhone" class="fw-semibold text-decoration-none"></a>
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <span id="apptEventColorDot" style="width:16px;height:16px;border-radius:4px;flex:0 0 auto;"></span>
+          <span class="fs-5 fw-semibold" id="apptEventWhen"></span>
         </div>
-        <div id="apptEventNotes" class="small mb-2"></div>
+        <div class="mb-3 d-flex flex-wrap gap-2">
+          <span class="badge bg-secondary-subtle text-secondary fs-6" id="apptEventType"></span>
+          <span class="badge fs-6" id="apptEventStatus"></span>
+          <span class="badge bg-light text-body fs-6 border" id="apptEventMrn"></span>
+        </div>
+        <div class="d-flex align-items-center gap-2 mb-3" id="apptEventPhoneRow">
+          <iconify-icon icon="iconamoon:phone-duotone" class="text-primary fs-4"></iconify-icon>
+          <a href="#" id="apptEventPhone" class="fs-5 fw-semibold text-decoration-none"></a>
+        </div>
+        <div id="apptEventNotes" class="mb-1"></div>
+        <div id="apptEventRemindMsg" class="small mt-2"></div>
       </div>
-      <div class="modal-footer d-flex justify-content-between">
-        {% if can_manage %}<button type="button" class="btn btn-outline-secondary" id="apptEventEdit">Edit</button>{% else %}<span></span>{% endif %}
+      <div class="modal-footer d-flex flex-wrap justify-content-between gap-2">
+        <div class="d-flex gap-2">
+          {% if can_manage %}<button type="button" class="btn btn-outline-secondary" id="apptEventEdit">Edit</button>
+          <button type="button" class="btn btn-outline-secondary" id="apptEventRemind">
+            <iconify-icon icon="iconamoon:send-duotone" class="me-1 align-middle"></iconify-icon>Send reminder
+          </button>{% endif %}
+        </div>
         <div class="d-flex gap-2">
           <a href="#" id="apptEventChart" class="btn btn-outline-secondary">Open chart</a>
           <a href="#" id="apptEventTriage" class="btn btn-primary">Start triage</a>
@@ -158,6 +179,8 @@
     height: 'auto',
     nowIndicator: true,
     dayMaxEvents: 3,
+    eventDisplay: 'block',         // every event is a full colour bar, never a dot
+    displayEventTime: true,
     editable: canManage,           // drag an event to reschedule it
     eventStartEditable: canManage,
     events: function (info, success, failure) {
@@ -333,13 +356,21 @@
   function openEvent(ev) {
     currentEvent = ev;
     var p = ev.extendedProps;
+    var col = ev.backgroundColor || p.color || '#0c7ec2';
     document.getElementById('apptEventName').textContent = ev.title;
-    document.getElementById('apptEventMeta').textContent = p.time + '  ·  ' + p.type + '  ·  ' + p.status_label + '  ·  ' + p.mrn;
+    document.getElementById('apptEventColorBar').style.background = col;
+    document.getElementById('apptEventColorDot').style.background = col;
+    document.getElementById('apptEventWhen').textContent = p.time;
+    document.getElementById('apptEventType').textContent = p.type;
+    var st = document.getElementById('apptEventStatus');
+    st.textContent = p.status_label; st.style.background = col; st.style.color = '#fff';
+    document.getElementById('apptEventMrn').textContent = p.mrn;
     var phoneRow = document.getElementById('apptEventPhoneRow');
     var phoneLink = document.getElementById('apptEventPhone');
     if (p.phone) { phoneRow.classList.remove('d-none'); phoneLink.textContent = p.phone; phoneLink.href = 'tel:' + p.phone; }
     else { phoneRow.classList.add('d-none'); }
     document.getElementById('apptEventNotes').textContent = p.notes || '';
+    document.getElementById('apptEventRemindMsg').textContent = '';
     document.getElementById('apptEventChart').href = p.chart_url;
     document.getElementById('apptEventTriage').href = p.triage_url;
     if (eventModal) eventModal.show();
@@ -348,6 +379,17 @@
   if (editBtn) editBtn.addEventListener('click', function () {
     if (eventModal) eventModal.hide();
     if (currentEvent) setTimeout(function () { openEdit(currentEvent); }, 300);
+  });
+  var remindBtn = document.getElementById('apptEventRemind');
+  if (remindBtn) remindBtn.addEventListener('click', function () {
+    if (!currentEvent) return;
+    var msg = document.getElementById('apptEventRemindMsg');
+    remindBtn.disabled = true; msg.textContent = 'Sending…'; msg.className = 'small mt-2 text-muted';
+    post('/emr/api/appointments/' + currentEvent.id + '/remind/', new URLSearchParams()).then(function (d) {
+      remindBtn.disabled = false;
+      if (d.ok) { msg.textContent = 'Reminder sent to ' + d.email; msg.className = 'small mt-2 text-success'; }
+      else { msg.textContent = d.error || 'Could not send.'; msg.className = 'small mt-2 text-danger'; }
+    }).catch(function () { remindBtn.disabled = false; msg.textContent = 'Network error.'; msg.className = 'small mt-2 text-danger'; });
   });
 
   /* Prefill from a chart's "Add appointment" link (?patient=<id>). */

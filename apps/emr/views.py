@@ -899,6 +899,38 @@ def appointment_delete_api(request, pk):
 
 
 @login_required
+@require_POST
+def appointment_remind_api(request, pk):
+    """Email a reminder for one appointment to the patient (from the calendar)."""
+    from django.conf import settings as _s
+    from django.core.mail import send_mail
+
+    emr = _require(lambda m: m.can_manage_schedule(), request, "Your role cannot manage the schedule.")
+    if emr is None:
+        return JsonResponse({"ok": False, "error": "Your role cannot manage the schedule."}, status=403)
+    appt = get_object_or_404(Appointment.objects.select_related("patient"), pk=pk, organisation=emr.organisation)
+    email = (appt.patient.email or "").strip()
+    if not email:
+        return JsonResponse({"ok": False, "error": "This patient has no email on file."}, status=400)
+    when_str = timezone.localtime(appt.scheduled_for).strftime("%A, %B %d at %I:%M %p")
+    clinic = emr.organisation.name
+    try:
+        send_mail(
+            f"Appointment reminder - {clinic}",
+            f"Hello {appt.patient.display_name},\n\nThis is a reminder of your appointment at "
+            f"{clinic} on {when_str}.\n\nIf you need to reschedule, please contact the clinic.\n\n- {clinic}",
+            _s.DEFAULT_FROM_EMAIL, [email], fail_silently=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return JsonResponse({"ok": False, "error": f"Could not send: {exc}"}, status=500)
+    log_audit_event(
+        request, emr.organisation, action="update", resource_type="appointment",
+        resource_id=appt.pk, detail=f"Sent reminder to {appt.patient.display_name} ({email})",
+    )
+    return JsonResponse({"ok": True, "email": email})
+
+
+@login_required
 def appointments_due_api(request):
     """Count of today's upcoming (not-yet-seen) appointments - sidebar bubble."""
     emr = membership_for_request(request)
