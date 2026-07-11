@@ -262,7 +262,11 @@ SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_AGE = 60 * 60 * 4  # 4h max session lifetime (reduced from 8h for PHI compliance)
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
-SESSION_SAVE_EVERY_REQUEST = True  # rolling expiry on activity
+# Was True ("rolling expiry"), but that wrote the session to the DB on EVERY
+# request (BEGIN/UPDATE/COMMIT = 3 round-trips) - a big per-request cost that made
+# the whole app slow against a remote DB. Inactivity is already covered by the
+# client-side idle-lock, so we keep an absolute 4h cap instead of rolling.
+SESSION_SAVE_EVERY_REQUEST = config("SESSION_SAVE_EVERY_REQUEST", default=False, cast=bool)
 X_FRAME_OPTIONS = "DENY"
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True

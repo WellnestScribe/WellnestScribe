@@ -226,10 +226,24 @@ class PlatformControl(models.Model):
         self.pk = 1  # enforce singleton
         super().save(*args, **kwargs)
 
+    _CACHE_KEY = "platform_control_singleton"
+
     @classmethod
     def get(cls) -> "PlatformControl":
-        obj, _ = cls.objects.get_or_create(pk=1)
+        # Cached briefly (per process) so the demo-lock middleware doesn't query
+        # this singleton on EVERY request. Admin toggles take effect within ~30s;
+        # save() invalidates it immediately on the process that changed it.
+        from django.core.cache import cache
+        obj = cache.get(cls._CACHE_KEY)
+        if obj is None:
+            obj, _ = cls.objects.get_or_create(pk=1)
+            cache.set(cls._CACHE_KEY, obj, 30)
         return obj
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        from django.core.cache import cache
+        cache.delete(self._CACHE_KEY)
 
     @property
     def is_off(self) -> bool:

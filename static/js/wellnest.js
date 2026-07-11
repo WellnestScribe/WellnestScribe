@@ -225,7 +225,15 @@
   });
 
   // ---------- QR scan → PC highlight (SSE) ----------
-  if (W.endpoints && W.endpoints.scanEvents) initScanEvents();
+  // Only open the long-lived SSE on the Scribe pages where the phone→PC QR
+  // handoff actually happens (/scribe/...). On the worklist, appointments and
+  // other pages it served no purpose but held one server request-slot PER USER
+  // for its whole lifetime - which froze the site once a couple of users were
+  // online. Scoping it here means those hot pages hold zero connections.
+  if (W.endpoints && W.endpoints.scanEvents
+      && window.location.pathname.indexOf('/scribe/') === 0) {
+    initScanEvents();
+  }
 
   function initScanEvents() {
     let es = null;

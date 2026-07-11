@@ -143,7 +143,9 @@ def dashboard_view(request):
         Appointment.objects.filter(
             organisation=emr.organisation,
             scheduled_for__range=(day_start, day_end),
-        ).select_related("patient")
+        )
+        .select_related("patient")
+        .prefetch_related("encounters")
     )
 
     # Active (still waiting) sorted FIFO get positions 1..N and float to the top;
@@ -163,6 +165,23 @@ def dashboard_view(request):
     for a in inactive:
         a.queue_position = None
     appointments = active + inactive
+
+    # Cheap signature of the worklist's *visible state* (order + status + queue
+    # number). The live-poll on the dashboard compares this string; only when it
+    # changes does the browser swap the DOM. Same data we already have in memory,
+    # so it costs no extra query.
+    worklist_sig = "|".join(
+        f"{a.pk}.{a.status}.{a.queue_number or 0}" for a in appointments
+    )
+
+    # Fragment mode: the 5s poll asks for just the worklist card body so we can
+    # swap it in place without a full page render or reload.
+    if request.GET.get("fragment") == "worklist":
+        return render(
+            request,
+            "emr/_worklist.html",
+            {"appointments": appointments, "worklist_sig": worklist_sig},
+        )
 
     stats = {
         "today": len(all_appts),
@@ -188,6 +207,7 @@ def dashboard_view(request):
         {
             **_base_context(request),
             "appointments": appointments,
+            "worklist_sig": worklist_sig,
             "stats": stats,
             "recent_patients": recent_patients,
             "today": today,
@@ -212,7 +232,7 @@ def waiting_queue_api(request):
     day_start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
     day_end = timezone.make_aware(datetime.combine(today, datetime.max.time()))
 
-    appts = (
+    appts = list(
         Appointment.objects.filter(
             organisation=emr.organisation,
             scheduled_for__range=(day_start, day_end),
@@ -222,14 +242,23 @@ def waiting_queue_api(request):
         .order_by("queue_number", "scheduled_for")
     )
 
+    # Latest vitals for the WHOLE queue in ONE query (not one per patient) - this
+    # endpoint is short-polled by every worklist, so an N+1 here would multiply
+    # DB load by the queue size on every poll. Keep it O(1) queries.
+    patient_ids = [a.patient_id for a in appts]
+    latest_vital_by_patient = {}
+    if patient_ids:
+        for v in (
+            Vital.objects.filter(patient_id__in=patient_ids, recorded_at__range=(day_start, day_end))
+            .order_by("patient_id", "-recorded_at")
+        ):
+            if v.patient_id not in latest_vital_by_patient:  # first row per patient = latest
+                latest_vital_by_patient[v.patient_id] = v
+
     queue = []
     for a in appts:
         p = a.patient
-        vital = (
-            Vital.objects.filter(patient=p, recorded_at__range=(day_start, day_end))
-            .order_by("-recorded_at")
-            .first()
-        )
+        vital = latest_vital_by_patient.get(p.pk)
         vitals = {}
         vitals_full = []
         if vital:

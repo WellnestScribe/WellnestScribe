@@ -264,8 +264,11 @@ Sections are collapsible - state saved in localStorage.
       .then(function (d) { if (d) paint(d.due || 0); })
       .catch(function () {});
   }
+  // The "due today" count changes slowly, so this runs on EVERY page for EVERY
+  // user - keep it cheap: fetch once, then only every 10 min or when the tab is
+  // re-focused. (A 60s poll here added needless load to a small server.)
   poll();
-  setInterval(poll, 60000);
+  setInterval(poll, 600000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
 })();
 </script>
