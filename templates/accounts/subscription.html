@@ -90,42 +90,37 @@
     </div>
 </div>
 
-{# ── Plans ── #}
-<div class="row mt-2">
-    <div class="col-12">
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-            <div>
-                <h5 class="fw-semibold mb-0">Plans</h5>
-                <p class="text-muted small mb-0">Unlimited notes on every plan. Billed monthly; annual saves 10%.</p>
-            </div>
-        </div>
-    </div>
+{# ── Simple pricing plans (styled to match the theme's pricing template) ── #}
+<div class="text-center mb-4 mt-2">
+    <h3 class="fw-bold mb-1">Simple pricing plans</h3>
+    <p class="text-muted mb-0">Unlimited notes on every scribe plan. Billed monthly; annual saves 10%.</p>
+</div>
+<div class="row justify-content-center">
     {% for plan in plans %}
-    <div class="col-xl-3 col-md-6 mb-4">
+    <div class="col-xl-3 col-lg-6">
         <div class="card card-pricing h-100 {% if plan.current %}pricing-current{% elif plan.popular %}pricing-popular{% endif %}">
             <div class="card-body p-4">
                 {% if plan.current %}
-                    <span class="badge bg-success float-end">Current plan</span>
+                    <div class="pricing-ribbon pricing-ribbon-success float-end">Current</div>
                 {% elif plan.popular %}
-                    <span class="badge bg-primary float-end">Popular</span>
+                    <div class="pricing-ribbon pricing-ribbon-primary float-end">Popular</div>
                 {% endif %}
-                <h5 class="mt-0 mb-1 fs-14 text-uppercase fw-semibold">{{ plan.name }}</h5>
-                <div class="text-muted small mb-3">{{ plan.blurb }}</div>
-                <h2 class="mt-0 mb-0 fw-bold">US${{ plan.usd }}<span class="fs-14 fw-medium text-muted">{{ plan.cadence }}</span></h2>
+                <h5 class="mt-0 mb-3 fs-14 text-uppercase fw-semibold">{{ plan.name }}</h5>
+                <h2 class="mt-0 mb-1 fw-bold">US${{ plan.usd }}<span class="fs-14 fw-medium text-muted"> {{ plan.cadence }}</span></h2>
                 <div class="text-muted small">J${{ plan.jmd }}{{ plan.cadence }}</div>
-                <ul class="list-unstyled border-top pt-3 mt-3 d-flex flex-column gap-2">
+                <div class="badge bg-primary-subtle text-primary mt-2">{{ plan.best_for }}</div>
+
+                <ul class="card-pricing-features text-muted border-top pt-2 mt-3 ps-0 list-unstyled">
                     {% for f in plan.features %}
-                    <li class="d-flex gap-2 align-items-start">
-                        <iconify-icon icon="iconamoon:check-circle-1-duotone" class="text-primary fs-5 flex-shrink-0"></iconify-icon>
-                        <span>{{ f }}</span>
-                    </li>
+                    <li><i class="bx bx-check-circle text-primary fs-15 me-1"></i>{{ f }}</li>
                     {% endfor %}
                 </ul>
-                <div class="mt-4 d-grid">
+
+                <div class="mt-4 text-center">
                     {% if plan.current %}
-                        <button class="btn btn-success" disabled>Your current plan</button>
+                        <button class="btn btn-primary px-sm-4 disabled w-100">Current Plan</button>
                     {% else %}
-                        <a href="mailto:hello@wellnest.health?subject=WellNest — {{ plan.name }} plan for {{ org.name }}" class="btn btn-outline-primary">Contact us to switch</a>
+                        <a href="mailto:hello@wellnest.health?subject=WellNest {{ plan.name }} for {{ org.name }}" class="btn btn-primary px-sm-4 w-100">Get Started</a>
                     {% endif %}
                 </div>
             </div>
@@ -133,16 +128,17 @@
     </div>
     {% endfor %}
     <div class="col-12">
-        <p class="text-muted small">
-            Prices in USD with a JMD reference. Long procedures and very high volume fit the
-            Professional plan. Need an offline / blackout option? Ask about the Clinic Resilience add-on.
+        <p class="text-muted small mt-2 mb-0">
+            Add the EMR to any scribe plan for <strong>+US$50/month</strong>. Institutions (10+ seats):
+            per-seat pricing with invoice/PO - contact us. Offline blackout continuity is available as
+            the Clinic Resilience add-on.
         </p>
     </div>
 </div>
 
 <style>
-  .card-pricing.pricing-current { border: 2px solid var(--bs-success); }
-  .card-pricing.pricing-popular { border: 2px solid var(--wellnest-blue, #0c7ec2); }
-  .card-pricing h2 { font-size: 2rem; }
+  .card-pricing.pricing-current { border: 2px solid var(--bs-success) !important; }
+  .card-pricing.pricing-popular { border: 2px solid var(--wellnest-blue, #0c7ec2) !important; }
+  .pricing-ribbon-success { background-color: var(--bs-success) !important; }
 </style>
 {% endblock %}

@@ -489,28 +489,28 @@ def subscription_view(request):
     # Organisation.subscription_tier where one exists, so the active plan lights up.
     plans = [
         {
+            "code": "emr", "name": "EMR only", "usd": "60", "jmd": "9,500", "cadence": "/month",
+            "popular": False, "best_for": "Records, no AI scribe",
+            "features": ["Lightweight EMR", "Patient charts & records", "Problem list & medications",
+                         "Appointments & reminders", "No AI note-taking"],
+        },
+        {
             "code": "scribe", "name": "Standard", "usd": "94", "jmd": "15,000", "cadence": "/month",
-            "popular": False, "blurb": "Everyday clinic practice.",
-            "features": ["Unlimited notes", "Fits a full clinic day", "AI SOAP, narrative & chart",
-                         "QR to any EHR, no integration", "Front-desk queue & appointments"],
+            "popular": False, "best_for": "~15-20 patients / day",
+            "features": ["Unlimited AI notes", "SOAP, narrative & chart", "QR to any EHR, no integration",
+                         "Front-desk queue & appointments", "5 note edits included"],
         },
         {
             "code": "professional", "name": "Professional", "usd": "190", "jmd": "30,000", "cadence": "/month",
-            "popular": True, "blurb": "High-volume & procedural.",
-            "features": ["Everything in Standard", "Busy private & hospital use", "Recordings up to 5 hours",
+            "popular": True, "best_for": "~25-40 patients / day",
+            "features": ["Everything in Standard", "High-volume & procedural", "Recordings up to 5 hours",
                          "Priority support"],
         },
         {
-            "code": "practice", "name": "Scribe + EMR", "usd": "150", "jmd": "24,000", "cadence": "/month",
-            "popular": False, "blurb": "Add the lightweight EMR.",
-            "features": ["Everything in Standard", "Charts, records & problem list", "Patient timeline & documents",
-                         "Appointment reminders"],
-        },
-        {
-            "code": "institution", "name": "Institution", "usd": "76", "jmd": "from 12,000", "cadence": "/seat",
-            "popular": False, "blurb": "Hospitals & health authorities.",
-            "features": ["Per-seat pricing (min 10)", "20% off 5+ seats", "Invoice / PO billing",
-                         "Onboarding & training"],
+            "code": "practice", "name": "Professional + EMR", "usd": "240", "jmd": "38,000", "cadence": "/month",
+            "popular": False, "best_for": "Full stack, high volume",
+            "features": ["Everything in Professional", "The lightweight EMR", "Patient timeline & documents",
+                         "Best-value bundle"],
         },
     ]
     for p in plans:
