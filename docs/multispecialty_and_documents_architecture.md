@@ -140,3 +140,10 @@ cost keeps falling as you grow. Documents/OCR add **cents**, not a new cost cent
 3. `Organisation.clinic_type` + specialty note templates (dental / radiology / lab).
 4. Level-2 AI indexing (cheap vision model, human-confirm) — only after 1–2 are in use.
 5. Level-3 on-demand content OCR — only if clearly demanded, always labelled + verify-against-original.
+
+---
+
+## 7. Bucket list (backlog)
+The prioritised feature backlog, WhatsApp cost/setup, EMR gaps, cost levers, and moat/GTM notes
+now live in **`docs/feature_bucket_list.md`**. Speed/latency ideas (streaming, TensorRT for the
+omniASR CTC encoder, batching) live in **`docs/performance_optimization_ideas.md`**.
