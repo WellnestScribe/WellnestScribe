@@ -21,6 +21,7 @@ urlpatterns = [
     # Users & Organisations admin panel
     path("users/", views.users_admin_view, name="users_admin"),
     path("billing/", views.billing_view, name="billing"),
+    path("security/", views.security_events_view, name="security_events"),
     path("docs/", views.docs_view, name="docs"),
     path("docs/<slug:slug>/", views.docs_view, name="docs_page"),
     path("users/create/", views.create_user_api, name="create_user"),

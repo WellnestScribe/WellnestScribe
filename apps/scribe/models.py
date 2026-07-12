@@ -94,6 +94,13 @@ class ScribeSession(models.Model):
     )
     error_message = models.TextField(blank=True)
 
+    # Per-note AI-operation counters. These cap how many times the expensive
+    # model can be re-run on a single note, so a stuck doctor (or a bad actor)
+    # can't rack up unbounded GPT cost on one session. Enforced in the views.
+    generate_count = models.PositiveIntegerField(default=0)
+    polish_count = models.PositiveIntegerField(default=0)
+    magic_edit_count = models.PositiveIntegerField(default=0)
+
     transcript = EncryptedTextField(blank=True)
     # Original ASR output - never overwritten. Used to re-run the Patois
     # interpreter on regeneration so prompt improvements take effect.
@@ -224,6 +231,41 @@ class SOAPNote(models.Model):
     @property
     def display_text(self) -> str:
         return self.edited_note or self.full_note or self.narrative
+
+
+class ModelUsageLog(models.Model):
+    """One GPT API call's token usage + computed cost (task T5).
+
+    Written by services.usage.record_call from the central _chat chokepoint, so
+    real per-note cost can be *measured* instead of estimated. One note may
+    produce several rows (interpret + generate, retries, polish, magic edit).
+    omniASR/audio cost is derived separately from the session's audio duration.
+    """
+    session = models.ForeignKey(
+        "ScribeSession", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="usage_logs",
+    )
+    doctor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+    )
+    call_type = models.CharField(max_length=32, blank=True, db_index=True)
+    model = models.CharField(max_length=100, blank=True)
+    prompt_tokens = models.PositiveIntegerField(default=0)
+    completion_tokens = models.PositiveIntegerField(default=0)
+    reasoning_tokens = models.PositiveIntegerField(default=0)
+    total_tokens = models.PositiveIntegerField(default=0)
+    input_cost = models.DecimalField(max_digits=10, decimal_places=6, default=0)
+    output_cost = models.DecimalField(max_digits=10, decimal_places=6, default=0)
+    total_cost = models.DecimalField(max_digits=10, decimal_places=6, default=0)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["call_type", "created_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.call_type or 'call'} {self.total_tokens}tok ${self.total_cost}"
 
 
 class NoteShare(models.Model):

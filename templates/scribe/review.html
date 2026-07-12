@@ -428,10 +428,10 @@
                                 <iconify-icon icon="iconamoon:restart-duotone" class="me-1 align-middle"></iconify-icon>
                                 <span id="regenerateBtnLabel">Regenerate</span>
                             </button>
-                            <button type="button" class="wn-feedback-btn flex-shrink-0" id="wnFeedbackBtn"
+                            <button type="button" class="wn-feedback-trigger flex-shrink-0" id="wnFeedbackBtn"
                                     data-bs-toggle="modal" data-bs-target="#wnFeedbackModal" title="Tell us what you think - pilot feedback">
-                                <img class="wn-feedback-ico" src="{% static 'img/feedback-icon.png' %}" alt="">
-                                <span>Share feedback</span>
+                                <iconify-icon icon="iconamoon:comment-dots-duotone"></iconify-icon>
+                                <span>Feedback</span>
                             </button>
                         </div>
                     </div>
@@ -2811,7 +2811,19 @@ function _suiteConfirm(title, text) {
 /* Bracket placeholders - visual cue that they're clickable */
 .bk-hl { cursor: pointer; text-decoration: underline dotted rgba(13,110,253,0.5); }
 
-/* ── Pilot "Share feedback" button: glossy static gradient ── */
+/* ── Mini "Feedback" trigger: subtle, not distracting. The colourful gradient
+   is saved for the actual "Send feedback" submit inside the modal. ── */
+.wn-feedback-trigger {
+  border: 1px solid rgba(58,71,213,0.28); background: transparent;
+  color: #3a47d5; font-weight: 600; font-size: 0.82rem; line-height: 1;
+  border-radius: 999px; padding: 6px 12px;
+  display: inline-flex; align-items: center; gap: 5px;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.wn-feedback-trigger iconify-icon { font-size: 1rem; }
+.wn-feedback-trigger:hover { background: rgba(58,71,213,0.06); border-color: rgba(58,71,213,0.5); }
+
+/* ── Pilot "Send feedback" submit button: glossy static gradient ── */
 .wn-feedback-btn {
   border: none; color: #fff; font-weight: 700; border-radius: 999px;
   padding: 8px 16px; display: inline-flex; align-items: center; gap: 7px;

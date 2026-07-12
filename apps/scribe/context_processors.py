@@ -31,12 +31,12 @@ def ui_preferences(request):
     if not user or not user.is_authenticated:
         triage_visible = False
         is_admin = False
-    elif settings.SCRIBE_ENABLE_TRIAGE:
-        triage_visible = True
-        is_admin = bool(profile and profile.is_admin) or user.is_staff
     else:
         is_admin = bool(profile and profile.is_admin) or user.is_staff or user.is_superuser
-        triage_visible = bool(profile and profile.can_access_triage()) or is_admin
+        # Triage Lab is an admin-only internal tool (QA / benchmarking) - it must
+        # not appear for doctors/nurses. The env flag is a master enable;
+        # visibility now additionally requires admin.
+        triage_visible = is_admin and settings.SCRIBE_ENABLE_TRIAGE
 
     is_org_admin = False
     if not is_admin and user and user.is_authenticated:

@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}Server monitor · WellNest{% endblock %}
+
+{% block content %}
+<div class="emr-shell">
+  <div class="page-title-box d-flex align-items-start justify-content-between flex-wrap gap-3">
+    <div>
+      <h4 class="mb-1 fw-semibold">Server monitor</h4>
+      <p class="text-muted mb-0 small">
+        Live view of what this instance is doing. Reads the container directly —
+        CPU, memory, load, how many gunicorn workers are actually running, and a
+        live database round-trip.
+      </p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <span id="mon-status" class="badge rounded-pill bg-success-subtle text-success">Live · 2s</span>
+      <button id="mon-toggle" class="btn btn-outline-secondary btn-sm">Pause</button>
+    </div>
+  </div>
+
+  <!-- Stat cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+      <div class="card h-100"><div class="card-body p-3">
+        <div class="text-muted small">Gunicorn workers</div>
+        <div class="fs-3 fw-semibold" id="m-workers">–</div>
+        <div class="small" id="m-workers-note">&nbsp;</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card h-100"><div class="card-body p-3">
+        <div class="text-muted small">CPU</div>
+        <div class="fs-3 fw-semibold" id="m-cpu">–</div>
+        <div class="small text-muted" id="m-cores">&nbsp;</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card h-100"><div class="card-body p-3">
+        <div class="text-muted small">Memory</div>
+        <div class="fs-3 fw-semibold" id="m-mem">–</div>
+        <div class="small text-muted" id="m-mem-detail">&nbsp;</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card h-100"><div class="card-body p-3">
+        <div class="text-muted small">DB round-trip</div>
+        <div class="fs-3 fw-semibold" id="m-db">–</div>
+        <div class="small text-muted" id="m-load">&nbsp;</div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="row g-4">
+    <div class="col-12 col-xl-6">
+      <div class="card"><div class="card-body p-4">
+        <h6 class="fw-semibold mb-3">CPU % <span class="text-muted small fw-normal">(whole container)</span></h6>
+        <canvas id="chart-cpu" height="180"></canvas>
+      </div></div>
+    </div>
+    <div class="col-12 col-xl-6">
+      <div class="card"><div class="card-body p-4">
+        <h6 class="fw-semibold mb-3">Memory %</h6>
+        <canvas id="chart-mem" height="180"></canvas>
+      </div></div>
+    </div>
+    <div class="col-12">
+      <div class="card"><div class="card-body p-4">
+        <h6 class="fw-semibold mb-3">DB round-trip (ms) <span class="text-muted small fw-normal">— high or spiky = database latency is the bottleneck</span></h6>
+        <canvas id="chart-db" height="140"></canvas>
+      </div></div>
+    </div>
+  </div>
+
+  <p class="text-muted small mt-3 mb-0">
+    Note: fields show "n/a" on local Windows (metrics are read from Linux
+    <code>/proc</code>). Measuring CPU briefly holds this request ~120ms, so this
+    page is admin-only and polls modestly.
+  </p>
+</div>
+
+<script>
+(function () {
+  var ENDPOINT = '{% url "scribe:api_server_metrics" %}';
+  var MAX_POINTS = 90;         // ~3 minutes at 2s
+  var INTERVAL = 2000;
+  var cpu = [], mem = [], db = [];
+  var running = true, timer = null;
+
+  function fmt(v, suffix) { return (v === null || v === undefined) ? 'n/a' : (v + (suffix || '')); }
+
+  // Minimal scrolling line chart on a canvas — no library.
+  function draw(canvasId, series, opts) {
+    var c = document.getElementById(canvasId);
+    if (!c) return;
+    // Fixed logical height (never read back from the element, or it feeds back
+    // and the canvas grows every frame). CSS height is pinned so layout is stable.
+    var logicalH = opts.h || 180;
+    var dpr = window.devicePixelRatio || 1;
+    c.style.width = '100%';
+    c.style.height = logicalH + 'px';
+    var cssW = c.clientWidth || c.parentNode.clientWidth || 600;
+    var needW = Math.round(cssW * dpr), needH = Math.round(logicalH * dpr);
+    if (c.width !== needW) c.width = needW;
+    if (c.height !== needH) c.height = needH;
+    var ctx = c.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, logicalH);
+
+    var padL = 38, padR = 8, padT = 10, padB = 16;
+    var w = cssW - padL - padR, h = logicalH - padT - padB;
+    var vals = series.filter(function (v) { return v !== null && v !== undefined; });
+    var max = opts.max || (vals.length ? Math.max.apply(null, vals) : 1);
+    if (max <= 0) max = 1;
+    if (opts.niceMax) { max = Math.ceil(max / opts.niceMax) * opts.niceMax; }
+
+    // gridlines + y labels
+    ctx.strokeStyle = 'rgba(128,128,128,0.18)';
+    ctx.fillStyle = 'rgba(128,128,128,0.85)';
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.lineWidth = 1;
+    for (var g = 0; g <= 4; g++) {
+      var yy = padT + h * g / 4;
+      ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(padL + w, yy); ctx.stroke();
+      ctx.fillText(Math.round(max * (1 - g / 4)), 4, yy + 3);
+    }
+
+    if (series.length < 2) return;
+    var stepX = w / (MAX_POINTS - 1);
+    function x(i) { return padL + i * stepX; }
+    function y(v) { return padT + h * (1 - Math.min(v, max) / max); }
+
+    // fill under line
+    ctx.beginPath();
+    var started = false, firstI = 0;
+    for (var i = 0; i < series.length; i++) {
+      var v = series[i];
+      if (v === null || v === undefined) continue;
+      if (!started) { ctx.moveTo(x(i), y(v)); started = true; firstI = i; }
+      else ctx.lineTo(x(i), y(v));
+    }
+    if (started) {
+      ctx.lineTo(x(series.length - 1), padT + h);
+      ctx.lineTo(x(firstI), padT + h);
+      ctx.closePath();
+      ctx.fillStyle = opts.fill;
+      ctx.fill();
+    }
+
+    // line
+    ctx.beginPath(); started = false;
+    for (var j = 0; j < series.length; j++) {
+      var vv = series[j];
+      if (vv === null || vv === undefined) continue;
+      if (!started) { ctx.moveTo(x(j), y(vv)); started = true; }
+      else ctx.lineTo(x(j), y(vv));
+    }
+    ctx.strokeStyle = opts.stroke; ctx.lineWidth = 2; ctx.stroke();
+
+    // latest value label
+    var last = null;
+    for (var k = series.length - 1; k >= 0; k--) { if (series[k] !== null && series[k] !== undefined) { last = series[k]; break; } }
+    if (last !== null) {
+      ctx.fillStyle = opts.stroke;
+      ctx.font = '600 12px system-ui, sans-serif';
+      ctx.fillText(last + (opts.unit || ''), padL + w - 46, padT + 12);
+    }
+  }
+
+  function push(arr, v) { arr.push(v); if (arr.length > MAX_POINTS) arr.shift(); }
+
+  function redraw() {
+    draw('chart-cpu', cpu, { h: 180, max: 100, stroke: '#0d6efd', fill: 'rgba(13,110,253,0.12)', unit: '%' });
+    draw('chart-mem', mem, { h: 180, max: 100, stroke: '#20a97a', fill: 'rgba(32,169,122,0.12)', unit: '%' });
+    draw('chart-db',  db,  { h: 140, niceMax: 50, stroke: '#e0663b', fill: 'rgba(224,102,59,0.12)', unit: 'ms' });
+  }
+
+  function paintCards(d) {
+    var wEl = document.getElementById('m-workers');
+    var nEl = document.getElementById('m-workers-note');
+    if (d.gunicorn_workers === null || d.gunicorn_workers === undefined) {
+      wEl.textContent = 'n/a'; nEl.innerHTML = '&nbsp;';
+    } else {
+      wEl.textContent = d.gunicorn_workers;
+      if (d.gunicorn_workers <= 1) {
+        wEl.className = 'fs-3 fw-semibold text-danger';
+        nEl.className = 'small text-danger';
+        nEl.textContent = 'Single worker — no concurrency';
+      } else {
+        wEl.className = 'fs-3 fw-semibold text-success';
+        nEl.className = 'small text-success';
+        nEl.textContent = (d.gunicorn_procs || '?') + ' procs (1 master + ' + d.gunicorn_workers + ')';
+      }
+    }
+    document.getElementById('m-cpu').textContent = fmt(d.cpu_percent, '%');
+    document.getElementById('m-cores').textContent = (d.cores || '?') + ' core' + (d.cores === 1 ? '' : 's');
+    document.getElementById('m-mem').textContent = fmt(d.mem_percent, '%');
+    document.getElementById('m-mem-detail').textContent =
+      (d.mem_used_mb != null) ? (d.mem_used_mb + ' / ' + d.mem_total_mb + ' MB') : ' ';
+    document.getElementById('m-db').textContent = fmt(d.db_ping_ms, ' ms');
+    document.getElementById('m-load').textContent =
+      d.load ? ('load ' + d.load[0] + ' · ' + d.load[1] + ' · ' + d.load[2]) : ' ';
+  }
+
+  function poll() {
+    if (!running || document.hidden) return;
+    fetch(ENDPOINT, { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d) return;
+        paintCards(d);
+        push(cpu, d.cpu_percent);
+        push(mem, d.mem_percent);
+        push(db, d.db_ping_ms);
+        redraw();
+      })
+      .catch(function () {});
+  }
+
+  document.getElementById('mon-toggle').addEventListener('click', function () {
+    running = !running;
+    this.textContent = running ? 'Pause' : 'Resume';
+    var s = document.getElementById('mon-status');
+    s.textContent = running ? 'Live · 2s' : 'Paused';
+    s.className = 'badge rounded-pill ' + (running ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary');
+    if (running) poll();
+  });
+  window.addEventListener('resize', redraw);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && running) poll(); });
+
+  poll();
+  timer = setInterval(poll, INTERVAL);
+})();
+</script>
+{% endblock %}

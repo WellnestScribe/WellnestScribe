@@ -138,7 +138,32 @@
           fontScale: {{ ui_font_scale|default:100 }},
         },
         idleTimeoutMs: {{ idle_lock_ms|default:0 }},
+        sounds: {
+          enabled: {% if doctor_profile and not doctor_profile.sound_effects %}false{% else %}true{% endif %},
+          start: "{% static 'sounds/scribe-start.mp3' %}",
+          cancel: "{% static 'sounds/scribe-cancel.mp3' %}",
+          success: "{% static 'sounds/scribe-success.mp3' %}",
+        },
+        playSound: function (name) {
+          try {
+            var s = window.WELLNEST.sounds;
+            if (!s || !s.enabled || !s[name]) return;
+            var a = new Audio(s[name]); a.volume = 0.55; a.play().catch(function () {});
+          } catch (e) {}
+        },
       };
+    </script>
+    <script>
+      // Success chime plays on the review page after a note finishes generating
+      // (the record page sets this flag just before it redirects here).
+      document.addEventListener('DOMContentLoaded', function () {
+        try {
+          if (sessionStorage.getItem('wn_play_success') === '1') {
+            sessionStorage.removeItem('wn_play_success');
+            if (window.WELLNEST && window.WELLNEST.playSound) window.WELLNEST.playSound('success');
+          }
+        } catch (e) {}
+      });
     </script>
     <script src="https://code.iconify.design/iconify-icon/2.3.0/iconify-icon.min.js"></script>
     <script src="{% static 'js/vendor.js' %}"></script>

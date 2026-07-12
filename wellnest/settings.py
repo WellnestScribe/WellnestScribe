@@ -90,6 +90,7 @@ MIDDLEWARE = [
     "axes.middleware.AxesMiddleware",
     "wellnest.middleware.DemoLockdownMiddleware",
     "wellnest.middleware.SecurityAuditMiddleware",
+    "wellnest.middleware.UsageContextMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]

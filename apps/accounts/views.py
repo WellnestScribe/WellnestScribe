@@ -491,8 +491,8 @@ def subscription_view(request):
         {
             "code": "scribe", "name": "Standard", "usd": "94", "jmd": "15,000", "cadence": "/month",
             "popular": False, "best_for": "~15-20 patients / day",
-            "features": ["Unlimited AI notes", "SOAP, narrative & chart", "QR to any EHR, no integration",
-                         "Front-desk queue & appointments", "5 note edits included"],
+            "features": ["500 notes / month", "SOAP, narrative & chart", "QR to any EHR, no integration",
+                         "Front-desk queue & appointments", "AI edits included per note"],
         },
         {
             "code": "practice", "name": "Standard + EMR", "usd": "144", "jmd": "23,000", "cadence": "/month",
@@ -503,7 +503,7 @@ def subscription_view(request):
         {
             "code": "professional", "name": "Professional", "usd": "190", "jmd": "30,000", "cadence": "/month",
             "popular": True, "best_for": "~25-40 patients / day",
-            "features": ["Everything in Standard", "High-volume & procedural", "Recordings up to 5 hours",
+            "features": ["1,100 notes / month", "Everything in Standard", "Recordings up to 5 hours",
                          "Priority support"],
         },
         {
@@ -812,3 +812,78 @@ def bootstrap_admin_view(request):
     profile.role = DoctorProfile.ROLE_ADMIN
     profile.save(update_fields=["role"])
     return redirect("accounts:profile")
+
+
+@login_required
+def security_events_view(request):
+    """Intrusion-detection dashboard (admin only).
+
+    Surfaces the SecurityEvents recorded by the audit middleware and the failed
+    login signal: summary counts, top offending IPs, and a filterable event log.
+    Read-only — a review surface, not a control panel.
+    """
+    from datetime import timedelta
+    from django.db.models import Count
+    from .models import SecurityEvent, user_is_admin
+
+    if not user_is_admin(request.user):
+        return redirect("scribe:record")
+
+    # Filters
+    try:
+        days = int(request.GET.get("days", "7"))
+    except (TypeError, ValueError):
+        days = 7
+    days = max(1, min(days, 90))
+    etype = request.GET.get("type", "").strip()
+    severity = request.GET.get("severity", "").strip()
+
+    since = timezone.now() - timedelta(days=days)
+    qs = SecurityEvent.objects.filter(created_at__gte=since).select_related("user")
+    if etype:
+        qs = qs.filter(event_type=etype)
+    if severity:
+        qs = qs.filter(severity=severity)
+
+    events = list(qs[:300])
+
+    # Summary over the same window (unfiltered by type/severity so the cards
+    # always show the full picture).
+    window = SecurityEvent.objects.filter(created_at__gte=since)
+    last_24h = SecurityEvent.objects.filter(
+        created_at__gte=timezone.now() - timedelta(hours=24)
+    ).count()
+    by_type = {
+        row["event_type"]: row["n"]
+        for row in window.values("event_type").annotate(n=Count("id"))
+    }
+    by_severity = {
+        row["severity"]: row["n"]
+        for row in window.values("severity").annotate(n=Count("id"))
+    }
+    type_counts = [(label, by_type.get(val, 0)) for val, label in SecurityEvent.TYPE_CHOICES]
+    top_ips = list(
+        window.exclude(ip__isnull=True)
+        .values("ip")
+        .annotate(n=Count("id"))
+        .order_by("-n")[:8]
+    )
+
+    return render(
+        request,
+        "accounts/security_events.html",
+        {
+            "events": events,
+            "days": days,
+            "type_filter": etype,
+            "severity_filter": severity,
+            "type_choices": SecurityEvent.TYPE_CHOICES,
+            "severity_choices": SecurityEvent.SEVERITY_CHOICES,
+            "total_window": window.count(),
+            "last_24h": last_24h,
+            "by_type": by_type,
+            "by_severity": by_severity,
+            "type_counts": type_counts,
+            "top_ips": top_ips,
+        },
+    )

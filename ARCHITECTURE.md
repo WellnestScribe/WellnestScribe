@@ -4,6 +4,30 @@
 
 ---
 
+## 0. Current Stack Summary (2026-07) — read this first
+
+This is exactly what is running **right now**. (Later sections retain more detail; where they disagree with this table, this table wins — the older sections predate the Render→Azure and MMS→omniASR moves.)
+
+| Layer | Technology (current) |
+|---|---|
+| Web framework | **Django 5.0.6** (Python), server-rendered templates + vanilla JS (no SPA framework) |
+| Hosting | **Microsoft Azure App Service (Linux, B1: 1 vCPU / 1.75 GB)**, Gunicorn **`gthread`** workers |
+| Database | **Aiven MySQL** (managed cloud, TLS), `CONN_MAX_AGE=60`. SQLite for local dev. |
+| Static / PWA | WhiteNoise; service-worker PWA shell |
+| **Transcription (ASR)** | **omniASR (CTC variant) on Modal — T4 GPU.** Endpoints registered in the `ModalOmniEndpoint` DB table, selected by profile (`low`/`mid`/`high`) with health-checked failover. **Measured ~$0.05/audio-hour.** (`AMBIENT_BACKEND=modal-omni`.) Legacy `gpt-4o-transcribe` and Modal-MMS paths remain in code as fallbacks. |
+| **Note generation** | **Azure OpenAI `gpt-5-chat`** deployment (product-branded "Cadence"). **$2.50 in / $15 out per 1M tokens** (measured & confirmed). **Single combined interpret+generate call** (`SCRIBE_COMBINED_PIPELINE=True`), `reasoning_effort=minimal`. **Measured ~$0.045–0.05/note.** |
+| Language routing (v3) | `jam_Latn` → Patois interpreter → Jamaica-context SOAP · low-resource (`hat`/`wol`/`kin`) → generalized interpreter · all high-resource → skip interpreter |
+| Cost telemetry | Every GPT call logged to **`ModelUsageLog`** (prompt/completion/reasoning tokens + computed $); report via `python manage.py ai_cost_report`. omniASR cost derived from session audio duration. |
+| Apps | `accounts` (auth, RBAC, **10 roles**), `scribe` (AI notes — core), `emr` (org-scoped records), `ed` (emergency dept) |
+| Security | PHI fields **encrypted at rest** (`EncryptedTextField`); **django-axes** brute-force lockout; client-side **idle auto-lock**; **4h** session cap; **Intrusion-Detection dashboard** (`SecurityEvent`); encrypted QR phone→desktop handoff |
+| Usage / billing | **Note-credit model** (1 credit per note ≤20 min, **+1 per extra 20 min**); per-doctor monthly meter in the topbar; per-note AI-op caps (regenerate/polish/magic-edit); 3-hour recording auto-stop |
+| Observability | Admin **Server Monitor** page (live CPU/mem/workers/DB), **Intrusion Detection** page, token/cost logging |
+| Middleware | `DemoLockdownMiddleware` (kill-switch), `SecurityAuditMiddleware` (IDS), `UsageContextMiddleware` (tags GPT calls for cost) |
+
+**Real-time UI:** short polling (worklist + queue every ~5–12 s, self-throttling) — **no Redis, no websockets**; the always-on SSE was scoped to `/scribe/` only. See §14.
+
+---
+
 ## 1. What WellNest Is
 
 A web-based AI medical scribe built specifically for Caribbean (initially Jamaican) healthcare:
@@ -28,39 +52,27 @@ The pilot doctor is Dr Smith, a UWI/MAPEN-affiliated clinician working at a Manc
 ```
 ┌──────────────────────────────┐
 │  Doctor's phone or laptop    │   Browser:
-│  (Chrome / Edge / Safari)    │   - HTML/CSS/JS only (no framework)
+│  (Chrome / Edge / Safari)    │   - HTML/CSS/vanilla JS (no framework)
 └──────────┬───────────────────┘   - MediaRecorder API for audio capture
            │ HTTPS                  - Bootstrap 5 (Reback admin theme adapted)
            ▼
-┌──────────────────────────────┐
-│  Django 5 (Python)           │   Single process per worker. State:
-│  Gunicorn on Render          │   - MySQL (Aiven cloud, production)
-│  (wellnest-app-latest)       │   - SQLite (dev)
-│                              │   - media/   (audio uploads)
-│                              │   - logs/    (rotating audit + app logs)
+┌──────────────────────────────┐   Gunicorn gthread workers. State:
+│  Django 5 (Python)           │   - Aiven MySQL (cloud, production, TLS)
+│  Azure App Service (Linux B1)│   - SQLite (dev)
+│  1 vCPU / 1.75 GB            │   - media/  (audio, auto-purged)
+│                              │   - logs/   (rotating audit + app logs)
 └──────────┬───────────────────┘
            │ HTTPS, server-side calls
            ├──────────────────────────────────────────┐
            ▼                                          ▼
-┌──────────────────────────┐      ┌────────────────────────────────┐
-│  OpenAI                  │      │  Azure OpenAI                  │
-│  gpt-4o-transcribe       │      │  gpt-5-chat (SOAP generation,  │
-│  (speech → text)         │      │   polish, drug check, ED ESI)  │
-└──────────────────────────┘      └────────────────────────────────┘
-           │
-           ▼
-┌──────────────────────────────────────────────────┐
-│  Modal L4 GPU (cloud, temporary)                 │
-│  facebook/mms-1b-l1107 for Jamaican Patois ASR   │
-│  (ambient mode + Triage Lab)                     │
-└──────────────────────────────────────────────────┘
-           │
-           ▼
-┌──────────────────────────────────────────────────┐
-│  On-device fallback (CPU)                        │
-│  Same MMS weights, loaded locally by Django      │
-│  (AMBIENT_BACKEND=local; slow, ~60–120 s first)  │
-└──────────────────────────────────────────────────┘
+┌──────────────────────────────────┐   ┌────────────────────────────────┐
+│  Modal — T4 GPU (cloud)          │   │  Azure OpenAI                  │
+│  omniASR (CTC) speech → text     │   │  gpt-5-chat = "Cadence"        │
+│  ModalOmniEndpoint registry      │   │  interpret+generate (1 call),  │
+│  profiles: low / mid / high      │   │  polish, magic-edit, drug check│
+│  ~$0.05 / audio-hour (measured)  │   │  $2.50/$15 per 1M tok          │
+└──────────────────────────────────┘   └────────────────────────────────┘
+           │  (fallbacks still in code: gpt-4o-transcribe · Modal-MMS · on-device CPU MMS)
 ```
 
 **Key design decisions:**
@@ -344,9 +356,12 @@ Three optional cloud calls, all manual (never auto-fired to control cost):
 
 ### 7.6 Ambient / Patois ASR
 
+> **Current default (2026-07):** **omniASR (CTC) on Modal T4** via `transcribe_modal_omni()` and the `ModalOmniEndpoint` registry (profiles low/mid/high, priority order + health-check failover, `X-API-Key` auth). `AMBIENT_BACKEND=modal-omni`. ~$0.05/audio-hour measured. The MMS paths below are retained as fallbacks.
+
 `apps/scribe/services/triage.py`:
 
-- **`transcribe_modal_mms()`** — POST webm (converted to WAV via ffmpeg if available) to Modal L4 GPU endpoint. Authenticates with `X-API-Key`. Returns timing stats.
+- **`transcribe_modal_omni()`** — POST audio (webm→WAV via ffmpeg) to the active `ModalOmniEndpoint` (`/transcribe/omni/file`). **Primary path.**
+- **`transcribe_modal_mms()`** _(fallback)_ — POST webm to a Modal MMS endpoint. Authenticates with `X-API-Key`. Returns timing stats.
 - **`transcribe_mms()`** — Local CPU path: loads `facebook/mms-1b-l1107` on demand, resamples audio to 16 kHz mono, chunks at 25 s, aggregates transcript.
 - Both paths go through the `triage_jobs.py` async thread pool — the request returns a `job_id` in < 100 ms; the client polls.
 
@@ -402,7 +417,9 @@ Backend selection in `registry.py`. All EMR views call `get_backend()` rather th
 | Control | Implementation |
 |---|---|
 | Cookies | `Secure` (DEBUG off), `HttpOnly`, `SameSite=Lax` |
-| Session lifetime | 8 h absolute, rolling on activity; idle warning + auto-signout at 15 min |
+| Session lifetime | **4 h absolute** (reduced from 8 h for PHI); `SESSION_SAVE_EVERY_REQUEST=False`; client-side idle auto-lock (re-auth) + auto-signout |
+| PHI at rest | Encrypted via `EncryptedTextField` (transcripts, patient identity, notes) |
+| Brute force | `django-axes` lockout on repeated failed logins; failed logins also feed the IDS (`SecurityEvent`) |
 | Headers | `X-Frame-Options: DENY`, no-sniff, strict-origin referrer |
 | Transport | HSTS 1 year + SSL redirect when `DEBUG=False` |
 | Auth | Email-or-username login, 7-role RBAC, per-actor audit log |
@@ -417,13 +434,15 @@ Backend selection in `registry.py`. All EMR views call `get_backend()` rather th
 
 ## 11. Deployment
 
-### 11.1 Current (Render, recommended for pilot)
+### 11.1 Current (Microsoft Azure App Service)
 
-- **Platform:** Render web service (`WEBSITE_HOSTNAME=wellnest-app-latest.onrender.com`)
-- **Process:** Gunicorn (single worker for pilot)
-- **DB:** MySQL on Aiven cloud (`wellnestscribe-wellnestscribe.c.aivencloud.com:12498`)
-- **Static files:** WhiteNoise middleware
-- **Media:** `media/` directory on the Render instance (ephemeral — migrate to S3 for persistence at scale)
+- **Platform:** **Azure App Service (Linux), B1 SKU** — 1 vCPU / 1.75 GB. (Was Render; migrated.)
+- **Process:** **Gunicorn `gthread`** — the Startup Command / Procfile must set `--worker-class gthread --workers 2-3 --threads 4 --timeout 300`. A default single **sync** worker serialises the whole site and causes site-wide freezes/504s under concurrency — this was the root cause of the worklist-freeze incident; gthread is required.
+- **Also set:** `DEBUG=False`, **Always On = On** (stops idle spin-down / cold-start on the first request after quiet periods).
+- **DB:** MySQL on **Aiven** cloud (TLS via `certs/`), `CONN_MAX_AGE=60`. **Cross-region latency (~125 ms/query) is the #1 remaining perf factor — co-locate the DB in the app's Azure region.**
+- **Static files:** WhiteNoise middleware.
+- **Media:** `media/` on the instance (ephemeral — audio auto-purged after `AUTO_DELETE_AUDIO_DAYS`; move to Azure Blob for persistence at scale).
+- **Scaling path:** scale up (P-series, multi-core) + scale out (N instances, autoscale on CPU) once past a few dozen concurrent users; see `docs/roadmap/scaling_architecture.md`.
 
 Required env vars for production:
 
@@ -523,4 +542,30 @@ For the Modal ambient backend, `ffmpeg` must be in PATH to convert browser WebM 
 
 ---
 
-*Last updated: 2026-06-09.*
+## 14. What's New (2026-07) — recent subsystems
+
+Added since the older sections above; these reflect the current system.
+
+**Cost & usage metering (task "T5").**
+- **`ModelUsageLog`** — every GPT call (via the central `_chat` chokepoint) logs prompt/completion/reasoning tokens + computed cost. `UsageContextMiddleware` tags each call with session/doctor/type. Report: `python manage.py ai_cost_report --hours N`. omniASR cost is derived from `ScribeSession` audio duration.
+- **Note-credit model** — usage is metered in credits: 1 per note ≤ 20 min, **+1 per additional 20 min** (a 1-hour note = 3, a 4-hour = 12). Closes the "one long recording = one note" loophole. Standard 500 credits/mo, Professional 1,100. Per-doctor monthly meter is a topbar pill + popover (`/scribe/api/usage/`).
+- **Per-note AI-op caps** — regenerate 12, grammar-polish 6, magic-edit 8 (fields on `ScribeSession`).
+- **Recording safeguards** — hard **auto-stop at 3 h** (saves the note) + on-screen nudge at 90 min.
+
+**Security & Intrusion Detection.**
+- **`SecurityEvent`** model + `SecurityAuditMiddleware` persist rapid-access, impossible-travel, endpoint-probing, and failed-login (via `user_login_failed` signal) events. Admin **Intrusion Detection** dashboard at `/accounts/security/`.
+- **PHI encrypted at rest** (`EncryptedTextField` on transcripts, patient identity, etc.), **django-axes** brute-force lockout, client-side **idle auto-lock**, session cut to **4 h**. **Triage Lab is now admin-only.**
+
+**Observability.** Admin **Server Monitor** at `/scribe/ops/server/` — live CPU %, memory %, **gunicorn worker count**, and a DB round-trip ping, on canvas charts (reads Linux `/proc`).
+
+**Performance / real-time — deliberately no Redis, no websockets.** Short polling for the worklist and queue (self-throttling with exponential backoff, signature-diff so the DOM only swaps on real change, pauses when the tab is hidden). The always-on QR-handoff SSE was scoped to `/scribe/` only; `SESSION_SAVE_EVERY_REQUEST=False`; `PlatformControl` cached; N+1 queries batched; `gthread` workers. Rationale + scale plan in `docs/roadmap/scaling_architecture.md`.
+
+**Next cost lever — prompt caching.** Measured: the ~8K-token static system prompt is ~90% of GPT cost and `reasoning_tokens ≈ 0`. Restructuring prompts so the static block is a stable **cache prefix** roughly halves input cost — a codebase change only (Azure caching is automatic, no portal setting).
+
+**Middleware order:** `DemoLockdownMiddleware` → `SecurityAuditMiddleware` → `UsageContextMiddleware`.
+
+**Roles:** now **10** on `DoctorProfile.role` (added `radiologist`, `pharmacist`, `lab_tech` to the seven in §6).
+
+---
+
+*Last updated: 2026-07-12. Sections 0, 2, 11 and 14 are current; earlier sections retain design detail but predate the Render→Azure and MMS→omniASR migrations.*

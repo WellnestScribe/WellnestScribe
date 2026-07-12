@@ -208,6 +208,14 @@
       postJSON(W.endpoints.updatePreferences, { suggestive_assist: suggestiveAssistChk.checked });
     });
   }
+  const soundEffectsChk = $("#prefSoundEffects");
+  if (soundEffectsChk) {
+    soundEffectsChk.addEventListener("change", function () {
+      if (W.sounds) W.sounds.enabled = soundEffectsChk.checked;   // apply live, no reload
+      if (soundEffectsChk.checked && W.playSound) W.playSound("success");  // quick preview
+      postJSON(W.endpoints.updatePreferences, { sound_effects: soundEffectsChk.checked });
+    });
+  }
 
   // ---------- session search ----------
   $$("[data-session-filter]").forEach(function (input) {

@@ -4,6 +4,43 @@
 > **staring at the real-time worklist**, with no slowdown for anyone. This is the
 > definitive plan. Ordered by leverage.
 
+## Current implementation (2026-07 — what is live now)
+
+**The tool / queue system.** The clinical workflow centres on a per-clinic **worklist / queue**.
+The front desk checks a patient in; they become an `Appointment` with a status
+(`checked_in` → `triage` → `with_doctor` → `complete`/`cancelled`) and a queue position. Doctors
+and nurses watch this board on the dashboard (`/emr/`) and on the scribe record page — it is the
+most-viewed, most-real-time surface in the product.
+
+**What we changed, and why.**
+- **Before:** an always-on `EventSource` (SSE) opened on *every* page (for the QR phone→desktop
+  handoff) and the server held that connection ~180 s **per user**. With few Gunicorn workers, a
+  handful of online users held every worker → the **whole site froze** (the "worklist freeze"
+  incident). The worklist also ran a heavy `Max(encounters…)` annotation and an N+1 vitals query.
+- **After (current): short polling — no Redis, no websockets.**
+  - The SSE is **scoped to `/scribe/` only** (where the handoff happens); every other page holds
+    **zero** long-lived connections.
+  - The worklist and queue **short-poll lean fragments** (`/emr/api/queue/`, dashboard
+    `?fragment=worklist`) every ~5–12 s. Each poll is a **stateless request that releases its
+    worker instantly**. The poller is **self-throttling** (exponential backoff when the server is
+    slow), does a **signature diff** so the DOM only swaps on a real change, and **pauses when the
+    tab is hidden**.
+  - Per-request cost was cut: `SESSION_SAVE_EVERY_REQUEST=False`, `PlatformControl` cached, the
+    `Max` annotation removed, the vitals N+1 batched into one query.
+
+**Expected scale (current).**
+| Setup | Concurrent active users before slowdown |
+|---|---|
+| Old: 1 sync worker + always-on SSE | ~1–3 (froze) |
+| **Current: Gunicorn `gthread` (2–3 × 4 threads) on B1 + scoped SSE + lean polling** | **~30–60** |
+| + co-locate DB in the app's Azure region (cuts ~125 ms/query) | ~5× more headroom |
+| + P-series SKU + horizontal auto-scale (N instances) + read replica | hundreds → thousands |
+
+The single biggest lever past one B1 is **co-locating the DB in the app's region** (today it is
+cross-region, ~125 ms/query). The layers below are the ordered path to thousands.
+
+---
+
 ## The one rule that governs everything
 **A server request-slot (worker/thread) may be held only for the milliseconds it takes
 to answer a request — never per-user, never per-page.** The instant anything holds a slot

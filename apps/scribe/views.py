@@ -37,6 +37,7 @@ from .services.pipeline import (
     run_suggest_improvements,
     run_transcription,
 )
+from .services.usage import set_context as _set_usage_context
 from .services.triage import (
     TriageDependencyError,
     _compute_wer_cer,
@@ -56,12 +57,13 @@ def _triage_visible(user) -> bool:
     """Can the user see the Triage page at all? Controlled by env flag too."""
     if not user.is_authenticated:
         return False
-    if dj_settings.SCRIBE_ENABLE_TRIAGE:
+    # Admin-only tool. The env flag is a master enable; access requires admin.
+    if not dj_settings.SCRIBE_ENABLE_TRIAGE:
+        return False
+    if user.is_staff or user.is_superuser:
         return True
     profile = DoctorProfile.objects.filter(user=user).first()
-    if profile and profile.can_access_triage():
-        return True
-    return bool(user.is_staff or user.is_superuser)
+    return bool(profile and profile.is_admin)
 
 
 def _triage_admin(user) -> bool:
@@ -1576,6 +1578,36 @@ _BILLING_BLOCK_MSG = (
     "Patient records remain available — please contact your administrator."
 )
 
+# Per-note caps on expensive AI re-runs (guards against runaway model cost on a
+# single session — a stuck doctor or a bad actor hammering Regenerate). Generous
+# enough for normal editing. The first generation counts as 1.
+NOTE_GENERATE_CAP = 12
+NOTE_POLISH_CAP = 6
+NOTE_MAGIC_EDIT_CAP = 8
+
+
+def _op_cap_response(session, field, cap, label):
+    """JsonResponse (HTTP 429) if this note hit its per-note op cap, else None."""
+    if getattr(session, field, 0) >= cap:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": (
+                    "You've reached the %s limit for this note (%d). Edit the "
+                    "note directly, or start a new session." % (label, cap)
+                ),
+                "cap_reached": True,
+            },
+            status=429,
+        )
+    return None
+
+
+def _bump_op_count(session, field):
+    """Atomically increment a per-note op counter (race-safe)."""
+    from django.db.models import F
+    type(session).objects.filter(pk=session.pk).update(**{field: F(field) + 1})
+
 
 @login_required
 @require_POST
@@ -1584,6 +1616,11 @@ def generate_note_api(request, pk):
     session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)
     if _scribe_billing_suspended(request.user):
         return JsonResponse({"ok": False, "error": _BILLING_BLOCK_MSG, "billing_suspended": True}, status=402)
+    capped = _op_cap_response(session, "generate_count", NOTE_GENERATE_CAP, "note generation / regeneration")
+    if capped:
+        return capped
+    _bump_op_count(session, "generate_count")
+    _set_usage_context(session_id=session.pk, doctor_id=request.user.pk, call_type="generate")
     payload = _json_body(request)
     note_format = payload.get("note_format", session.note_format)
     length_mode = payload.get("length_mode", session.length_mode)
@@ -1836,6 +1873,11 @@ def generate_note_stream_api(request, pk):
     session = get_object_or_404(ScribeSession, pk=pk, doctor=request.user)
     if _scribe_billing_suspended(request.user):
         return JsonResponse({"ok": False, "error": _BILLING_BLOCK_MSG, "billing_suspended": True}, status=402)
+    capped = _op_cap_response(session, "generate_count", NOTE_GENERATE_CAP, "note generation / regeneration")
+    if capped:
+        return capped
+    _bump_op_count(session, "generate_count")
+    _set_usage_context(session_id=session.pk, doctor_id=request.user.pk, call_type="generate")
     payload = _json_body(request)
     note_format = payload.get("note_format", session.note_format)
     length_mode = payload.get("length_mode", session.length_mode)
@@ -2273,6 +2315,11 @@ def polish_note_api(request, pk):
     source = note.edited_note or note.full_note or note.narrative or ""
     if not source.strip():
         return JsonResponse({"ok": False, "error": "Note is empty."}, status=400)
+    capped = _op_cap_response(session, "polish_count", NOTE_POLISH_CAP, "grammar polish")
+    if capped:
+        return capped
+    _bump_op_count(session, "polish_count")
+    _set_usage_context(session_id=session.pk, doctor_id=request.user.pk, call_type="polish")
     try:
         polished = run_polish_grammar(source)
     except Exception as exc:  # noqa: BLE001
@@ -2319,6 +2366,11 @@ def magic_edit_api(request, pk):
     source = note.edited_note or note.full_note or note.narrative or ""
     if not source.strip():
         return JsonResponse({"ok": False, "error": "Note is empty."}, status=400)
+    capped = _op_cap_response(session, "magic_edit_count", NOTE_MAGIC_EDIT_CAP, "Magic Edit")
+    if capped:
+        return capped
+    _bump_op_count(session, "magic_edit_count")
+    _set_usage_context(session_id=session.pk, doctor_id=request.user.pk, call_type="magic_edit")
     try:
         from .services.pipeline import run_magic_edit
         result = run_magic_edit(source, instruction)
@@ -2689,6 +2741,8 @@ def update_preferences_api(request):
         profile.long_form_default = bool(payload["long_form_default"])
     if "suggestive_assist" in payload:
         profile.suggestive_assist = _coerce_bool(payload["suggestive_assist"])
+    if "sound_effects" in payload:
+        profile.sound_effects = _coerce_bool(payload["sound_effects"])
     if payload.get("specialty") in dict(DoctorProfile.SPECIALTY_CHOICES):
         profile.specialty = payload["specialty"]
     if payload.get("preferred_language") in dict(DoctorProfile.LANGUAGE_CHOICES):
@@ -2705,8 +2759,216 @@ def update_preferences_api(request):
             "default_note_style": profile.default_note_style,
             "long_form_default": profile.long_form_default,
             "suggestive_assist": profile.suggestive_assist,
+            "sound_effects": profile.sound_effects,
             "specialty": profile.specialty,
             "preferred_language": profile.preferred_language,
             "custom_instructions": profile.custom_instructions,
         }
     )
+
+
+# ── Server monitor (admin ops) ────────────────────────────────────────────────
+# A tiny, dependency-free view of what the box is actually doing right now:
+# whole-container CPU%, memory, load average, how many gunicorn workers are
+# really running, and a live DB round-trip. Reads Linux /proc (works on the
+# Azure Linux container); degrades to null fields on Windows/local dev.
+
+def _read_proc_stat_cpu():
+    """(total, idle) CPU jiffies from /proc/stat. None on non-Linux."""
+    try:
+        with open("/proc/stat", "r") as fh:
+            fields = fh.readline().split()
+    except OSError:
+        return None
+    if not fields or fields[0] != "cpu":
+        return None
+    nums = [int(x) for x in fields[1:] if x.lstrip("-").isdigit()]
+    if len(nums) < 4:
+        return None
+    idle = nums[3] + (nums[4] if len(nums) > 4 else 0)  # idle + iowait
+    return sum(nums), idle
+
+
+def _system_cpu_percent():
+    """Whole-container CPU% sampled over a short window. Linux only."""
+    a = _read_proc_stat_cpu()
+    if a is None:
+        return None
+    time.sleep(0.12)
+    b = _read_proc_stat_cpu()
+    if b is None:
+        return None
+    dt, di = b[0] - a[0], b[1] - a[1]
+    if dt <= 0:
+        return None
+    return round(100.0 * (1.0 - di / dt), 1)
+
+
+def _memory_info():
+    """(used_mb, total_mb, percent) from /proc/meminfo. None on non-Linux."""
+    info = {}
+    try:
+        with open("/proc/meminfo", "r") as fh:
+            for line in fh:
+                k, _, v = line.partition(":")
+                if v:
+                    info[k.strip()] = int(v.split()[0])  # value is in kB
+    except OSError:
+        return None
+    total, avail = info.get("MemTotal"), info.get("MemAvailable")
+    if not total or avail is None:
+        return None
+    used = total - avail
+    return round(used / 1024, 1), round(total / 1024, 1), round(100.0 * used / total, 1)
+
+
+def _gunicorn_process_count():
+    """Count live gunicorn processes (1 master + N workers). Linux only."""
+    import os as _os
+    try:
+        pids = [p for p in _os.listdir("/proc") if p.isdigit()]
+    except OSError:
+        return None
+    count = 0
+    for pid in pids:
+        try:
+            with open("/proc/%s/cmdline" % pid, "rb") as fh:
+                cmd = fh.read().replace(b"\x00", b" ").decode("utf-8", "ignore")
+        except OSError:
+            continue
+        if "gunicorn" in cmd:
+            count += 1
+    return count
+
+
+def _db_ping_ms():
+    from django.db import connection
+    try:
+        start = time.monotonic()
+        with connection.cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+        return round((time.monotonic() - start) * 1000, 1)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+@login_required
+def server_metrics_api(request):
+    """Live server vitals (admin only): CPU/mem/load/workers/DB round-trip."""
+    from accounts.models import user_is_admin
+    if not user_is_admin(request.user):
+        return JsonResponse({"error": "forbidden"}, status=403)
+
+    import os as _os
+    try:
+        l1, l5, l15 = _os.getloadavg()
+        load = [round(l1, 2), round(l5, 2), round(l15, 2)]
+    except (OSError, AttributeError):
+        load = None
+
+    mem = _memory_info()
+    procs = _gunicorn_process_count()
+    workers = (procs - 1) if (procs and procs > 0) else procs  # drop the master
+
+    return JsonResponse({
+        "ts": int(time.time() * 1000),
+        "cpu_percent": _system_cpu_percent(),
+        "mem_used_mb": mem[0] if mem else None,
+        "mem_total_mb": mem[1] if mem else None,
+        "mem_percent": mem[2] if mem else None,
+        "load": load,
+        "cores": _os.cpu_count(),
+        "gunicorn_procs": procs,
+        "gunicorn_workers": workers,
+        "db_ping_ms": _db_ping_ms(),
+        "pid": _os.getpid(),
+    })
+
+
+@login_required
+def server_monitor_view(request):
+    """Admin-only live server-load dashboard (see templates/scribe/server_monitor.html)."""
+    from accounts.models import user_is_admin
+    if not user_is_admin(request.user):
+        return redirect("scribe:record")
+    return render(request, "scribe/server_monitor.html", {})
+
+
+# ── Usage meter (topbar "notes left" pill) ────────────────────────────────────
+_TIER_CAPS = {"scribe": 500, "practice": 500, "professional": 1100, "professional_emr": 1100}
+_TIER_NAMES = {
+    "scribe": "Standard", "practice": "Standard + EMR",
+    "professional": "Professional", "professional_emr": "Professional + EMR",
+}
+
+
+SECONDS_PER_CREDIT = 1200  # 20 minutes of audio = 1 note-credit
+
+
+def note_credits_for_audio(audio_seconds) -> int:
+    """Credits a single note costs: 1 per 20 min of audio, minimum 1.
+
+    This is what stops a doctor cramming many patients into one long recording
+    to dodge the per-note cap: a 1-hour note = 3 credits, a 3-hour note = 9.
+    A typed/short note = 1. Cost tracks length, which is what we actually pay for.
+    """
+    import math
+    return max(1, math.ceil((audio_seconds or 0) / SECONDS_PER_CREDIT))
+
+
+def _usage_summary(user):
+    """This-month note-credit usage for the signed-in doctor vs their plan's cap.
+
+    A note = a session with a generated note (generate_count > 0, not errored),
+    counted once regardless of regenerations, but **weighted by length** so a long
+    recording consumes proportional credits. One query over the month's sessions.
+    """
+    now = timezone.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    rows = (
+        ScribeSession.objects.filter(
+            doctor=user, created_at__gte=month_start, generate_count__gt=0
+        )
+        .exclude(status="error")
+        .values_list("timings", flat=True)
+    )
+    used = 0
+    for timings in rows:
+        audio_s = (timings or {}).get("audio_seconds") or 0
+        used += note_credits_for_audio(audio_s)
+
+    tier = None
+    try:
+        from emr.services.access import get_membership
+        org = get_membership(user).organisation
+        tier = getattr(org, "subscription_tier", None)
+    except Exception:  # noqa: BLE001
+        pass
+    cap = _TIER_CAPS.get(tier, 500)
+    plan = _TIER_NAMES.get(tier, "Standard")
+
+    if month_start.month == 12:
+        reset = month_start.replace(year=month_start.year + 1, month=1)
+    else:
+        reset = month_start.replace(month=month_start.month + 1)
+    days_left = (reset.date() - now.date()).days
+
+    left = max(cap - used, 0)
+    percent = min(round(used / cap * 100), 100) if cap else 0
+    return {
+        "used": used, "cap": cap, "left": left, "percent": percent,
+        "plan": plan, "reset": f"{reset:%b} {reset.day}", "days_left": days_left,
+    }
+
+
+@login_required
+def usage_summary_api(request):
+    """JSON for the topbar usage pill. Cached 60s/user so it never taxes renders."""
+    from django.core.cache import cache
+    key = f"usage_summary_{request.user.pk}"
+    data = cache.get(key)
+    if data is None:
+        data = _usage_summary(request.user)
+        cache.set(key, data, 60)
+    return JsonResponse(data)

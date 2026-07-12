@@ -17,3 +17,6 @@ logs/*.log
 Thumbs.db
 *backup*.sql
 #certs/
+
+# Word/Office lock files
+~$*

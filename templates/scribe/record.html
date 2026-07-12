@@ -1462,10 +1462,39 @@
 
   function fetchPatients() {
     if (_patientsCache) return Promise.resolve(_patientsCache);
-    return fetch('/scribe/api/patients/', { credentials: 'same-origin' })
-      .then(function (r) { return r.json(); })
+    // Hard timeout so a saturated/slow server can't leave the modal spinning
+    // forever. On timeout or error we resolve to null (distinct from [] = an
+    // empty roster) so the caller can offer a Retry instead of a dead spinner.
+    var ctrl = ('AbortController' in window) ? new AbortController() : null;
+    var to = ctrl ? setTimeout(function () { ctrl.abort(); }, 12000) : null;
+    return fetch('/scribe/api/patients/', {
+        credentials: 'same-origin',
+        signal: ctrl ? ctrl.signal : undefined
+      })
+      .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
       .then(function (data) { _patientsCache = data.patients || []; return _patientsCache; })
-      .catch(function () { return []; });
+      .catch(function () { return null; })
+      .then(function (v) { if (to) clearTimeout(to); return v; });
+  }
+
+  function renderPatientsError() {
+    if (!patientList) return;
+    patientList.innerHTML =
+      '<li class="text-muted small text-center py-3">' +
+      'Couldn’t load the patient list — the server may be busy.<br>' +
+      '<button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="patientRetryBtn">Retry</button>' +
+      '</li>';
+    var btn = document.getElementById('patientRetryBtn');
+    if (btn) btn.addEventListener('click', function () {
+      _patientsCache = null;
+      var nameEl = document.getElementById('patientName');
+      var current = nameEl ? nameEl.value.trim() : '';
+      patientList.innerHTML = '<li class="text-muted small text-center py-3">' +
+        '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Loading…</li>';
+      fetchPatients().then(function (pts) {
+        if (pts === null) renderPatientsError(); else renderPatients(pts, current);
+      });
+    });
   }
 
   function renderPatients(patients, query) {
@@ -1593,7 +1622,9 @@
       patientList.innerHTML = '<li class="text-muted small text-center py-3">' +
         '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Loading…</li>';
     }
-    fetchPatients().then(function (pts) { renderPatients(pts, current); });
+    fetchPatients().then(function (pts) {
+      if (pts === null) renderPatientsError(); else renderPatients(pts, current);
+    });
     if (patientModal && typeof bootstrap !== 'undefined') {
       bootstrap.Modal.getOrCreateInstance(patientModal).show();
       setTimeout(function () { if (patientSearch) patientSearch.focus(); }, 200);
@@ -1728,7 +1759,9 @@
       var pidEl = document.getElementById('patientId');
       if (pidEl) pidEl.value = ''; /* stop a stale chart link from carrying over */
       if (continueBtn) continueBtn.disabled = !q.trim();
-      fetchPatients().then(function (pts) { renderPatients(pts, q); });
+      fetchPatients().then(function (pts) {
+        if (pts === null) renderPatientsError(); else renderPatients(pts, q);
+      });
     });
     patientSearch.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') {
@@ -1868,6 +1901,8 @@ document.addEventListener('DOMContentLoaded', function () {
   var ambientChunks = [];
   var ambientTimerInterval = null;
   var ambientElapsed = 0;
+  var AMBIENT_WARN_SECONDS = 90 * 60;    // 90 min: gentle on-screen nudge
+  var AMBIENT_MAX_SECONDS  = 180 * 60;   // 3 h: hard auto-stop that SAVES the note
   var ambientRunning = false;
   var ambientCancelled = false;
   var _lastAmbientBlob = null;   /* kept so Retry can resubmit without re-recording */
@@ -1946,6 +1981,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   ambientCancelBtn.addEventListener('click', function () {
     ambientCancelled = true;
+    if (window.WELLNEST) window.WELLNEST.playSound('cancel');
     if (ambientMediaRecorder && ambientMediaRecorder.state !== 'inactive') {
       ambientMediaRecorder.stop();
     }
@@ -1976,6 +2012,7 @@ document.addEventListener('DOMContentLoaded', function () {
         runAmbientPipeline(blob);
       };
       ambientMediaRecorder.start(1000);
+      if (window.WELLNEST) window.WELLNEST.playSound('start');
       ambientRunning = true;
       ambientElapsed = 0;
       ambientBtnLabel.textContent = 'Stop';
@@ -1986,6 +2023,17 @@ document.addEventListener('DOMContentLoaded', function () {
       ambientTimerInterval = setInterval(function () {
         ambientElapsed++;
         ambientTimer.textContent = formatTime(ambientElapsed);
+        // Safeguards: nudge on a very long session, then hard-stop at the max so
+        // a forgotten recording can't run for hours. stopAmbient() SAVES the note
+        // (it does not discard) - so a genuinely long visit is never lost.
+        if (ambientElapsed === AMBIENT_WARN_SECONDS) {
+          ambientStatus.textContent = 'Still recording after '
+            + Math.round(AMBIENT_WARN_SECONDS / 60) + ' min - press Stop when the visit ends.';
+        } else if (ambientElapsed >= AMBIENT_MAX_SECONDS) {
+          ambientStatus.textContent = 'Maximum recording length reached - saving your note…';
+          stopAmbient();
+          return;
+        }
       }, 1000);
       ambientStatus.textContent = 'Recording room audio…';
     }).catch(function (err) {
@@ -2252,6 +2300,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         if (!reviewUrl) throw new Error('Stream ended without a done event.');
         _lastAmbientSessionId = null;
+        try { sessionStorage.setItem('wn_play_success', '1'); } catch (e) {}
         window.location.href = reviewUrl;
 
       } else {
@@ -2264,6 +2313,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var genData = await safeJson(genResp, 'generate');
         if (!genData.ok) throw new Error(genData.error || 'Note generation failed.');
         _lastAmbientSessionId = null;
+        try { sessionStorage.setItem('wn_play_success', '1'); } catch (e) {}
         window.location.href = '/scribe/sessions/' + sessionId + '/review/';
       }
 

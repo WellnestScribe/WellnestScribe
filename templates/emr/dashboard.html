@@ -148,27 +148,42 @@
   }
   if (input) input.addEventListener('input', applyFilter);
 
-  // ── Live worklist ──────────────────────────────────────────────────────────
-  // Short-poll a lean fragment every 5s. We only touch the DOM when the queue's
-  // signature actually changed, so a quiet clinic costs one cheap request and no
-  // re-render / scroll-jump. The person who marks a patient seen already gets an
-  // instant reload from their own POST; this keeps everyone ELSE watching the
-  // same board no more than ~5s behind. Pauses while the tab is hidden.
-  var POLL_MS = 5000;
-  var polling = false;
+  // ── Live worklist (adaptive, self-throttling) ───────────────────────────────
+  // Short-poll a lean fragment and only touch the DOM when a cheap signature
+  // changes. Two safety rails so this can NEVER pile up on a struggling server:
+  //   * one request in flight at a time (never overlap);
+  //   * exponential backoff - if a poll is slow (>2s) or errors, the interval
+  //     grows toward 60s, and only snaps back to 5s once the server answers fast
+  //     again. A healthy box polls every 5s; an overloaded one is left alone.
+  // Also pauses entirely while the tab is hidden. Set data-worklist-live="off"
+  // on <body> (or flip LIVE below) to disable instantly without a redeploy.
+  var LIVE = document.body.getAttribute('data-worklist-live') !== 'off';
+  var MIN_MS = 5000, MAX_MS = 60000, SLOW_MS = 2000;
+  var delay = MIN_MS, inflight = false, timer = null;
+
+  function schedule(ms) {
+    if (!LIVE) return;
+    clearTimeout(timer);
+    timer = setTimeout(poll, ms);
+  }
   function poll() {
-    if (document.hidden || polling) return;
-    if (!document.getElementById('worklistPanel')) return;
-    polling = true;
+    if (!LIVE || document.hidden || inflight || !document.getElementById('worklistPanel')) {
+      schedule(delay);
+      return;
+    }
+    inflight = true;
+    var started = (window.performance && performance.now) ? performance.now() : 0;
     fetch(window.location.pathname + '?fragment=worklist', {
       credentials: 'same-origin',
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
     })
-      .then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (r) { return r.ok ? r.text() : Promise.reject(); })
       .then(function (html) {
-        if (!html) return;
+        var took = started ? (performance.now() - started) : 0;
+        // Fast answer -> stay responsive; slow answer -> ease off the server.
+        delay = took > SLOW_MS ? Math.min(delay * 2, MAX_MS) : MIN_MS;
         var cur = document.getElementById('worklistPanel');
-        if (!cur) return;
+        if (!cur || !html) return;
         var tmp = document.createElement('div');
         tmp.innerHTML = html.trim();
         var fresh = tmp.querySelector('#worklistPanel');
@@ -177,11 +192,13 @@
         cur.replaceWith(fresh);
         applyFilter();
       })
-      .catch(function () {})
-      .then(function () { polling = false; });
+      .catch(function () { delay = Math.min(delay * 2, MAX_MS); })
+      .then(function () { inflight = false; schedule(delay); });
   }
-  setInterval(poll, POLL_MS);
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
+  schedule(delay);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) { delay = MIN_MS; schedule(0); }
+  });
 })();
 </script>
 {% endblock %}

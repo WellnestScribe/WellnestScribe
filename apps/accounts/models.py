@@ -66,6 +66,9 @@ class DoctorProfile(models.Model):
     )
     long_form_default = models.BooleanField(default=False)
     suggestive_assist = models.BooleanField(default=False)
+    sound_effects = models.BooleanField(
+        default=True, help_text="Play start/cancel/success chimes during recording."
+    )
     font_scale = models.PositiveSmallIntegerField(default=100)
     theme = models.CharField(
         max_length=10,
@@ -255,6 +258,88 @@ class PlatformControl(models.Model):
         if self.demo_mode == self.MODE_LIMITED:
             return self.DEFAULT_LIMITED_MESSAGE
         return self.DEFAULT_LOCKED_MESSAGE
+
+
+class SecurityEvent(models.Model):
+    """Persisted intrusion-detection events — the data behind the IDS page.
+
+    The SecurityAuditMiddleware detects suspicious patterns (rapid access,
+    impossible travel, endpoint probing) and a signal records failed logins.
+    Each is written here so admins can review them on a dashboard instead of
+    grepping audit.log. Recording never raises — security telemetry must not be
+    able to take a request down.
+    """
+
+    SEV_INFO = "info"
+    SEV_WARNING = "warning"
+    SEV_CRITICAL = "critical"
+    SEVERITY_CHOICES = [
+        (SEV_INFO, "Info"),
+        (SEV_WARNING, "Warning"),
+        (SEV_CRITICAL, "Critical"),
+    ]
+
+    RAPID_ACCESS = "rapid_access"
+    IMPOSSIBLE_TRAVEL = "impossible_travel"
+    ERROR_PROBING = "error_probing"
+    LOGIN_FAILED = "login_failed"
+    TYPE_CHOICES = [
+        (RAPID_ACCESS, "Rapid access (possible scraping)"),
+        (IMPOSSIBLE_TRAVEL, "Impossible travel (possible account takeover)"),
+        (ERROR_PROBING, "Endpoint probing (403/401 sweep)"),
+        (LOGIN_FAILED, "Failed login"),
+    ]
+
+    event_type = models.CharField(max_length=32, choices=TYPE_CHOICES, db_index=True)
+    severity = models.CharField(
+        max_length=10, choices=SEVERITY_CHOICES, default=SEV_WARNING
+    )
+    ip = models.GenericIPAddressField(null=True, blank=True, db_index=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+    )
+    username = models.CharField(max_length=150, blank=True)  # kept even if user is null
+    path = models.CharField(max_length=300, blank=True)
+    user_agent = models.CharField(max_length=300, blank=True)
+    detail = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["event_type", "created_at"]),
+            models.Index(fields=["ip", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_event_type_display()} @ {self.ip} ({self.created_at:%Y-%m-%d %H:%M})"
+
+    @classmethod
+    def record(cls, event_type, *, severity=None, ip=None, user=None,
+               username="", path="", user_agent="", detail=""):
+        """Best-effort insert of a security event. Never raises."""
+        try:
+            if severity is None:
+                severity = (
+                    cls.SEV_CRITICAL
+                    if event_type == cls.IMPOSSIBLE_TRAVEL
+                    else cls.SEV_WARNING
+                )
+            if user is not None and not username:
+                username = getattr(user, "get_username", lambda: "")() or ""
+            cls.objects.create(
+                event_type=event_type,
+                severity=severity,
+                ip=ip or None,
+                user=user if (user is not None and getattr(user, "pk", None)) else None,
+                username=(username or "")[:150],
+                path=(path or "")[:300],
+                user_agent=(user_agent or "")[:300],
+                detail=detail or "",
+            )
+        except Exception:  # noqa: BLE001 — telemetry must never break a request
+            pass
 
 
 def user_is_admin(user) -> bool:

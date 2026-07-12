@@ -47,6 +47,35 @@ _user_last_ip: dict[int, tuple[str, float]] = {}
 # {(alert_type, ip): last_alert_timestamp} — rate-limit email sends
 _alert_sent_at: dict[tuple, float] = {}
 
+# {(event_type, ip): last_recorded_ts} — rate-limit SecurityEvent DB rows so a
+# sustained burst records one row/minute per pattern per IP, not one per request.
+_event_recorded_at: dict[tuple, float] = {}
+EVENT_RECORD_COOLDOWN_S = 60
+
+
+def _record_security_event(event_type, request, detail, severity=None):
+    """Persist a SecurityEvent (rate-limited). Never raises."""
+    ip = SecurityAuditMiddleware._get_ip(request)
+    key = (event_type, ip)
+    now = time.monotonic()
+    if now - _event_recorded_at.get(key, 0) < EVENT_RECORD_COOLDOWN_S:
+        return
+    _event_recorded_at[key] = now
+    try:
+        from accounts.models import SecurityEvent
+        user = getattr(request, "user", None)
+        SecurityEvent.record(
+            event_type,
+            severity=severity,
+            ip=ip,
+            user=user if getattr(user, "is_authenticated", False) else None,
+            path=getattr(request, "path", "")[:300],
+            user_agent=request.META.get("HTTP_USER_AGENT", ""),
+            detail=detail,
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
 RAPID_ACCESS_WINDOW_S = 60
 RAPID_ACCESS_LIMIT = 60
 
@@ -125,6 +154,10 @@ class SecurityAuditMiddleware:
                         f"as user {request.user}.\nPath: {request.path}",
                         ("rapid_access", ip),
                     )
+                    _record_security_event(
+                        "rapid_access", request,
+                        f"{recent} requests in {RAPID_ACCESS_WINDOW_S}s",
+                    )
 
             # ── Impossible travel detection ───────────────────────────────
             if request.user.is_authenticated:
@@ -147,6 +180,10 @@ class SecurityAuditMiddleware:
                             f"Path: {request.path}",
                             ("impossible_travel", str(uid)),
                         )
+                        _record_security_event(
+                            "impossible_travel", request,
+                            f"{prev_ip} then {ip} within {int(now - prev_ts)}s",
+                        )
                 _user_last_ip[uid] = (ip, now)
 
             # ── 403 / 401 probing detection ───────────────────────────────
@@ -165,6 +202,10 @@ class SecurityAuditMiddleware:
                         f"IP {ip} triggered {recent} {response.status_code} responses "
                         f"in {ERROR_PROBE_WINDOW_S}s.\nLast path: {request.path}",
                         ("error_probing", ip),
+                    )
+                    _record_security_event(
+                        "error_probing", request,
+                        f"{recent} x HTTP {response.status_code} in {ERROR_PROBE_WINDOW_S}s",
                     )
 
     @staticmethod
@@ -189,6 +230,28 @@ _LOCKDOWN_ALLOW_PREFIXES = (
     "/sw.js",
     "/serviceworker",
 )
+
+
+class UsageContextMiddleware:
+    """Clears the per-request GPT usage-tagging context after every response.
+
+    The view sets a thread-local (session/doctor/call_type) so model calls can be
+    attributed. Because gthread workers reuse threads, we must clear it at the end
+    of each request or a later request could inherit a stale session tag.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        try:
+            return self.get_response(request)
+        finally:
+            try:
+                from scribe.services.usage import clear_context
+                clear_context()
+            except Exception:  # noqa: BLE001
+                pass
 
 
 class DemoLockdownMiddleware:

@@ -121,4 +121,7 @@ urlpatterns = [
         views.ambient_job_api,
         name="api_ambient_job",
     ),
+    path("ops/server/", views.server_monitor_view, name="server_monitor"),
+    path("api/server-metrics/", views.server_metrics_api, name="api_server_metrics"),
+    path("api/usage/", views.usage_summary_api, name="api_usage"),
 ]

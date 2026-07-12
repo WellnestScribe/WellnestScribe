@@ -189,6 +189,10 @@ def _chat(messages: list[dict], *, max_tokens: int | None = None, deployment: st
         last_response = response
         text = (response.choices[0].message.content or "").strip()
         usage = getattr(response, "usage", None)
+        # Record every call (including empty-retry attempts, which still cost
+        # reasoning tokens) so measured cost reflects reality. Never raises.
+        from .usage import record_call
+        record_call(deployment, usage)
         finish = response.choices[0].finish_reason
         logger.info(
             "chat call: model=%s finish=%s out_chars=%d reasoning_tokens=%s completion_tokens=%s",
@@ -1493,6 +1497,9 @@ def stream_note_generation(
         ],
         "max_completion_tokens": max(settings.SCRIBE_MAX_COMPLETION_TOKENS, 4000),
         "stream": True,
+        # Ask for a final usage chunk so the streaming path can be cost-measured
+        # too (task T5). The last chunk carries `.usage` and no choices.
+        "stream_options": {"include_usage": True},
     }
     if is_reasoning and _reasoning_effort_supported is not False:
         kwargs["extra_body"] = {"reasoning_effort": "minimal"}
@@ -1500,6 +1507,10 @@ def stream_note_generation(
     def _stream_chunks(kw: dict):
         response = client.chat.completions.create(**kw)
         for chunk in response:
+            chunk_usage = getattr(chunk, "usage", None)
+            if chunk_usage is not None:
+                from .usage import record_call
+                record_call(deployment, chunk_usage)
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
 

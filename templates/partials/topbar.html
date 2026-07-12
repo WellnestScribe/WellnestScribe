@@ -200,8 +200,44 @@ document.addEventListener('DOMContentLoaded', function () {
                             <label class="form-check-label small" for="prefSuggestiveAssist">Allow suggestive assist</label>
                             <div class="small text-muted mt-1">Lets WellNest use cautious "rule out" or workup wording when helpful.</div>
                         </div>
+
+                        <div class="form-check form-switch mt-3">
+                            <input class="form-check-input" type="checkbox" id="prefSoundEffects" {% if doctor_profile.sound_effects %}checked{% endif %}>
+                            <label class="form-check-label small" for="prefSoundEffects">Recording sound effects</label>
+                            <div class="small text-muted mt-1">Play start, cancel, and success chimes while recording.</div>
+                        </div>
                     </div>
                 </div>
+
+                {% if user.is_authenticated %}
+                {# ── Usage meter: notes used this month vs plan cap (Claude-Code style) ── #}
+                <div class="dropdown topbar-item d-none d-sm-flex me-1" id="wnUsagePill">
+                    <button type="button" class="wn-usage-pill dropdown-toggle dropdown-toggle-nocaret"
+                            data-bs-toggle="dropdown" aria-expanded="false" title="Your notes this month">
+                        <span class="wn-usage-ring" id="wnUsageRing"></span>
+                        <span class="wn-usage-label" id="wnUsageLabel">…</span>
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end p-3" style="min-width:264px;">
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                            <h6 class="fw-semibold mb-0">This month</h6>
+                            <span class="badge rounded-pill bg-primary-subtle text-primary" id="wnUsagePlan">—</span>
+                        </div>
+                        <div class="d-flex align-items-baseline gap-1">
+                            <span class="fs-4 fw-semibold" id="wnUsageUsed">—</span>
+                            <span class="text-muted small">/ <span id="wnUsageCap">—</span> notes used</span>
+                        </div>
+                        <div class="progress my-2" style="height:8px;border-radius:999px;">
+                            <div class="progress-bar" id="wnUsageBar" role="progressbar" style="width:0%"></div>
+                        </div>
+                        <div class="d-flex justify-content-between small">
+                            <span class="fw-semibold" id="wnUsageLeft">—</span>
+                            <span class="text-muted" id="wnUsageReset">—</span>
+                        </div>
+                        <div class="small text-muted mt-2" id="wnUsageNote" style="min-height:1px;"></div>
+                        <a href="{% url 'accounts:subscription' %}" class="btn btn-sm btn-outline-primary w-100 mt-2">View plan</a>
+                    </div>
+                </div>
+                {% endif %}
 
                 {% if user.is_authenticated %}
                 <div class="dropdown topbar-item">
@@ -333,5 +369,56 @@ document.addEventListener('DOMContentLoaded', function () {
       try { localStorage.setItem('wn_eyecomfort', on ? '1' : '0'); } catch (e) {}
     });
   }
+
+  // ── Usage meter pill ──────────────────────────────────────────────────────
+  // Fetches once per page (server-cached 60s), paints a ring + "N left". Reads a
+  // sessionStorage copy first so it doesn't flash on every navigation.
+  var pill = document.getElementById('wnUsagePill');
+  if (pill) {
+    var setTxt = function (id, v) { var e = document.getElementById(id); if (e) e.textContent = v; };
+    var paint = function (d) {
+      if (!d) return;
+      var pct = d.percent || 0;
+      var color = pct >= 100 ? '#dc3545' : (pct >= 80 ? '#f59e0b' : '#0d6efd');
+      var ring = document.getElementById('wnUsageRing');
+      if (ring) { ring.style.setProperty('--wn-usage-pct', pct); ring.style.setProperty('--wn-usage-color', color); }
+      setTxt('wnUsageLabel', d.left + ' left');
+      setTxt('wnUsageUsed', d.used); setTxt('wnUsageCap', d.cap);
+      setTxt('wnUsageLeft', d.left + ' notes left'); setTxt('wnUsagePlan', d.plan);
+      setTxt('wnUsageReset', 'Resets ' + d.reset + ' · ' + d.days_left + 'd');
+      var bar = document.getElementById('wnUsageBar');
+      if (bar) { bar.style.width = pct + '%'; bar.style.background = color; }
+      var note = document.getElementById('wnUsageNote');
+      if (note) {
+        note.textContent = pct >= 100
+          ? 'You’ve used this month’s notes — keep working; overage may apply.'
+          : (pct >= 80 ? 'One of our busiest clinicians — Professional may fit you.' : '');
+      }
+    };
+    try { var cached = sessionStorage.getItem('wn_usage'); if (cached) paint(JSON.parse(cached)); } catch (e) {}
+    fetch('/scribe/api/usage/', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (!d) return; try { sessionStorage.setItem('wn_usage', JSON.stringify(d)); } catch (e) {} paint(d); })
+      .catch(function () {});
+  }
 })();
 </script>
+
+<style>
+/* Usage meter pill — subtle, matches the topbar; ring fills as notes are used. */
+.wn-usage-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--bs-border-color, #e5e7eb); background: transparent;
+  border-radius: 999px; padding: 4px 12px 4px 6px;
+  font-size: 0.8rem; font-weight: 600; line-height: 1;
+  color: var(--bs-body-color); cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.wn-usage-pill:hover { background: rgba(0,0,0,0.035); border-color: rgba(13,110,253,0.35); }
+.wn-usage-ring {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: conic-gradient(var(--wn-usage-color, #0d6efd) calc(var(--wn-usage-pct, 0) * 1%), rgba(128,128,128,0.22) 0);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.wn-usage-ring::after { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--bs-body-bg, #fff); }
+</style>
