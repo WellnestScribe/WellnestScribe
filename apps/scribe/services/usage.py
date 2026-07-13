@@ -56,7 +56,12 @@ def record_call(model, usage_obj):
         completion = int(getattr(usage_obj, "completion_tokens", 0) or 0)
         details = getattr(usage_obj, "completion_tokens_details", None)
         reasoning = int(getattr(details, "reasoning_tokens", 0) or 0)
+        # Prompt tokens served from Azure's cache (the caching benefit we're measuring).
+        prompt_details = getattr(usage_obj, "prompt_tokens_details", None)
+        cached = int(getattr(prompt_details, "cached_tokens", 0) or 0)
         total = int(getattr(usage_obj, "total_tokens", 0) or (prompt + completion))
+        # total_cost stays at LIST price (upper bound); the cache saving is shown in
+        # the ai_cost_report from cached_tokens, so the ledger stays consistent.
         input_cost = prompt * INPUT_USD_PER_TOKEN
         output_cost = completion * OUTPUT_USD_PER_TOKEN
 
@@ -67,6 +72,7 @@ def record_call(model, usage_obj):
             call_type=getattr(_ctx, "call_type", "") or "",
             model=str(model or "")[:100],
             prompt_tokens=prompt,
+            cached_tokens=cached,
             completion_tokens=completion,
             reasoning_tokens=reasoning,
             total_tokens=total,

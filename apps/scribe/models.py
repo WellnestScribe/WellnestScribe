@@ -252,6 +252,9 @@ class ModelUsageLog(models.Model):
     call_type = models.CharField(max_length=32, blank=True, db_index=True)
     model = models.CharField(max_length=100, blank=True)
     prompt_tokens = models.PositiveIntegerField(default=0)
+    cached_tokens = models.PositiveIntegerField(
+        default=0, help_text="Prompt tokens served from Azure's cache (billed cheaper)."
+    )
     completion_tokens = models.PositiveIntegerField(default=0)
     reasoning_tokens = models.PositiveIntegerField(default=0)
     total_tokens = models.PositiveIntegerField(default=0)

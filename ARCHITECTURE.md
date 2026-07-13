@@ -437,7 +437,7 @@ Backend selection in `registry.py`. All EMR views call `get_backend()` rather th
 ### 11.1 Current (Microsoft Azure App Service)
 
 - **Platform:** **Azure App Service (Linux), B1 SKU** — 1 vCPU / 1.75 GB. (Was Render; migrated.)
-- **Process:** **Gunicorn `gthread`** — the Startup Command / Procfile must set `--worker-class gthread --workers 2-3 --threads 4 --timeout 300`. A default single **sync** worker serialises the whole site and causes site-wide freezes/504s under concurrency — this was the root cause of the worklist-freeze incident; gthread is required.
+- **Process:** **Gunicorn `gthread`, `--workers 1 --threads 8` on B1.** A default single **sync** worker serialised the whole site (site-wide freeze/504s); gthread with threads fixes that. **Use ONE worker (threads for concurrency), not multiple workers** — the ambient-transcription job registry is in-memory, so a multi-worker deploy makes the upload poll 404 (`Not found.`). Full story, capacity + verify steps: [`docs/operations/server_and_gunicorn.md`](docs/operations/server_and_gunicorn.md).
 - **Also set:** `DEBUG=False`, **Always On = On** (stops idle spin-down / cold-start on the first request after quiet periods).
 - **DB:** MySQL on **Aiven** cloud (TLS via `certs/`), `CONN_MAX_AGE=60`. **Cross-region latency (~125 ms/query) is the #1 remaining perf factor — co-locate the DB in the app's Azure region.**
 - **Static files:** WhiteNoise middleware.
@@ -560,7 +560,7 @@ Added since the older sections above; these reflect the current system.
 
 **Performance / real-time — deliberately no Redis, no websockets.** Short polling for the worklist and queue (self-throttling with exponential backoff, signature-diff so the DOM only swaps on real change, pauses when the tab is hidden). The always-on QR-handoff SSE was scoped to `/scribe/` only; `SESSION_SAVE_EVERY_REQUEST=False`; `PlatformControl` cached; N+1 queries batched; `gthread` workers. Rationale + scale plan in `docs/roadmap/scaling_architecture.md`.
 
-**Next cost lever — prompt caching.** Measured: the ~8K-token static system prompt is ~90% of GPT cost and `reasoning_tokens ≈ 0`. Restructuring prompts so the static block is a stable **cache prefix** roughly halves input cost — a codebase change only (Azure caching is automatic, no portal setting).
+**Next cost lever — prompt caching.** Measured: the ~8K-token static system prompt is ~90% of GPT cost and `reasoning_tokens ≈ 0`. Restructuring prompts so the static block is a stable **cache prefix** roughly halves input cost — a codebase change only (Azure caching is automatic, no portal setting). Measurement + the note-generation slowdown investigation: [`docs/operations/prompt_caching.md`](docs/operations/prompt_caching.md).
 
 **Middleware order:** `DemoLockdownMiddleware` → `SecurityAuditMiddleware` → `UsageContextMiddleware`.
 

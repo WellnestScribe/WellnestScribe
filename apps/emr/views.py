@@ -548,15 +548,24 @@ def patient_detail_view(request, pk):
         detail=f"Viewed patient chart for {patient.display_name}",
     )
 
-    recent_encounters = patient.encounters.select_related("provider").order_by("-encounter_date", "-created_at")[:8]
+    # select_related the scribe_session so each encounter row can show the visit it
+    # came from. Load a longer window (searchable + scrollable list in the template).
+    recent_encounters = (
+        patient.encounters.select_related("provider", "scribe_session")
+        .order_by("-encounter_date", "-created_at")[:50]
+    )
     upcoming_appointments = patient.appointments.filter(status__in=["scheduled", "checked_in", "triage", "with_doctor"]).order_by("scheduled_for")[:6]
     active_medications = active_medications_for_patient(patient)[:8]
     problem_list = active_problem_list_for_patient(patient)[:8]
     last_vitals = patient.vitals.order_by("-recorded_at").first()
     recent_scribe_sessions = _scribe_queryset_for_user(request.user)[:6]
     # Feature 1: this patient's own scribe visits (sessions linked via FK).
+    # prefetch the reverse link to EMR encounters so each visit can show which
+    # encounter it materialised into (or that it hasn't been turned into one yet).
     patient_visits = (
-        patient.scribe_sessions.select_related("note").order_by("-created_at")[:20]
+        patient.scribe_sessions.select_related("note")
+        .prefetch_related("emr_encounters")
+        .order_by("-created_at")[:20]
     )
 
     return render(
@@ -1628,6 +1637,44 @@ def prescription_print_view(request, encounter_pk):
             "encounter": encounter,
             "patient": encounter.patient,
             "medications": medications,
+        },
+    )
+
+
+@login_required
+def scan_request_print_view(request, encounter_pk):
+    """Deterministic scan / lab requisition built from what the clinician wrote in
+    the Plan and Assessment. No AI - keyword extraction the doctor reviews and prints."""
+    from emr.services.scribe_import import extract_imaging_and_investigations
+
+    emr = membership_for_request(request)
+    encounter = get_object_or_404(
+        Encounter.objects.select_related("patient", "provider"),
+        pk=encounter_pk,
+        organisation=emr.organisation,
+    )
+    items = extract_imaging_and_investigations(
+        encounter.plan_notes,
+        encounter.assessment_notes,
+        encounter.physical_examination,
+    )
+    log_audit_event(
+        request,
+        emr.organisation,
+        action="export",
+        resource_type="scan_request",
+        resource_id=encounter.pk,
+        detail=f"Opened scan/lab request for {encounter.patient.display_name}",
+    )
+    return render(
+        request,
+        "emr/scan_request_print.html",
+        {
+            **_base_context(request),
+            "encounter": encounter,
+            "patient": encounter.patient,
+            "items": items,
+            "indication": encounter.assessment_notes or encounter.chief_complaint,
         },
     )
 

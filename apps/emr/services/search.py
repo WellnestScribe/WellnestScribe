@@ -63,8 +63,40 @@ def search_patients(organisation, term: str, limit: int = 25):
 
 
 def active_medications_for_patient(patient):
-    return patient.medications.filter(status="active").order_by("drug_name_generic")
+    """Active medications, most-recent visit first, deduped by drug so the same
+    medicine prescribed across several visits shows once (the latest)."""
+    qs = (
+        patient.medications.filter(status="active")
+        .select_related("encounter")
+        .order_by("-encounter__encounter_date", "-created_at")
+    )
+    seen: set[str] = set()
+    out = []
+    for med in qs:
+        key = (med.drug_name_generic or "").strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(med)
+    return out
 
 
 def active_problem_list_for_patient(patient):
-    return patient.diagnoses.filter(status__in=["active", "chronic"]).order_by("diagnosis_rank", "-created_at")
+    """Longitudinal problem list: confirmed active/chronic diagnoses across the
+    patient's history (a chronic problem persists across visits by design).
+    Resolved and 'suspected' diagnoses are excluded; entries are deduped by ICD
+    code and ordered most-recent visit first, each tagged with its source visit."""
+    qs = (
+        patient.diagnoses.filter(status__in=["active", "chronic"])
+        .select_related("encounter")
+        .order_by("-encounter__encounter_date", "diagnosis_rank", "-created_at")
+    )
+    seen: set[str] = set()
+    out = []
+    for dx in qs:
+        key = (dx.icd10_code or dx.icd10_description or "").strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(dx)
+    return out

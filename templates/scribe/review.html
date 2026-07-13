@@ -56,6 +56,16 @@
   }
   .bracket-mirror .bk-hl.drug-hl { background: rgba(220,120,0,0.15); }
   .bracket-mirror .bk-hl.test-hl { background: rgba(16,185,129,0.15); }
+  /* Permanent medication marker (named drugs in the note, not placeholders).
+     A subtle underline rather than a fill — toggle off via html.hl-terms-off. */
+  .bracket-mirror .med-hl {
+    /* Edit mode only: the mirror text is transparent, so text-decoration does
+       not repaint until focus (Chromium bug). A border (box property) paints
+       immediately. The default read view uses the global .med-hl rule below. */
+    border-bottom: 1px dotted rgba(124,58,237,0.9);
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  }
+  html.hl-terms-off .bracket-mirror .med-hl { border-bottom: none; }
   .note-textarea[data-note-field] { position: relative; z-index: 1; background: transparent !important; }
   /* Inside SOAP sections the textarea has padding: 2px 0 and no border - mirror must match */
   .note-section-body .bracket-mirror { padding: 2px 0; border: none; border-radius: 0; }
@@ -1646,21 +1656,73 @@ function _suiteConfirm(title, text) {
   var RX_DRUG = /drug|medic|dose|\bmg\b|\bml\b/i;
   var RX_TEST = /invest|x[- ]?ray|mri\b|ct\s|ct-|\bscan\b|\blab\b|urin|cbc\b|\bhb\b|ecg\b|ekg\b|echo\b|biopsy|culture|imaging|blood\s+test|lft\b|thyroid|ultrasound|spirom|colonosc/i;
 
+  /* ── Permanent medication highlighting (named drugs in the note text) ── */
+  function _escRx(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function _buildMedTerms() {
+    var seen = {}, terms = [];
+    getDrugs().forEach(function (name) {
+      var n = (name || '').trim();
+      if (!n) return;
+      var base = n.replace(/\s*\([^)]*\)\s*/g, ' ').trim();   // "Salbutamol (Ventolin)" -> "Salbutamol"
+      var brand = (n.match(/\(([^)]+)\)/) || [])[1];          // -> "Ventolin"
+      [base, brand].forEach(function (t) {
+        t = (t || '').trim();
+        if (t.length >= 4 && !seen[t.toLowerCase()]) { seen[t.toLowerCase()] = 1; terms.push(t); }
+      });
+    });
+    return terms;
+  }
+  var MED_RX = null;
+  try {
+    var _terms = _buildMedTerms().sort(function (a, b) { return b.length - a.length; }).map(_escRx);
+    if (_terms.length) MED_RX = new RegExp('\\b(' + _terms.join('|') + ')\\b', 'gi');
+  } catch (e) { MED_RX = null; }
+
+  /* Escape a raw text slice AND wrap any medication names in a persistent .med-hl.
+     Display-only (mirror layer) — never touches the editable text. */
+  function highlightTerms(raw) {
+    if (!MED_RX || !raw) return esc(raw);
+    var out = '', last = 0, mm;
+    MED_RX.lastIndex = 0;
+    while ((mm = MED_RX.exec(raw)) !== null) {
+      out += esc(raw.slice(last, mm.index)) + '<span class="med-hl">' + esc(mm[0]) + '</span>';
+      last = mm.index + mm[0].length;
+      if (MED_RX.lastIndex <= mm.index) MED_RX.lastIndex = mm.index + 1;  // guard zero-length
+    }
+    return out + esc(raw.slice(last));
+  }
+
   /* ── Mirror build ── */
   function buildMirrorHtml(text) {
     var html = '', last = 0, m;
     var rx = /\[([^\]]*)\]/g;
     while ((m = rx.exec(text)) !== null) {
-      html += esc(text.slice(last, m.index));
+      html += highlightTerms(text.slice(last, m.index));
       var cls = RX_DRUG.test(m[1]) ? ' drug-hl' : RX_TEST.test(m[1]) ? ' test-hl' : '';
       html += '<span class="bk-hl' + cls + '">' + esc(m[0]) + '</span>';
       last = m.index + m[0].length;
     }
-    return html + esc(text.slice(last));
+    return html + highlightTerms(text.slice(last));
   }
   window._buildMirrorHtml = buildMirrorHtml;
 
   function syncMirror(ta, mirror) { mirror.innerHTML = buildMirrorHtml(ta.value); }
+
+  /* Copy the textarea's REAL computed text metrics onto the mirror so the
+     highlight boxes sit exactly over the bracket text (was hardcoded in CSS,
+     which drifted off-centre and made clicks miss the [..] — the double-click bug). */
+  function copyMirrorStyle(ta, mirror) {
+    try {
+      var cs = window.getComputedStyle(ta);
+      ['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','letterSpacing',
+       'wordSpacing','textTransform','textIndent','paddingTop','paddingRight',
+       'paddingBottom','paddingLeft','borderTopWidth','borderRightWidth',
+       'borderBottomWidth','borderLeftWidth','boxSizing','whiteSpace','wordBreak',
+       'tabSize'].forEach(function (p) { mirror.style[p] = cs[p]; });
+      mirror.style.borderStyle = 'solid';
+      mirror.style.borderColor = 'transparent';
+    } catch (e) {}
+  }
 
   function initMirror(ta) {
     if (ta.closest('.bracket-textarea-wrap')) return;
@@ -1672,10 +1734,15 @@ function _suiteConfirm(title, text) {
     mirror.className = 'bracket-mirror';
     mirror.setAttribute('aria-hidden', 'true');
     wrap.insertBefore(mirror, ta);
+    copyMirrorStyle(ta, mirror);
     syncMirror(ta, mirror);
     ta.addEventListener('input', function () { syncMirror(ta, mirror); });
     if (typeof ResizeObserver !== 'undefined') {
-      new ResizeObserver(function () { syncMirror(ta, mirror); }).observe(ta);
+      new ResizeObserver(function () { copyMirrorStyle(ta, mirror); syncMirror(ta, mirror); }).observe(ta);
+    }
+    // Re-sync once fonts have loaded (metrics change when the web font swaps in).
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(function () { copyMirrorStyle(ta, mirror); syncMirror(ta, mirror); });
     }
   }
 
@@ -1936,12 +2003,20 @@ function _suiteConfirm(title, text) {
     document.querySelectorAll('textarea[data-note-field]').forEach(function (ta) {
       initMirror(ta);
       updateBadge(ta);
+      // Remember the section the doctor last worked in, so "Add value" inserts there.
+      ta.addEventListener('focus', function () { window._lastNoteField = ta; });
       ta.addEventListener('input', function () { updateBadge(ta); });
       ta.addEventListener('click', function (ev) {
         if (ta.readOnly) return;
         var b = findBracketAt(ta.value, ta.selectionStart);
-        if (b) { ev.stopPropagation(); showPop(ev, ta, b.s, b.e, b.content); }
-        else if (pop && !pop.contains(ev.target)) hidePop();
+        if (b) { ev.stopPropagation(); showPop(ev, ta, b.s, b.e, b.content); return; }
+        // First click into an unfocused textarea can move the caret a tick late;
+        // retry once so ONE click on a [placeholder] opens the fill popup.
+        setTimeout(function () {
+          var b2 = findBracketAt(ta.value, ta.selectionStart);
+          if (b2) showPop(ev, ta, b2.s, b2.e, b2.content);
+        }, 0);
+        if (pop && !pop.contains(ev.target)) hidePop();
       });
       /* Show erase button when text is selected */
       ta.addEventListener('mouseup', function (ev) {
@@ -1957,6 +2032,21 @@ function _suiteConfirm(title, text) {
       });
     });
     window._bracketInitDone = true;
+
+    /* Re-render every mirror once layout/fonts settle, so the medication underline
+       (and bracket highlights) show immediately — without the doctor clicking in. */
+    (function reflowMirrors() {
+      var run = function () {
+        document.querySelectorAll('.bracket-textarea-wrap').forEach(function (wrap) {
+          var t = wrap.querySelector('textarea[data-note-field]');
+          var m = wrap.querySelector('.bracket-mirror');
+          if (t && m && window._buildMirrorHtml) m.innerHTML = window._buildMirrorHtml(t.value);
+        });
+      };
+      run();
+      setTimeout(run, 80);
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(run);
+    })();
 
     /* 2. Chief complaint suggestion chip (runs after existing encounter detection) */
     var ccField = document.getElementById('prbComplaint');
@@ -2810,6 +2900,10 @@ function _suiteConfirm(title, text) {
 [data-thumb].thumb-active-down iconify-icon { filter: drop-shadow(0 0 3px currentColor); }
 /* Bracket placeholders - visual cue that they're clickable */
 .bk-hl { cursor: pointer; text-decoration: underline dotted rgba(13,110,253,0.5); }
+/* Permanent medication marker in the default (read) view - purple dotted underline.
+   Text here is opaque, so text-decoration paints on load (unlike the mirror). */
+.med-hl { text-decoration: underline dotted rgba(124,58,237,0.85); text-underline-offset: 3px; }
+html.hl-terms-off .med-hl { text-decoration: none; }
 
 /* ── Mini "Feedback" trigger: subtle, not distracting. The colourful gradient
    is saved for the actual "Send feedback" submit inside the modal. ── */

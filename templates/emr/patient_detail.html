@@ -38,6 +38,17 @@
                             {% for item in problem_list %}
                                 <div class="small mt-2">
                                     <strong>{{ item.icd10_code }}</strong> · {{ item.icd10_description|default:item.notes|default:"Diagnosis recorded" }}
+                                    {% if item.encounter %}
+                                        <span class="d-block" style="font-size:0.8rem;">
+                                            {% if item.encounter.encounter_status != 'signed' %}
+                                                <a href="{% url 'emr:encounter_edit' patient.pk item.encounter.pk %}" class="text-muted text-decoration-none">
+                                                    from {{ item.encounter.encounter_date|date:"M j, Y" }} visit · <span class="text-primary">edit / remove</span>
+                                                </a>
+                                            {% else %}
+                                                <a href="{% url 'emr:encounter_view' patient.pk item.encounter.pk %}" class="text-muted text-decoration-none">from {{ item.encounter.encounter_date|date:"M j, Y" }} visit</a>
+                                            {% endif %}
+                                        </span>
+                                    {% endif %}
                                 </div>
                             {% empty %}
                                 <div class="small text-muted mt-2">No active diagnoses yet.</div>
@@ -54,6 +65,9 @@
                                     <strong>{{ med.drug_name_generic }}</strong>
                                     {% if med.dose_amount %} {{ med.dose_amount }} {{ med.dose_unit }}{% endif %}
                                     {% if med.frequency %} · {{ med.frequency }}{% endif %}
+                                    {% if med.encounter %}
+                                        <span class="d-block text-muted" style="font-size:0.8rem;">from {{ med.encounter.encounter_date|date:"M j, Y" }} visit</span>
+                                    {% endif %}
                                 </div>
                             {% empty %}
                                 <div class="small text-muted mt-2">No active medications yet.</div>
@@ -81,25 +95,48 @@
 
             <div class="card mb-4">
                 <div class="card-body p-4">
-                    <h5 class="fw-semibold mb-3">Encounter history</h5>
+                    <div class="d-flex align-items-center justify-content-between mb-3 gap-2 flex-wrap">
+                        <h5 class="fw-semibold mb-0">Encounter history</h5>
+                        {% if recent_encounters %}
+                            <div class="emr-enc-search">
+                                <iconify-icon icon="iconamoon:search-duotone" class="emr-enc-search-icon"></iconify-icon>
+                                <input type="search" id="encSearch" class="form-control form-control-sm"
+                                       placeholder="Search date, type or complaint…" autocomplete="off"
+                                       aria-label="Search encounters" onkeyup="wnFilterEncounters(this.value)">
+                            </div>
+                        {% endif %}
+                    </div>
                     {% if recent_encounters %}
-                        <div class="table-responsive">
-                            <table class="table align-middle">
+                        <div class="table-responsive emr-enc-scroll">
+                            <table class="table align-middle mb-0" id="encTable">
                                 <thead>
                                     <tr>
                                         <th>Date</th>
                                         <th>Type</th>
                                         <th>Chief complaint</th>
+                                        <th>Source</th>
                                         <th>Status</th>
                                         <th></th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for encounter in recent_encounters %}
-                                        <tr>
-                                            <td>{{ encounter.encounter_date|date:"M j, Y" }}</td>
+                                        <tr class="emr-enc-row">
+                                            <td class="text-nowrap">{{ encounter.encounter_date|date:"M j, Y" }}</td>
                                             <td>{{ encounter.get_encounter_type_display }}</td>
                                             <td>{{ encounter.chief_complaint|default:"-"|truncatechars:80 }}</td>
+                                            <td>
+                                                {% if encounter.scribe_session %}
+                                                    <a href="{% url 'scribe:review' encounter.scribe_session.pk %}"
+                                                       class="badge rounded-pill bg-primary-subtle text-primary text-decoration-none"
+                                                       title="This encounter was created from a recorded scribe visit">
+                                                        <iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon> Scribe visit
+                                                    </a>
+                                                {% else %}
+                                                    <span class="badge rounded-pill bg-secondary-subtle text-secondary"
+                                                          title="Created manually (intake, appointment or editor) — not from a recording">Manual</span>
+                                                {% endif %}
+                                            </td>
                                             <td>{{ encounter.get_encounter_status_display }}</td>
                                             <td class="text-end">
                                                 <div class="d-inline-flex gap-2 justify-content-end">
@@ -114,6 +151,7 @@
                                 </tbody>
                             </table>
                         </div>
+                        <div id="encNoResults" class="small text-muted mt-2 d-none">No encounters match your search.</div>
                     {% else %}
                         <div class="emr-empty-state">
                             <h6 class="fw-semibold">No encounters yet</h6>
@@ -149,6 +187,13 @@
                                         </span>
                                         <span class="d-block small text-muted">
                                             {{ visit.created_at|date:"M j, Y · g:i A" }} · {{ visit.get_status_display }}
+                                            {% with encs=visit.emr_encounters.all %}
+                                                {% if encs %}
+                                                    · <span class="text-success">→ {{ encs.0.encounter_date|date:"M j" }} encounter</span>
+                                                {% else %}
+                                                    · <span class="text-warning">not yet an encounter</span>
+                                                {% endif %}
+                                            {% endwith %}
                                         </span>
                                     </span>
                                     {% if visit.is_sensitive %}
@@ -280,5 +325,26 @@
   setInterval(poll, 20000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
 })();
+
+/* Client-side filter for the encounter-history list. */
+function wnFilterEncounters(q) {
+  q = (q || '').trim().toLowerCase();
+  var rows = document.querySelectorAll('#encTable .emr-enc-row');
+  var shown = 0;
+  rows.forEach(function (r) {
+    var match = !q || r.textContent.toLowerCase().indexOf(q) !== -1;
+    r.style.display = match ? '' : 'none';
+    if (match) shown++;
+  });
+  var nr = document.getElementById('encNoResults');
+  if (nr) nr.classList.toggle('d-none', !(q && shown === 0));
+}
 </script>
+<style>
+  .emr-enc-search { position: relative; min-width: 210px; max-width: 280px; flex: 1 1 210px; }
+  .emr-enc-search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--bs-secondary-color); pointer-events: none; }
+  .emr-enc-search input { padding-left: 30px; border-radius: 20px; }
+  .emr-enc-scroll { max-height: 360px; overflow-y: auto; }
+  .emr-enc-scroll table thead th { position: sticky; top: 0; z-index: 1; background: var(--bs-body-bg); }
+</style>
 {% endblock %}

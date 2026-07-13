@@ -194,11 +194,31 @@ def build_scribe_import_bundle(
         bundle=bundle,
     )
     bundle.vitals_initial = _extract_vitals(objective_text, encounter_date=encounter_date, bundle=bundle)
-    bundle.diagnosis_initial = _extract_diagnoses(
-        session=session,
-        assessment_text=assessment_text,
-        full_text=full_text,
+    # Diagnoses are coded ONLY from the clinician's written note (Assessment /
+    # Plan / Subjective), never from the raw transcript or the patient's verbatim
+    # chief complaint. A coded diagnosis asserts the patient HAS the condition, so
+    # it must come from what the doctor documented - not from a stray word the
+    # patient said. Negation, family history and uncertainty are filtered in
+    # _extract_diagnoses below.
+    diagnosis_source = _join_texts(
+        note.assessment if note else "",
+        note.plan if note else "",
+        note.subjective if note else "",
     )
+    if not diagnosis_source and note:
+        diagnosis_source = note.edited_note or note.full_note or ""
+    # Primary path: use the ICD-10 codes the model attached to the doctor's
+    # Assessment (context-aware, respects doctor-vs-patient). Fall back to the
+    # deterministic keyword extractor only for older notes with no ICD tags.
+    ai_coded = _parse_ai_coded_diagnoses(diagnosis_source, bundle)
+    if ai_coded:
+        bundle.diagnosis_initial = ai_coded
+    else:
+        bundle.diagnosis_initial = _extract_diagnoses(
+            session=session,
+            source_text=diagnosis_source,
+            bundle=bundle,
+        )
     bundle.medication_initial = _extract_medications(plan_text, session.transcript)
     bundle.vitals_preview = _build_vitals_preview(bundle.vitals_initial)
     bundle.diagnosis_preview = _build_diagnosis_preview(bundle.diagnosis_initial)
@@ -479,47 +499,241 @@ def _extract_vitals(text: str, *, encounter_date: date, bundle: ScribeImportBund
     return vitals
 
 
-def _extract_diagnoses(*, session: ScribeSession, assessment_text: str, full_text: str) -> list[dict]:
-    matches = []
-    lowered_assessment = assessment_text.lower()
-    lowered_full_text = full_text.lower()
+# ── Diagnosis-safety guards ──────────────────────────────────────────────────
+# A coded diagnosis is a legal assertion that THIS patient HAS the condition.
+# We must never mint one from a denial ("denies diabetes"), someone else's
+# history ("father has diabetes"), a resolved problem, or a coincidental
+# substring ("uri" inside "during"). See docs/safety/diagnosis_extraction.md.
+
+# Hard negation / absence -> do NOT code (surface as a review flag instead).
+NEGATION_CUES = [
+    "no known", "no history of", "no h/o", "not have", "does not have", "doesn't have",
+    "denies", "denied", "deny", "negative for", "no evidence of", "without",
+    "never had", "never", "nil", "absence of", "ruled out", "rules out",
+    "free of", "resolved", "no longer", "nuh have", "nah have",
+    "no", "not",
+]
+# Condition belongs to a relative, not the patient in front of us.
+FAMILY_CUES = [
+    "father", "mother", "mom", "mum", "dad", "brother", "sister", "sibling",
+    "family history", "fam hx", "runs in the family", "aunt", "uncle",
+    "grandmother", "grandfather", "grandparent", "parent", "cousin", "maternal",
+    "paternal",
+]
+# Uncertain / differential -> code as "suspected", never "active"/"chronic".
+SUSPECTED_CUES = [
+    "possible", "probable", "suspected", "suspect", "query", "rule out", "r/o",
+    "differential", "consider", "likely", "cannot exclude", "?",
+]
+
+
+def _has_cue(text: str, cues: list[str]) -> bool:
+    """True if any cue appears in text. Pure alpha words are matched on word
+    boundaries (so 'no' does not fire inside 'nostril'); phrases / punctuated
+    cues fall back to substring."""
+    for cue in cues:
+        c = cue.strip().lower()
+        if not c:
+            continue
+        if c.isalpha():
+            if re.search(rf"\b{re.escape(c)}\b", text):
+                return True
+        elif c in text:
+            return True
+    return False
+
+
+def _clause_around(sentence: str, keyword: str) -> str:
+    """The clause containing keyword, bounded by conjunctions/commas so that a
+    negation in a neighbouring clause ('no chest pain but has cough') does not
+    leak across."""
+    low = sentence.lower()
+    idx = low.find(keyword.lower())
+    if idx == -1:
+        return sentence
+    boundaries = [";", ",", " but ", " however ", " though ", " whereas ", " - ", " – "]
+    start, end = 0, len(sentence)
+    for b in boundaries:
+        p = low.rfind(b, 0, idx)
+        if p != -1:
+            start = max(start, p + len(b))
+        p2 = low.find(b, idx + len(keyword))
+        if p2 != -1:
+            end = min(end, p2)
+    return sentence[start:end]
+
+
+def _classify_diagnosis(sentence: str, keyword: str, description: str) -> tuple[str, str | None]:
+    """Return (decision, status). decision is 'code' or 'skip'. When 'skip', the
+    caller raises a review flag instead of silently coding OR silently dropping."""
+    clause = _clause_around(sentence, keyword).lower()
+    kidx = clause.find(keyword.lower())
+    pre = clause[:kidx] if kidx != -1 else clause
+
+    # Family history -> not this patient.
+    if _has_cue(clause, FAMILY_CUES):
+        return "skip", None
+    # Hard negation before the term, or "resolved / ruled out / negative for" anywhere in the clause.
+    if _has_cue(pre, NEGATION_CUES) or _has_cue(clause, ["ruled out", "rules out", "resolved", "no longer", "negative for"]):
+        return "skip", None
+    # Uncertainty -> suspected, not confirmed.
+    if _has_cue(clause, SUSPECTED_CUES):
+        return "code", "suspected"
+    # Chronic vs active.
+    desc_low = (description or "").lower()
+    if _has_cue(clause, ["history of", "known", "longstanding", "chronic", "follow-up", "follow up"]):
+        if any(w in desc_low for w in ["hypertension", "diabetes", "hyperlip", "asthma"]):
+            return "code", "chronic"
+    return "code", "active"
+
+
+def _condition_denied_in_text(text: str, keywords: list[str]) -> bool:
+    """Used for known/active conditions: is this condition explicitly negated in
+    the current note? If so we flag a conflict rather than re-coding it."""
+    low = (text or "").lower()
+    for kw in keywords:
+        if re.search(rf"\b{re.escape(kw.lower())}\b", low):
+            decision, _ = _classify_diagnosis(_sentence_containing(text, kw), kw, "")
+            if decision == "skip":
+                return True
+    return False
+
+
+def _extract_diagnoses(*, session: ScribeSession, source_text: str, bundle: ScribeImportBundle) -> list[dict]:
+    """Deterministically code diagnoses from the clinician's written note only.
+
+    Safety rules (see docs/safety/diagnosis_extraction.md):
+      1. Word-boundary matching  -> 'uri' can never fire inside 'during'.
+      2. Negation guard          -> 'denies diabetes' is never coded.
+      3. Family-history guard     -> 'father has diabetes' is never coded.
+      4. Uncertainty -> suspected -> 'possible fracture' is not asserted as fact.
+      5. Skips are surfaced as review flags, never silently dropped.
+    """
+    matches: list[dict] = []
+    source_text = source_text or ""
+    lowered = source_text.lower()
     condition_keys = {item.strip().lower() for item in (session.active_conditions or "").split(",") if item.strip()}
 
     for matcher in DIAGNOSIS_MATCHERS:
+        description = ICD10_LABELS[matcher["code"]]
+
         earliest_index = None
+        matched_keyword = ""
         source_sentence = ""
         for keyword in matcher["keywords"]:
-            index = lowered_assessment.find(keyword)
-            if index == -1:
-                index = lowered_full_text.find(keyword)
-            if index != -1 and (earliest_index is None or index < earliest_index):
-                earliest_index = index
-                source_sentence = _sentence_containing(full_text, keyword)
+            m = re.search(rf"\b{re.escape(keyword)}\b", lowered)
+            if m and (earliest_index is None or m.start() < earliest_index):
+                earliest_index = m.start()
+                matched_keyword = keyword
+                source_sentence = _sentence_containing(source_text, keyword)
 
-        if earliest_index is None and matcher["condition_keys"] and matcher["condition_keys"] & condition_keys:
-            earliest_index = 10_000 + len(matches)
-            source_sentence = f"Active conditions include {', '.join(sorted(matcher['condition_keys'] & condition_keys))}."
-
-        if earliest_index is None:
+        status: str | None
+        if earliest_index is not None:
+            decision, status = _classify_diagnosis(source_sentence, matched_keyword, description)
+            if decision == "skip":
+                bundle.add_flag(
+                    f"'{description}' was mentioned but NOT auto-added to the Problem List "
+                    f"— it appears negated, attributed to family history, or resolved "
+                    f"(\"{_shorten(source_sentence)}\"). Add it manually only if the patient "
+                    f"actually has it."
+                )
+                continue
+            order = earliest_index
+        elif matcher["condition_keys"] and (matcher["condition_keys"] & condition_keys):
+            # Known chronic condition on file. Honour it unless THIS visit denies it.
+            if _condition_denied_in_text(source_text, matcher["keywords"]):
+                bundle.add_flag(
+                    f"'{description}' is on the patient's known-conditions list but appears "
+                    f"to be denied in this visit — confirm before keeping it on the Problem List."
+                )
+                continue
+            order = 10_000 + len(matches)
+            source_sentence = f"Known condition on file ({', '.join(sorted(matcher['condition_keys'] & condition_keys))})."
+            status = "chronic" if any(w in description.lower() for w in ["hypertension", "diabetes", "hyperlip", "asthma"]) else "active"
+        else:
             continue
 
-        description = ICD10_LABELS[matcher["code"]]
-        status = _diagnosis_status_for_text(lowered_full_text, description)
         matches.append(
             {
-                "order": earliest_index,
+                "order": order,
                 "payload": {
                     "icd10_code": matcher["code"],
                     "icd10_description": description,
                     "status": status,
-                    "diagnosis_rank": len(matches) + 1,
                     "notes": source_sentence,
                 },
             }
         )
 
     ordered = sorted(matches, key=lambda item: item["order"])
+    for rank, item in enumerate(ordered, start=1):
+        item["payload"]["diagnosis_rank"] = rank
     return [item["payload"] for item in ordered]
+
+
+def _shorten(text: str, limit: int = 90) -> str:
+    clean = re.sub(r"\s+", " ", (text or "")).strip()
+    return clean if len(clean) <= limit else clean[: limit - 1].rstrip() + "…"
+
+
+# ── AI-coded diagnoses (primary path) ─────────────────────────────────────────
+# The note generator tags each Assessment line the DOCTOR confirmed with its
+# ICD-10 code, e.g. "1. Hypertension (uncontrolled) (ICD-10 I10)". The model -
+# unlike a keyword regex - understands that a condition the patient merely
+# mentioned or denied does NOT belong in the Assessment, so it never codes it.
+# The doctor's Assessment is the ground truth. We parse those codes here; the
+# keyword extractor is only a fallback for notes with no ICD tags.
+_ICD10_TAG_RE = re.compile(r"\(\s*ICD-?10[:\s]+([A-Za-z0-9.\?]+)\s*\)", re.IGNORECASE)
+_ICD10_VALID_RE = re.compile(r"^[A-TV-Z][0-9][0-9AB](\.[0-9A-Za-z]{1,4})?$")
+
+
+def _status_from_line(desc: str) -> str:
+    low = desc.lower()
+    if _has_cue(low, SUSPECTED_CUES):
+        return "suspected"
+    if _has_cue(low, ["chronic", "known", "longstanding", "ongoing"]):
+        return "chronic"
+    return "active"
+
+
+def _parse_ai_coded_diagnoses(text: str, bundle: ScribeImportBundle) -> list[dict]:
+    """Build the Problem List from the ICD-10 tags the model attached to the
+    doctor's Assessment. Returns [] when the note carries no tags (older notes),
+    so the caller can fall back to the deterministic keyword extractor."""
+    if not text:
+        return []
+    results: list[dict] = []
+    seen_codes: set[str] = set()
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        m = _ICD10_TAG_RE.search(line)
+        if not m:
+            continue
+        code = m.group(1).strip().upper().rstrip(".")
+        desc = _ICD10_TAG_RE.sub("", line).strip()
+        desc = re.sub(r"^\d+[.)]\s*", "", desc)              # strip leading "1. "
+        desc = re.split(r"\s+[—–-]\s+", desc)[0].strip(" -–—.")  # concise name, drop explanation
+        if not desc:
+            continue
+        valid = code != "?" and bool(_ICD10_VALID_RE.match(code))
+        code = code if valid else ""
+        if code and code in seen_codes:
+            continue
+        if code:
+            seen_codes.add(code)
+        if not valid:
+            bundle.add_flag(
+                f"'{_shorten(desc)}' was diagnosed but its ICD-10 code needs to be entered by the clinician."
+            )
+        results.append({
+            "icd10_code": code,
+            "icd10_description": ICD10_LABELS.get(code) or desc,
+            "status": _status_from_line(desc),
+            "notes": line,  # provenance: the exact Assessment line
+        })
+    for rank, item in enumerate(results, start=1):
+        item["diagnosis_rank"] = rank
+    return results
 
 
 def _extract_medications(plan_text: str, transcript_text: str) -> list[dict]:
@@ -866,3 +1080,74 @@ def _sentence_around_span(text: str, start: int, end: int) -> str:
 
 def _round_decimal(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+
+
+# ── Imaging / investigation requisition (deterministic, no AI) ────────────────
+# Used to pre-fill a scan / lab request sheet from what the clinician wrote in
+# the Plan. Keyword match with word boundaries only - same safety discipline as
+# the diagnosis extractor. This SUGGESTS a requisition for the doctor to review
+# and print; it never orders anything on its own.
+IMAGING_STUDIES = [
+    ("Chest X-ray", ["chest x-ray", "chest xray", "cxr", "chest radiograph"]),
+    ("X-ray", ["x-ray", "xray", "x ray", "radiograph"]),
+    ("Abdominal ultrasound", ["abdominal ultrasound", "abdominal us"]),
+    ("Pelvic ultrasound", ["pelvic ultrasound"]),
+    ("Obstetric ultrasound", ["obstetric ultrasound", "dating scan", "anomaly scan", "growth scan", "antenatal scan"]),
+    ("Ultrasound", ["ultrasound", "sonogram"]),
+    ("CT scan", ["ct scan", "cat scan", "computed tomography"]),
+    ("MRI", ["mri", "magnetic resonance"]),
+    ("Echocardiogram", ["echocardiogram"]),
+    ("ECG (12-lead)", ["ecg", "ekg", "electrocardiogram"]),
+    ("Mammogram", ["mammogram", "mammography"]),
+    ("DEXA (bone density)", ["dexa", "bone density"]),
+    ("Doppler ultrasound", ["doppler"]),
+    ("Spirometry / PFTs", ["spirometry", "lung function", "pulmonary function"]),
+]
+INVESTIGATIONS = [
+    ("Complete blood count (CBC)", ["cbc", "fbc", "complete blood count", "full blood count"]),
+    ("Urine culture", ["urine culture", "midstream urine"]),
+    ("Urinalysis", ["urinalysis", "urine dipstick", "urine test"]),
+    ("Fasting blood glucose", ["fasting blood glucose", "fasting glucose"]),
+    ("HbA1c", ["hba1c", "glycated haemoglobin", "glycated hemoglobin"]),
+    ("Lipid profile", ["lipid profile", "cholesterol panel", "fasting lipids"]),
+    ("Liver function tests", ["liver function", "lft"]),
+    ("Renal function / U&E", ["renal function", "urea and electrolytes", "creatinine"]),
+    ("Thyroid function (TSH)", ["thyroid function", "thyroid panel", "tsh"]),
+    ("Pregnancy test", ["pregnancy test", "beta hcg", "urine hcg"]),
+    ("Malaria test", ["malaria test", "malaria smear"]),
+    ("Dengue test", ["dengue test", "dengue ns1"]),
+    ("Pap smear", ["pap smear", "cervical smear"]),
+    ("Blood culture", ["blood culture"]),
+    ("Biopsy", ["biopsy"]),
+]
+
+
+def extract_imaging_and_investigations(*texts: str) -> list[dict]:
+    """Return [{study, category, context}] for imaging/labs mentioned in the note.
+
+    Deterministic and word-boundary matched. Each result carries the sentence it
+    was found in, so the doctor can verify the requisition before printing."""
+    combined = _join_texts(*texts)
+    lowered = combined.lower()
+    out: list[dict] = []
+    spans: list[tuple[int, int]] = []  # accepted match spans, to suppress overlaps
+    # Specific labels are listed before generic ones ("Chest X-ray" before "X-ray"),
+    # so a generic keyword whose match sits inside an already-accepted span is dropped.
+    for category, catalogue in (("Imaging", IMAGING_STUDIES), ("Investigation", INVESTIGATIONS)):
+        for label, keywords in catalogue:
+            best = None
+            for kw in keywords:
+                m = re.search(rf"\b{re.escape(kw)}\b", lowered)
+                if m and (best is None or m.start() < best.start()):
+                    best = m
+            if best is None:
+                continue
+            if any(s <= best.start() and best.end() <= e for s, e in spans):
+                continue  # already covered by a more specific study
+            spans.append((best.start(), best.end()))
+            out.append({
+                "study": label,
+                "category": category,
+                "context": _sentence_containing(combined, best.group(0)),
+            })
+    return out

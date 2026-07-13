@@ -63,6 +63,7 @@ class Command(BaseCommand):
         notes = []
         for sid, logs in by_session.items():
             prompt = sum(l.prompt_tokens for l in logs)
+            cached = sum(getattr(l, "cached_tokens", 0) for l in logs)
             completion = sum(l.completion_tokens for l in logs)
             reasoning = sum(l.reasoning_tokens for l in logs)
             gpt_cost = float(sum(l.total_cost for l in logs))
@@ -89,6 +90,11 @@ class Command(BaseCommand):
         total_omni = sum(n["omniasr_cost"] for n in notes)
         total = total_gpt + total_omni
         n_notes = len(note_notes) or 1
+        # Prompt-cache measurement (Azure serves cached prompt tokens ~50% cheaper).
+        total_prompt = sum(l.prompt_tokens for logs in by_session.values() for l in logs)
+        total_cached = sum(getattr(l, "cached_tokens", 0) for logs in by_session.values() for l in logs)
+        cache_hit = (total_cached / total_prompt * 100) if total_prompt else 0
+        est_cache_saving = total_cached * (2.50 / 1_000_000) * 0.5  # 50% off cached input
         avg_note = sum(n["total_cost"] for n in note_notes) / n_notes if note_notes else 0
         avg_note_buf = sum(n["total_cost_buffered"] for n in note_notes) / n_notes if note_notes else 0
         gpt_share = (total_gpt / total * 100) if total else 0
@@ -123,6 +129,8 @@ class Command(BaseCommand):
         w("-" * 96)
         w(f"Notes counted: {len(note_notes)}   GPT is {gpt_share:.1f}% of measured cost")
         w(f"Total GPT ${total_gpt:.5f} + omniASR ${total_omni:.5f} = ${total:.5f}")
+        w(f"Prompt cache: {total_cached:,} / {total_prompt:,} prompt tokens cached "
+          f"({cache_hit:.0f}% hit)  ->  est. saving ~${est_cache_saving:.5f} (at 50% cached discount)")
         w(self.style.SUCCESS(
             f"AVG COST / NOTE = ${avg_note:.4f}  (buffered omniASR: ${avg_note_buf:.4f})"))
         w("")

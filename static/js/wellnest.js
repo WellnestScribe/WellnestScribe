@@ -216,6 +216,14 @@
       postJSON(W.endpoints.updatePreferences, { sound_effects: soundEffectsChk.checked });
     });
   }
+  const highlightTermsChk = $("#prefHighlightTerms");
+  if (highlightTermsChk) {
+    highlightTermsChk.addEventListener("change", function () {
+      // Live toggle via a root class (CSS hides the term highlights); persisted.
+      document.documentElement.classList.toggle("hl-terms-off", !highlightTermsChk.checked);
+      postJSON(W.endpoints.updatePreferences, { highlight_terms: highlightTermsChk.checked });
+    });
+  }
 
   // ---------- session search ----------
   $$("[data-session-filter]").forEach(function (input) {
@@ -1288,7 +1296,9 @@
     const gemmaModelIdInput = $("#triageGemmaModelId", root);  // section 4
     function syncBackendRows() {
       const v = backendSel.value;
-      if (omniRow) omniRow.style.display = v === "omni" ? "block" : "none";
+      // Show the omni options (incl. the reference/WER field) for both the local
+      // omni backend and the cloud modal-omni backend (same omniASR model).
+      if (omniRow) omniRow.style.display = (v === "omni" || v === "modal-omni") ? "block" : "none";
     }
     if (backendSel) backendSel.addEventListener("change", syncBackendRows);
     syncBackendRows();
@@ -1401,10 +1411,12 @@
       if (denoiseChk && denoiseChk.checked) fd.append("denoise", "1");
       if (diarizeChk && diarizeChk.checked) fd.append("diarize", "1");
       if (numSpeakersInp) fd.append("num_speakers", numSpeakersInp.value || "2");
-      if (backendSel.value === "omni") {
+      if (backendSel.value === "omni" || backendSel.value === "modal-omni") {
         const batchSizeInp = $("#triageBatchSize", root);
         const referenceInp = $("#triageReference", root);
         const gradioUrlInp = $("#triageGradioUrl", root);
+        // batch_size / gradio_url are ignored by the cloud modal-omni backend;
+        // reference (for WER/CER scoring) is honoured by both.
         if (batchSizeInp) fd.append("batch_size", batchSizeInp.value || "4");
         if (referenceInp) fd.append("reference", referenceInp.value || "");
         if (gradioUrlInp && gradioUrlInp.value.trim()) fd.append("gradio_url", gradioUrlInp.value.trim());

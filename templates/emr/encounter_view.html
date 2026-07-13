@@ -22,6 +22,16 @@
         </div>
         <div class="d-flex gap-2 flex-wrap">
             <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary btn-sm">Back to chart</a>
+            {# Deterministic outputs (no AI) - available in read-only view, not just the editor. #}
+            <a href="{% url 'emr:prescription_print' encounter.pk %}" target="_blank" class="btn btn-outline-secondary btn-sm">
+                <iconify-icon icon="iconamoon:file-document-duotone" class="me-1"></iconify-icon>Prescription
+            </a>
+            <a href="{% url 'emr:scan_request_print' encounter.pk %}" target="_blank" class="btn btn-outline-secondary btn-sm">
+                <iconify-icon icon="iconamoon:screen-duotone" class="me-1"></iconify-icon>Scan / lab request
+            </a>
+            <a href="{% url 'emr:referral_create' encounter.pk %}" class="btn btn-outline-secondary btn-sm">
+                <iconify-icon icon="iconamoon:send-duotone" class="me-1"></iconify-icon>Referral
+            </a>
             {% if can_edit and encounter.encounter_status != 'signed' %}
                 <a href="{% url 'emr:encounter_edit' patient.pk encounter.pk %}" class="btn btn-outline-primary btn-sm">
                     <iconify-icon icon="iconamoon:edit-duotone" class="me-1"></iconify-icon>Edit in Advanced editor
@@ -85,7 +95,14 @@
                         <div class="d-flex justify-content-between align-items-start border-bottom py-2">
                             <div>
                                 <strong>{{ dx.icd10_code }}</strong> · {{ dx.icd10_description|default:dx.notes|default:"Diagnosis" }}
-                                {% if dx.ai_suggested %}<span class="badge bg-info-subtle text-info ms-1">AI</span>{% endif %}
+                                {% if dx.ai_suggested %}<span class="badge bg-info-subtle text-info ms-1" title="Auto-suggested from the note - verify before signing">AI</span>{% endif %}
+                                {% if dx.notes and dx.icd10_description %}
+                                    {# Provenance: the exact note sentence this code was derived from, so the
+                                       clinician can see the basis for the diagnosis without entering edit mode. #}
+                                    <div class="text-muted small mt-1 fst-italic">
+                                        <iconify-icon icon="iconamoon:search-duotone" class="me-1"></iconify-icon>Basis: &ldquo;{{ dx.notes }}&rdquo;
+                                    </div>
+                                {% endif %}
                             </div>
                             <span class="badge bg-secondary-subtle text-secondary">{{ dx.get_status_display }}</span>
                         </div>

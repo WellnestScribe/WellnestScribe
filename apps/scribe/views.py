@@ -1054,7 +1054,7 @@ def triage_run_api(request):
             for chunk in audio.chunks():
                 fh.write(chunk)
 
-    if backend in ("mms", "omni", "parakeet") and not saved_path:
+    if backend in ("mms", "omni", "parakeet", "modal-omni") and not saved_path:
         return JsonResponse({"ok": False, "error": f"{backend} requires audio."}, status=400)
 
     def _run(job):
@@ -1085,6 +1085,13 @@ def triage_run_api(request):
                         batch_size=batch_size,
                     )
                 raw = _omni_result["text"]
+            elif backend == "modal-omni":
+                # SAME cloud pipeline the ambient scribe uses (omniASR on Modal GPU).
+                # Works online with no local model; returns the raw transcript + timings.
+                job.stage = "sending to Modal omniASR (cloud — same as ambient scribe)…"
+                omni_lang = target_lang if "_" in target_lang else target_lang + "_Latn"
+                _omni_result = transcribe_modal_omni(str(saved_path), target_lang=omni_lang)
+                raw = _omni_result.get("transcript", "")
             elif backend == "parakeet":
                 job.stage = "loading Parakeet TDT 0.6B v2 (first run ≈ 2–5 min on CPU)…"
                 job.stage = "transcribing with Parakeet…"
@@ -2743,6 +2750,8 @@ def update_preferences_api(request):
         profile.suggestive_assist = _coerce_bool(payload["suggestive_assist"])
     if "sound_effects" in payload:
         profile.sound_effects = _coerce_bool(payload["sound_effects"])
+    if "highlight_terms" in payload:
+        profile.highlight_terms = _coerce_bool(payload["highlight_terms"])
     if payload.get("specialty") in dict(DoctorProfile.SPECIALTY_CHOICES):
         profile.specialty = payload["specialty"]
     if payload.get("preferred_language") in dict(DoctorProfile.LANGUAGE_CHOICES):
@@ -2760,6 +2769,7 @@ def update_preferences_api(request):
             "long_form_default": profile.long_form_default,
             "suggestive_assist": profile.suggestive_assist,
             "sound_effects": profile.sound_effects,
+            "highlight_terms": profile.highlight_terms,
             "specialty": profile.specialty,
             "preferred_language": profile.preferred_language,
             "custom_instructions": profile.custom_instructions,

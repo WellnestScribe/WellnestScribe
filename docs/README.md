@@ -12,7 +12,8 @@ Everything else is organised by topic below (nothing here is deleted — just fi
 - `ED_WORKFLOW_PLAN.md` — Emergency Department module design
 - `TRYTON_ARCHITECTURE.md` — GNU Health / Tryton EMR bridge
 
-## `finance/` — measured cost & the financial model
+## `finance/` — measured cost, the financial model & how the subscription works
+- `Subscription_and_Usage_System.md` — **how the whole subscription/usage system works right now**: plans, note-credits, every user limit/safeguard, edge cases, FAQ, code map + a paste-to-AI audit prompt
 - `Control_Test_2026-07.md` — the measured AI-cost control test (raw evidence log)
 - `July_2026_Financials_Estimate.md` — per-note cost derivation
 - `_wellnest_financials.py` — runnable, self-checking financial model (all numbers assert)
@@ -26,6 +27,9 @@ Everything else is organised by topic below (nothing here is deleted — just fi
 
 ## `security/`
 - `security.md`, `data_security_policy.md`, `azure_key_management.md`
+
+## `operations/` — server / runtime config
+- `server_and_gunicorn.md` — the Gunicorn worker fix (**sync → gthread**, more workers/threads) that ended the site-wide freeze; capacity, Startup Command, and how to verify it's live
 
 ## `setup/` — provisioning & environment
 - `omni_asr_modal_setup.md`, `omni_asr_wsl2_setup.md`, `omni_asr_colab_demo.ipynb`

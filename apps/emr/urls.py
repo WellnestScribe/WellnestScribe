@@ -44,6 +44,7 @@ urlpatterns = [
     path("encounters/<int:encounter_pk>/addendum/", views.encounter_addendum_view, name="encounter_addendum"),
     path("encounters/<int:encounter_pk>/referrals/new/", views.referral_create_view, name="referral_create"),
     path("encounters/<int:encounter_pk>/prescription/", views.prescription_print_view, name="prescription_print"),
+    path("encounters/<int:encounter_pk>/scan-request/", views.scan_request_print_view, name="scan_request_print"),
     path("referrals/<int:referral_pk>/print/", views.referral_print_view, name="referral_print"),
     path("settings/", views.organisation_settings_view, name="settings"),
 

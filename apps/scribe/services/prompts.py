@@ -282,9 +282,13 @@ Investigations: <lab results, imaging, ECG — only values the doctor stated>>
 A:
 <Assessment — number each problem or diagnosis. After each number write the
 clinical impression in the doctor's words, with status in parentheses if stated
-(controlled / uncontrolled / stable / worsening / new onset). Flag critical
-findings with [ALERT]. Do NOT add "rule out", "evaluate for", or differentials
-unless the doctor explicitly said them.>
+(controlled / uncontrolled / stable / worsening / new onset). Then append the
+ICD-10 code in parentheses, e.g. "(ICD-10 I10)". Code ONLY a condition the doctor
+actually diagnosed or confirmed — NEVER one the patient merely mentioned, denied,
+or that belongs to family history. If you are not confident of the exact code,
+write "(ICD-10 ?)" so the clinician completes it. Flag critical findings with
+[ALERT]. Do NOT add "rule out", "evaluate for", or differentials unless the doctor
+explicitly said them.>
 
 P:
 <Plan — number to match assessment. Under each number use INDENTED sub-groups:
@@ -316,7 +320,7 @@ Vitals: BP 138/86 mmHg | HR 72 bpm | RR 16.
 Examination: Not documented.
 
 A:
-1. Hypertension (uncontrolled) — target BP not achieved on current regimen.
+1. Hypertension (uncontrolled) — target BP not achieved on current regimen. (ICD-10 I10)
 
 P:
 1. Hypertension
@@ -377,8 +381,12 @@ Investigations: <lab results, imaging, ECG — only values the doctor stated>>
 
 A:
 <Assessment — number each problem. Include status in parentheses if stated.
-Flag critical findings with [ALERT]. When strongly implied by the transcript,
-you may add concise provisional "rule out", "consider", or "possible" wording.>
+Then append the ICD-10 code in parentheses, e.g. "(ICD-10 I10)". Code ONLY a
+condition the doctor actually diagnosed or confirmed — NEVER one the patient
+merely mentioned, denied, or that belongs to family history. If unsure of the
+exact code, write "(ICD-10 ?)". Flag critical findings with [ALERT]. When strongly
+implied by the transcript, you may add concise provisional "rule out", "consider",
+or "possible" wording.>
 
 P:
 <Plan — number to match assessment. Under each number group:
@@ -410,7 +418,7 @@ Vitals: BP 138/86 mmHg | HR 72 bpm | RR 16.
 Examination: Not documented.
 
 A:
-1. Hypertension (uncontrolled) — target BP not achieved; consider metabolic panel to rule out secondary causes.
+1. Hypertension (uncontrolled) — target BP not achieved; consider metabolic panel to rule out secondary causes. (ICD-10 I10)
 
 P:
 1. Hypertension

@@ -1,0 +1,91 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Scan / lab request · WellNest</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="{% static 'css/vendor.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/icons.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/app.min.css' %}" rel="stylesheet">
+    <link href="{% static 'css/wellnest.css' %}" rel="stylesheet">
+</head>
+<body class="p-4">
+    <div class="emr-print-sheet">
+        <div class="d-flex justify-content-between align-items-start mb-4">
+            <div>
+                <h3 class="fw-semibold mb-1">Investigation / imaging request</h3>
+                <div class="text-muted small">{{ emr_organisation.name }}</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="window.print()">Print</button>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <strong>Patient:</strong> {{ patient.display_name }}<br>
+                <strong>DOB:</strong> {{ patient.date_of_birth|date:"Y-m-d" }}<br>
+                <strong>NHF:</strong> {{ patient.nhf_card_number|default:"-" }}
+            </div>
+            <div class="col-md-6">
+                <strong>Date:</strong> {{ encounter.encounter_date|date:"Y-m-d" }}<br>
+                <strong>Requesting clinician:</strong> {{ encounter.provider.get_full_name|default:encounter.provider.username|default:"-" }}<br>
+                <strong>Chief complaint:</strong> {{ encounter.chief_complaint|default:"-" }}
+            </div>
+        </div>
+
+        {% if indication %}
+            <div class="mb-3">
+                <strong>Clinical indication:</strong>
+                <div class="small">{{ indication|linebreaksbr }}</div>
+            </div>
+        {% endif %}
+
+        <p class="small text-muted">
+            Draft requisition auto-drawn from the encounter note. Review, tick, and add
+            anything the note missed before signing — nothing here is ordered automatically.
+        </p>
+
+        <div class="table-responsive">
+            <table class="table table-bordered align-middle">
+                <thead>
+                    <tr>
+                        <th style="width:2.5rem;"></th>
+                        <th>Study / test</th>
+                        <th>Type</th>
+                        <th>Noted in the encounter</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                        <tr>
+                            <td class="text-center" style="font-size:1.1rem;">&#9744;</td>
+                            <td><strong>{{ item.study }}</strong></td>
+                            <td>{{ item.category }}</td>
+                            <td class="small text-muted">{{ item.context|default:"-" }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-center text-muted">
+                                No imaging or lab test was recognised in the note. Write requests below.
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    {# Blank rows so the clinician can hand-add studies the note didn't capture. #}
+                    {% for _ in "123" %}
+                        <tr>
+                            <td class="text-center" style="font-size:1.1rem;">&#9744;</td>
+                            <td>&nbsp;</td>
+                            <td></td>
+                            <td></td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="mt-5 pt-3" style="border-top:1px solid #ccc; max-width:280px;">
+            <div class="small text-muted">Clinician signature &amp; date</div>
+        </div>
+    </div>
+</body>
+</html>

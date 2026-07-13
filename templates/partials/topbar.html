@@ -206,6 +206,12 @@ document.addEventListener('DOMContentLoaded', function () {
                             <label class="form-check-label small" for="prefSoundEffects">Recording sound effects</label>
                             <div class="small text-muted mt-1">Play start, cancel, and success chimes while recording.</div>
                         </div>
+
+                        <div class="form-check form-switch mt-3">
+                            <input class="form-check-input" type="checkbox" id="prefHighlightTerms" {% if doctor_profile.highlight_terms %}checked{% endif %}>
+                            <label class="form-check-label small" for="prefHighlightTerms">Highlight medications in notes</label>
+                            <div class="small text-muted mt-1">Keep prescribed medications visibly highlighted in the note review.</div>
+                        </div>
                     </div>
                 </div>
 

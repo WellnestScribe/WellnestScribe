@@ -69,6 +69,10 @@ class DoctorProfile(models.Model):
     sound_effects = models.BooleanField(
         default=True, help_text="Play start/cancel/success chimes during recording."
     )
+    highlight_terms = models.BooleanField(
+        default=True,
+        help_text="Persistently highlight medications (and key terms) in the note review.",
+    )
     font_scale = models.PositiveSmallIntegerField(default=100)
     theme = models.CharField(
         max_length=10,

@@ -254,8 +254,11 @@
                         <div class="col-md-6">
                             <label class="form-label small text-muted" for="triageBackend">Backend</label>
                             <select class="form-select" id="triageBackend">
+                                <option value="modal-omni" selected>
+                                    omniASR on Modal (cloud — SAME pipeline as the ambient scribe; works online)
+                                </option>
                                 <option value="mms" {% if not env.transformers %}disabled{% endif %}>
-                                    MMS-1b-l1107 (Patois ASR){% if not env.transformers %} - install transformers{% endif %}
+                                    MMS-1b-l1107 (Patois ASR, local){% if not env.transformers %} - install transformers{% endif %}
                                 </option>
                                 <option value="omni">
                                     omniASR CTC 1B (Meta omnilingual, Patois){% if not env.omnilingual_asr %} - paste Gradio URL or pip install omnilingual-asr{% endif %}

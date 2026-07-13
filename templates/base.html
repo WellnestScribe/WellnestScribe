@@ -5,6 +5,7 @@
       data-bs-theme="{% if ui_theme == 'dark' %}dark{% elif ui_theme == 'auto' %}light{% else %}light{% endif %}">
 <head>
     <script>try{if(localStorage.getItem('wn_eyecomfort')==='1')document.documentElement.classList.add('wn-eyecomfort');}catch(e){}</script>
+    {% if doctor_profile and not doctor_profile.highlight_terms %}<script>document.documentElement.classList.add('hl-terms-off');</script>{% endif %}
     <meta charset="utf-8">
     <title>{% block title %}WellNest Scribe{% endblock %}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -148,7 +149,8 @@
           try {
             var s = window.WELLNEST.sounds;
             if (!s || !s.enabled || !s[name]) return;
-            var a = new Audio(s[name]); a.volume = 0.55; a.play().catch(function () {});
+            var vol = { start: 0.5, cancel: 0.5, success: 0.28 }[name] || 0.45;  // success turned down
+            var a = new Audio(s[name]); a.volume = vol; a.play().catch(function () {});
           } catch (e) {}
         },
       };

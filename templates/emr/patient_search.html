@@ -166,4 +166,14 @@
   try { if (localStorage.getItem(KEY) === 'table') show('table'); } catch (e) {}
 })();
 </script>
+<style>
+  /* Find patient: the secondary identifiers (MRN, TRN/NHF, phone, parish) were
+     rendered at Bootstrap .small (~0.8rem) and hard to read. Bump them up. */
+  #patientCards .card-body h6 { font-size: 1rem; }
+  #patientCards .text-muted.small { font-size: 0.875rem; }
+  #patientTable td { font-size: 0.9rem; vertical-align: middle; }
+  #patientTable td.small,
+  #patientTable td.text-muted.small { font-size: 0.9rem; }
+  #patientTable td.text-muted { color: var(--bs-secondary-color); }
+</style>
 {% endblock %}
