@@ -17,7 +17,7 @@
                 <iconify-icon icon="mdi:calendar-plus" class="me-1"></iconify-icon>Add appointment
             </a>
             <a href="{% url 'emr:encounter_create' patient.pk %}" class="btn btn-outline-secondary btn-sm">Advanced record</a>
-            {% if doctor_profile.can_use_scribe %}
+            {% if can_scribe %}
             <a href="{% url 'scribe:record' %}?patient={{ patient.pk }}" class="btn btn-outline-primary btn-sm">
                 <iconify-icon icon="iconamoon:microphone-duotone" class="me-1"></iconify-icon>Record visit
             </a>
@@ -35,6 +35,7 @@
                     <div class="card emr-summary-card">
                         <div class="card-body">
                             <div class="emr-summary-label">Problem list</div>
+                            <div style="max-height: 230px; overflow-y: auto;">
                             {% for item in problem_list %}
                                 <div class="small mt-2">
                                     <strong>{{ item.icd10_code }}</strong> · {{ item.icd10_description|default:item.notes|default:"Diagnosis recorded" }}
@@ -53,6 +54,7 @@
                             {% empty %}
                                 <div class="small text-muted mt-2">No active diagnoses yet.</div>
                             {% endfor %}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -92,6 +94,38 @@
                     </div>
                 </div>
             </div>
+
+            {% if vitals_trend|length > 1 %}
+            <div class="card mb-4">
+                <div class="card-body p-4">
+                  <details id="trendsBox">
+                    <summary class="fw-semibold" style="cursor:pointer;">
+                        Trends <span class="small text-muted fw-normal">· BP, glucose, weight ({{ vitals_trend|length }} reading{{ vitals_trend|length|pluralize }})</span>
+                    </summary>
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-4">
+                            <div class="small text-muted mb-1">
+                                Blood pressure
+                                <span class="ms-1" style="color:#dc3545;">● sys</span>
+                                <span style="color:#0d6efd;">● dia</span>
+                            </div>
+                            <canvas id="chartBP" height="150"></canvas>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="small text-muted mb-1"><span style="color:#6f42c1;">●</span> Blood glucose (mmol/L)</div>
+                            <canvas id="chartGlu" height="150"></canvas>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="small text-muted mb-1"><span style="color:#198754;">●</span> Weight (kg)</div>
+                            <canvas id="chartWt" height="150"></canvas>
+                        </div>
+                    </div>
+                    <div class="small text-muted mt-2">Last {{ vitals_trend|length }} recorded reading{{ vitals_trend|length|pluralize }}.</div>
+                  </details>
+                </div>
+            </div>
+            {{ vitals_trend|json_script:"vitalsData" }}
+            {% endif %}
 
             <div class="card mb-4">
                 <div class="card-body p-4">
@@ -166,14 +200,16 @@
 
             <div class="card mb-4">
                 <div class="card-body p-4">
-                    <div class="d-flex align-items-center justify-content-between mb-3">
-                        <h5 class="fw-semibold mb-0">Scribe visits</h5>
-                        {% if doctor_profile.can_use_scribe %}
-                        <a href="{% url 'scribe:record' %}?patient={{ patient.pk }}" class="btn btn-outline-primary btn-sm">
-                            <iconify-icon icon="iconamoon:microphone-duotone" class="me-1"></iconify-icon>Record visit
-                        </a>
-                        {% endif %}
-                    </div>
+                  <details>
+                    <summary class="fw-semibold" style="cursor:pointer;">
+                        Recorded consultations <span class="small text-muted fw-normal">· the scribe recordings behind these encounters</span>
+                    </summary>
+                    <div class="mt-2" style="max-height: 320px; overflow-y: auto;">
+                    {% if can_scribe %}
+                    <a href="{% url 'scribe:record' %}?patient={{ patient.pk }}" class="btn btn-outline-primary btn-sm mb-2">
+                        <iconify-icon icon="iconamoon:microphone-duotone" class="me-1"></iconify-icon>Record visit
+                    </a>
+                    {% endif %}
                     {% if patient_visits %}
                         <div class="d-flex flex-column gap-2">
                             {% for visit in patient_visits %}
@@ -205,6 +241,8 @@
                     {% else %}
                         <p class="text-muted small mb-0">No recorded consultations yet.</p>
                     {% endif %}
+                    </div>
+                  </details>
                 </div>
             </div>
 
@@ -324,6 +362,80 @@
   }
   setInterval(poll, 20000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
+})();
+
+/* Vitals trend charts - self-contained canvas line charts, no library. */
+(function () {
+  var el = document.getElementById('vitalsData');
+  if (!el) return;
+  var data;
+  try { data = JSON.parse(el.textContent); } catch (e) { return; }
+  if (!data || data.length < 2) return;
+
+  function draw(canvasId, seriesList) {
+    var c = document.getElementById(canvasId);
+    if (!c) return;
+    var dpr = window.devicePixelRatio || 1, H = 150;
+    var W = c.clientWidth || c.parentNode.clientWidth || 300;
+    c.style.width = '100%'; c.style.height = H + 'px';
+    c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
+    var ctx = c.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    var padL = 34, padR = 8, padT = 10, padB = 18, w = W - padL - padR, h = H - padT - padB;
+    var all = [];
+    seriesList.forEach(function (s) { s.vals.forEach(function (v) { if (v != null) all.push(v); }); });
+    if (all.length < 2) {
+      ctx.fillStyle = 'rgba(128,128,128,0.7)'; ctx.font = '12px system-ui, sans-serif';
+      ctx.fillText('Not enough data yet', padL, H / 2); return;
+    }
+    var mn = Math.min.apply(null, all), mx = Math.max.apply(null, all);
+    if (mn === mx) { mx = mn + 1; }
+    var m = (mx - mn) * 0.12; mn -= m; mx += m;
+    var n = data.length;
+    function X(i) { return padL + (n <= 1 ? 0 : i * w / (n - 1)); }
+    function Y(v) { return padT + h * (1 - (v - mn) / (mx - mn)); }
+    ctx.strokeStyle = 'rgba(128,128,128,0.15)'; ctx.fillStyle = 'rgba(128,128,128,0.85)';
+    ctx.font = '10px system-ui, sans-serif'; ctx.lineWidth = 1;
+    for (var g = 0; g <= 3; g++) {
+      var yy = padT + h * g / 3;
+      ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(padL + w, yy); ctx.stroke();
+      ctx.fillText(Math.round(mx - (mx - mn) * g / 3), 2, yy + 3);
+    }
+    ctx.fillText(data[0].d, padL, H - 4);
+    ctx.fillText(data[n - 1].d, padL + w - 26, H - 4);
+    seriesList.forEach(function (s) {
+      ctx.beginPath(); var started = false;
+      s.vals.forEach(function (v, i) {
+        if (v == null) return;
+        if (!started) { ctx.moveTo(X(i), Y(v)); started = true; } else ctx.lineTo(X(i), Y(v));
+      });
+      ctx.strokeStyle = s.color; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = s.color;
+      s.vals.forEach(function (v, i) { if (v == null) return; ctx.beginPath(); ctx.arc(X(i), Y(v), 2.5, 0, 6.2832); ctx.fill(); });
+    });
+  }
+
+  function renderAll() {
+    var d = data;
+    draw('chartBP', [
+      { vals: d.map(function (x) { return x.sys; }), color: '#dc3545' },
+      { vals: d.map(function (x) { return x.dia; }), color: '#0d6efd' }
+    ]);
+    draw('chartGlu', [{ vals: d.map(function (x) { return x.glu; }), color: '#6f42c1' }]);
+    draw('chartWt', [{ vals: d.map(function (x) { return x.wt; }), color: '#198754' }]);
+  }
+  // Trends start collapsed; a canvas has zero width while hidden, so draw when
+  // the panel is opened (and once now in case it defaults open).
+  var box = document.getElementById('trendsBox');
+  if (box) {
+    box.addEventListener('toggle', function () { if (box.open) renderAll(); });
+    if (box.open) renderAll();
+  } else {
+    renderAll();
+  }
+  var rt;
+  window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(renderAll, 150); });
 })();
 
 /* Client-side filter for the encounter-history list. */

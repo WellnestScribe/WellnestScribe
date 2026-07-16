@@ -147,16 +147,20 @@ def _chat(messages: list[dict], *, max_tokens: int | None = None, deployment: st
 
     attempts = []
     if is_reasoning:
+        # Primary effort is configurable (SCRIBE_REASONING_EFFORT). Higher effort
+        # reduces fabrication on hard input; the empty-retry bumps one step up.
+        primary_effort = (settings.SCRIBE_REASONING_EFFORT or "minimal").lower()
+        retry_effort = {"minimal": "low", "low": "medium", "medium": "high", "high": "high"}.get(primary_effort, "low")
         attempts.append(
             {
                 "max_completion_tokens": base_budget,
-                "reasoning_effort": "minimal" if supports_reasoning_effort else None,
+                "reasoning_effort": primary_effort if supports_reasoning_effort else None,
             }
         )
         attempts.append(
             {
                 "max_completion_tokens": max(base_budget * 2, 8000),
-                "reasoning_effort": "low" if supports_reasoning_effort else None,
+                "reasoning_effort": retry_effort if supports_reasoning_effort else None,
             }
         )
     else:
@@ -214,6 +218,77 @@ def _chat(messages: list[dict], *, max_tokens: int | None = None, deployment: st
         f"Model returned no output after {len(attempts)} attempts (finish={finish}). "
         "Increase SCRIBE_MAX_COMPLETION_TOKENS or switch to a non-reasoning deployment."
     )
+
+
+# ── Diagnosis coding (separate pass) ──────────────────────────────────────────
+# The clinical note the doctor reads stays clean - no ICD codes in it. When an
+# encounter is finalized we run this small, cheap coding pass over the ASSESSMENT
+# ONLY (the conditions the doctor confirmed) to populate the structured Problem
+# List. Nothing the patient merely mentioned or denied reaches the Assessment, so
+# it is never coded. One short call per finalized encounter.
+_DIAGNOSIS_CODER_PROMPT = """You are a clinical coder. Below is the ASSESSMENT \
+section of a doctor's note: the conditions the DOCTOR confirmed for THIS patient. \
+Return ICD-10 codes for them as a JSON array and NOTHING else.
+
+Rules:
+- Code ONLY conditions the doctor asserted in the Assessment. Add nothing.
+- Never code a condition the patient merely mentioned or denied.
+- Return the SMALLEST set of DISTINCT problems, usually 1-4. GROUP related
+  symptoms under a single problem; do NOT emit a separate code for every symptom,
+  and never output the same problem twice. Prefer the doctor's actual diagnosis
+  over listing individual symptoms (e.g. one "Acute gastroenteritis", not five
+  separate symptom codes).
+- Use valid ICD-10 codes. If you are not confident of the exact code, use "?".
+- status: "chronic" for long-term conditions (e.g. hypertension, diabetes, \
+asthma), "suspected" for possible / probable / rule-out wording, else "active".
+
+Output ONLY a JSON array. Each item:
+{"diagnosis": "<short name>", "icd10": "<code or ?>", "status": "<active|chronic|suspected>"}
+
+ASSESSMENT:
+%s
+"""
+
+
+def code_diagnoses(assessment_text: str) -> list[dict]:
+    """Return [{diagnosis, icd10, status}] coded from the doctor's Assessment.
+
+    A separate, cheap model pass so ICD codes never appear in the note the doctor
+    reads. Best-effort: returns [] on any failure so the caller can fall back to
+    the deterministic keyword extractor."""
+    import json
+
+    text = (assessment_text or "").strip()
+    if not text:
+        return []
+    try:
+        raw = _chat(
+            [{"role": "user", "content": _DIAGNOSIS_CODER_PROMPT % text}],
+            max_tokens=800,
+        )
+    except Exception:
+        logger.warning("Diagnosis coding pass failed; falling back to keyword extractor.", exc_info=True)
+        return []
+    match = re.search(r"\[.*\]", raw, re.S)
+    if not match:
+        return []
+    try:
+        data = json.loads(match.group(0))
+    except (ValueError, TypeError):
+        return []
+    out: list[dict] = []
+    for item in data if isinstance(data, list) else []:
+        if not isinstance(item, dict):
+            continue
+        dx = str(item.get("diagnosis") or "").strip()
+        if not dx:
+            continue
+        out.append({
+            "diagnosis": dx,
+            "icd10": str(item.get("icd10") or "").strip().upper(),
+            "status": str(item.get("status") or "active").strip().lower(),
+        })
+    return out
 
 
 _AI_DISCLAIMER_RE = re.compile(

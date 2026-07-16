@@ -48,6 +48,22 @@ def ui_preferences(request):
         except Exception:
             pass
 
+    # P1 RBAC: authoritative Scribe capability from the org membership role, so nav
+    # and buttons match what the server enforces (nurse role -> no Scribe).
+    can_scribe = False
+    # P2 RBAC: EMR visibility by PLAN. Scribe-only clinics don't see EMR nav; admins
+    # / Wellness always do. Fail-open (show EMR) on any error - never hide records.
+    emr_visible = True
+    if user and user.is_authenticated:
+        try:
+            from emr.services.access import get_membership
+            ctx = get_membership(user)
+            can_scribe = ctx.membership.can_scribe()
+            emr_visible = ctx.organisation.has_emr or is_admin
+        except Exception:
+            can_scribe = bool(profile and profile.can_use_scribe())
+            emr_visible = True
+
     idle_lock_ms = 0
     if user and user.is_authenticated:
         idle_lock_minutes = getattr(settings, "IDLE_LOCK_MINUTES", 15)
@@ -55,6 +71,8 @@ def ui_preferences(request):
 
     return {
         "doctor_profile": profile,
+        "can_scribe": can_scribe,
+        "emr_visible": emr_visible,
         "ui_font_scale": profile.font_scale if profile else 100,
         "ui_theme": profile.theme if profile else "light",
         "ui_asset_version": _ui_asset_version(),

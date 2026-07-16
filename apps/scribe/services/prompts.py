@@ -69,6 +69,17 @@ CORE BEHAVIOR - read carefully, then apply throughout:
    - Diagnoses the doctor did not name
    - Symptoms not described by doctor or patient
    - Lab values, vitals, or dates not spoken aloud
+   - EVENTS that were not stated (a seizure, vomiting, a fall). Never add one to
+     make the story fuller or more complete.
+   - A duration/timeframe attached to a symptom the patient did NOT tie that
+     number to. "sick for 4 days" is NOT "decreased appetite for 4 days" —
+     attach a timeframe only to the exact thing it was said about.
+   - Re-labelling a FOOD as a medication or supplement. If the patient ATE
+     something (e.g. soursop fruit), it is a dietary item, not a "herbal
+     supplement", and does NOT get invented drug-interaction concerns.
+   - A plausible English word substituted for an unclear Patois word. If you
+     cannot confidently resolve a word, write [unclear] — never guess a concrete
+     word (e.g. "telemonitoring") that changes the meaning.
    This is a legal clinical record. A fabricated fact can harm or kill a patient.
 
 8. BODY PART SPECIFICITY.
@@ -282,13 +293,9 @@ Investigations: <lab results, imaging, ECG — only values the doctor stated>>
 A:
 <Assessment — number each problem or diagnosis. After each number write the
 clinical impression in the doctor's words, with status in parentheses if stated
-(controlled / uncontrolled / stable / worsening / new onset). Then append the
-ICD-10 code in parentheses, e.g. "(ICD-10 I10)". Code ONLY a condition the doctor
-actually diagnosed or confirmed — NEVER one the patient merely mentioned, denied,
-or that belongs to family history. If you are not confident of the exact code,
-write "(ICD-10 ?)" so the clinician completes it. Flag critical findings with
-[ALERT]. Do NOT add "rule out", "evaluate for", or differentials unless the doctor
-explicitly said them.>
+(controlled / uncontrolled / stable / worsening / new onset). Flag critical
+findings with [ALERT]. Do NOT add "rule out", "evaluate for", or differentials
+unless the doctor explicitly said them.>
 
 P:
 <Plan — number to match assessment. Under each number use INDENTED sub-groups:
@@ -320,7 +327,7 @@ Vitals: BP 138/86 mmHg | HR 72 bpm | RR 16.
 Examination: Not documented.
 
 A:
-1. Hypertension (uncontrolled) — target BP not achieved on current regimen. (ICD-10 I10)
+1. Hypertension (uncontrolled) — target BP not achieved on current regimen.
 
 P:
 1. Hypertension
@@ -381,12 +388,8 @@ Investigations: <lab results, imaging, ECG — only values the doctor stated>>
 
 A:
 <Assessment — number each problem. Include status in parentheses if stated.
-Then append the ICD-10 code in parentheses, e.g. "(ICD-10 I10)". Code ONLY a
-condition the doctor actually diagnosed or confirmed — NEVER one the patient
-merely mentioned, denied, or that belongs to family history. If unsure of the
-exact code, write "(ICD-10 ?)". Flag critical findings with [ALERT]. When strongly
-implied by the transcript, you may add concise provisional "rule out", "consider",
-or "possible" wording.>
+Flag critical findings with [ALERT]. When strongly implied by the transcript,
+you may add concise provisional "rule out", "consider", or "possible" wording.>
 
 P:
 <Plan — number to match assessment. Under each number group:
@@ -418,7 +421,7 @@ Vitals: BP 138/86 mmHg | HR 72 bpm | RR 16.
 Examination: Not documented.
 
 A:
-1. Hypertension (uncontrolled) — target BP not achieved; consider metabolic panel to rule out secondary causes. (ICD-10 I10)
+1. Hypertension (uncontrolled) — target BP not achieved; consider metabolic panel to rule out secondary causes.
 
 P:
 1. Hypertension

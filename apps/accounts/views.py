@@ -605,6 +605,19 @@ def billing_view(request):
         tier = request.POST.get("subscription_tier", "")
         status = request.POST.get("subscription_status", "")
         if tier in {c[0] for c in SUBSCRIPTION_TIER_CHOICES}:
+            # Decided policy: block a downgrade that would REMOVE the EMR from a
+            # clinic that already has patient records - that strips access to
+            # medical records (safety + record-keeping). Upgrades stay seamless.
+            if org.has_emr and tier not in Organisation.EMR_TIERS:
+                from emr.models import Patient
+                if Patient.objects.filter(organisation=org).exists():
+                    messages.error(
+                        request,
+                        f"{org.name} can't be downgraded off the EMR - it has patient "
+                        f"records, and removing EMR would cut access to them. Keep an EMR "
+                        f"plan, or contact WellNest to export and offboard.",
+                    )
+                    return redirect("accounts:billing")
             org.subscription_tier = tier
         if status in {c[0] for c in SUBSCRIPTION_STATUS_CHOICES}:
             org.subscription_status = status

@@ -91,6 +91,7 @@ MIDDLEWARE = [
     "wellnest.middleware.DemoLockdownMiddleware",
     "wellnest.middleware.SecurityAuditMiddleware",
     "wellnest.middleware.UsageContextMiddleware",
+    "wellnest.middleware.EmrPlanGateMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -379,6 +380,11 @@ SCRIBE_AZURE_OPENAI_DEPLOYMENT = config(
 SCRIBE_AZURE_OPENAI_API_VERSION = config(
     "SCRIBE_AZURE_OPENAI_API_VERSION", default="2024-12-01-preview"
 )
+# Reasoning effort for note generation (reasoning models like gpt-5-mini only).
+# minimal | low | medium | high. Higher = the model deliberates and cross-checks
+# the transcript, which cuts fabrication on hard input (Patois) - at a small extra
+# output-token cost. 'minimal' is fastest/cheapest but hallucinates most.
+SCRIBE_REASONING_EFFORT = config("SCRIBE_REASONING_EFFORT", default="minimal")
 # Opt 1: tell GPT-5 to skip writing Steps 1 & 3 in visible output (it reasons
 # internally). Saves ~500-1 000 output tokens ≈ 5-8 s on the interpret call.
 SCRIBE_SLIM_INTERPRET = config("SCRIBE_SLIM_INTERPRET", default=True, cast=bool)

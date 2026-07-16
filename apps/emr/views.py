@@ -554,10 +554,28 @@ def patient_detail_view(request, pk):
         patient.encounters.select_related("provider", "scribe_session")
         .order_by("-encounter_date", "-created_at")[:50]
     )
-    upcoming_appointments = patient.appointments.filter(status__in=["scheduled", "checked_in", "triage", "with_doctor"]).order_by("scheduled_for")[:6]
+    # Only genuinely upcoming visits - a past-dated "scheduled" appointment is not
+    # "upcoming" (it was missed or never tagged), so exclude past dates.
+    upcoming_appointments = patient.appointments.filter(
+        status__in=["scheduled", "checked_in", "triage", "with_doctor"],
+        scheduled_for__date__gte=timezone.localdate(),
+    ).order_by("scheduled_for")[:6]
     active_medications = active_medications_for_patient(patient)[:8]
     problem_list = active_problem_list_for_patient(patient)[:8]
     last_vitals = patient.vitals.order_by("-recorded_at").first()
+    # Vitals history for the trend charts (BP / glucose / weight over time).
+    # Last 30 readings, chronological. Data is already captured - just charted.
+    _vit_history = list(patient.vitals.order_by("recorded_at"))[-30:]
+    vitals_trend = [
+        {
+            "d": v.recorded_at.strftime("%b %d"),
+            "sys": v.bp_systolic,
+            "dia": v.bp_diastolic,
+            "glu": float(v.blood_glucose_mmol) if v.blood_glucose_mmol is not None else None,
+            "wt": float(v.weight_kg) if v.weight_kg is not None else None,
+        }
+        for v in _vit_history
+    ]
     recent_scribe_sessions = _scribe_queryset_for_user(request.user)[:6]
     # Feature 1: this patient's own scribe visits (sessions linked via FK).
     # prefetch the reverse link to EMR encounters so each visit can show which
@@ -579,6 +597,7 @@ def patient_detail_view(request, pk):
             "active_medications": active_medications,
             "problem_list": problem_list,
             "last_vitals": last_vitals,
+            "vitals_trend": vitals_trend,
             "allergy_form": allergy_form,
             "recent_scribe_sessions": recent_scribe_sessions,
             "patient_visits": patient_visits,

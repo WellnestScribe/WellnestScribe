@@ -56,3 +56,8 @@
 - 🔴 Lead with **Patois / Jamaican-English accuracy** + local compliance/residency (the defensible edge).
 - 🟡 **Paid pilot** to validate willingness-to-pay (signed card > verbal yes). The in-app pilot survey feeds this.
 - 🟡 Bottom-up via private practices + referral loop; compliance-certify early to unlock institutions.
+
+## Engineering / testing (do properly at some point)
+- 🔴 **Automated test suite + CI.** Django's `manage.py test` already runs the existing tests. Grow deterministic coverage of the safety-critical logic (diagnosis guards, RBAC `can_scribe`/`has_emr`, note-credit math, extraction) so a regression is caught before deploy. Add a **GitHub Actions job** that runs `manage.py test` on every push and blocks deploy if red (current workflow only deploys).
+- 🟡 **Test-settings for SQLite** so `manage.py test` never needs CREATE-DATABASE perms on Aiven (fast, isolated). A `TESTING`/`--settings` flag pointing DATABASES at in-memory SQLite.
+- 🟢 Later: a few Playwright end-to-end smoke tests for the critical flows (record → review → finalize; nurse blocked from scribe).

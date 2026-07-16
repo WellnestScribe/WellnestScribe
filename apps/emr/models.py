@@ -93,6 +93,18 @@ class Organisation(TimestampedModel):
         suspended/cancelled - EMR record access is NEVER gated on billing."""
         return self.subscription_status not in {"suspended", "cancelled"}
 
+    # Plans that include the EMR (charts, encounters, appointments, register).
+    # "scribe" is Scribe-only and does NOT include the EMR. See
+    # docs/roles_subscriptions_and_access.md.
+    EMR_TIERS = {"trial", "practice", "emr"}
+
+    @property
+    def has_emr(self) -> bool:
+        """Does this facility's plan include the EMR? Scribe-only clinics ('scribe'
+        tier) do not - their EMR nav/views are hidden. Note: this gates by PLAN
+        entitlement, which is different from scribe_enabled (billing suspension)."""
+        return self.subscription_tier in self.EMR_TIERS
+
 
 class OrganisationMembership(TimestampedModel):
     organisation = models.ForeignKey(
@@ -157,6 +169,14 @@ class OrganisationMembership(TimestampedModel):
 
     def can_sign_encounters(self) -> bool:
         return self._django_privileged or self.role in {"doctor", "system_admin"}
+
+    def can_scribe(self) -> bool:
+        """Record a visit + generate AI notes. Clinical/scribe roles only -
+        nurses, receptionists and ancillary roles do NOT record sessions.
+        This is the authoritative role gate for Scribe (plan availability is
+        checked separately via organisation.scribe_enabled). See
+        docs/roles_subscriptions_and_access.md."""
+        return self._django_privileged or self.role in {"doctor", "scribe", "admin", "system_admin"}
 
 
 class Patient(OrganisationScopedModel):

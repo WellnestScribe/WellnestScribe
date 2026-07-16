@@ -64,6 +64,7 @@ urlpatterns = [
     ),
     path("triage/", views.TriageView.as_view(), name="triage"),
     path("drug-check/", views.DrugCheckView.as_view(), name="drug_check"),
+    path("screening/", views.screening_view, name="screening"),
     path("api/drug-check/", views.drug_check_api, name="api_drug_check"),
     path("api/drug-search/", views.drug_search_api, name="api_drug_search"),
     path("api/herb-search/", views.herb_search_api, name="api_herb_search"),

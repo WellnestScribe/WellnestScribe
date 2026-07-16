@@ -14,6 +14,8 @@ Sections are collapsible - state saved in localStorage.
 {% url 'ed:visit_list' as ed_list_url %}
 {% url 'ed:shifts' as ed_shifts_url %}
 
+{# EMR sections (ED + Front Desk) require an EMR plan; hidden for Scribe-only clinics. #}
+{% if emr_visible %}
 {# ── ED Section ── #}
 <li class="menu-title nav-section-toggle" data-section="nav-ed" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;">
   <span>Emergency Department</span>
@@ -78,6 +80,7 @@ Sections are collapsible - state saved in localStorage.
     </a>
 </li>
 </div>
+{% endif %}{# emr_visible #}
 
 {# ── Workspace Section ── #}
 <li class="menu-title nav-section-toggle" data-section="nav-workspace" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;">
@@ -85,6 +88,7 @@ Sections are collapsible - state saved in localStorage.
   <iconify-icon icon="iconamoon:arrow-up-2-duotone" id="nav-workspace-chevron" style="font-size:0.8rem;transition:transform 0.2s;"></iconify-icon>
 </li>
 <div id="nav-workspace">
+{% if can_scribe %}
 <li class="nav-item">
     <a class="nav-link {% if request.path == record_url %}active{% endif %}" href="{{ record_url }}">
         <span class="nav-icon"><iconify-icon icon="iconamoon:microphone-duotone"></iconify-icon></span>
@@ -97,11 +101,19 @@ Sections are collapsible - state saved in localStorage.
         <span class="nav-text">Sessions</span>
     </a>
 </li>
+{% endif %}
 {% url 'scribe:drug_check' as drug_check_url %}
 <li class="nav-item">
     <a class="nav-link {% if request.path == drug_check_url %}active{% endif %}" href="{{ drug_check_url }}">
         <span class="nav-icon"><iconify-icon icon="mdi:pill"></iconify-icon></span>
         <span class="nav-text">Drug check</span>
+    </a>
+</li>
+{% url 'scribe:screening' as screening_url %}
+<li class="nav-item">
+    <a class="nav-link {% if request.path == screening_url %}active{% endif %}" href="{{ screening_url }}">
+        <span class="nav-icon"><iconify-icon icon="mdi:head-cog-outline"></iconify-icon></span>
+        <span class="nav-text">Screening</span>
     </a>
 </li>
 

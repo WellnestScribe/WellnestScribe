@@ -203,6 +203,15 @@ class RecordView(LoginRequiredMixin, View):
 
     def get(self, request):
         profile = _get_profile(request.user)
+        # P1 RBAC: only clinical/scribe roles may record. A nurse/receptionist
+        # role cannot reach this page even by typing the URL - the hidden button
+        # is not the enforcement. See docs/roles_subscriptions_and_access.md.
+        try:
+            from emr.services.access import get_membership
+            if not get_membership(request.user).membership.can_scribe():
+                return redirect("/?denied=scribe")
+        except Exception:  # noqa: BLE001
+            pass
         recent = (
             ScribeSession.objects.filter(doctor=request.user)
             .order_by("-created_at")[:6]
@@ -237,6 +246,14 @@ class RecordView(LoginRequiredMixin, View):
                 "stream_generation": dj_settings.SCRIBE_STREAM_GENERATION,
             },
         )
+
+
+@login_required
+def screening_view(request):
+    """Standalone PHQ-9 / GAD-7 mental-health screening tool. Deterministic
+    scoring in the browser (no AI); the clinician copies the result into the note
+    or prints it. Surfaces crisis resources when self-harm risk is indicated."""
+    return render(request, "scribe/screening.html")
 
 
 def _group_unlinked_sessions(sessions):
@@ -1435,6 +1452,18 @@ def create_session_api(request):
     limited = _demo_limit_block(request)
     if limited is not None:
         return limited
+    # P1 RBAC: enforce the scribe role gate on the actual recording entry point,
+    # not just the UI. A nurse/receptionist role is rejected here even if they
+    # reach the API directly.
+    try:
+        from emr.services.access import get_membership
+        if not get_membership(request.user).membership.can_scribe():
+            return JsonResponse(
+                {"ok": False, "error": "Your role does not have access to session recording."},
+                status=403,
+            )
+    except Exception:  # noqa: BLE001
+        pass
     profile = _get_profile(request.user)
     audio = request.FILES.get("audio")
     note_format = request.POST.get("note_format", profile.default_note_style)

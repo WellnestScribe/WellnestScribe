@@ -313,3 +313,36 @@ class DemoLockdownMiddleware:
         return render(
             request, "accounts/demo_locked.html", {"message": message}, status=403
         )
+
+
+class EmrPlanGateMiddleware:
+    """P2 RBAC: block EMR/ED URLs for clinics whose plan does not include the EMR
+    (Scribe-only tier). The nav hides these already; this is the URL backstop so a
+    hidden link can't be reached by typing the address.
+
+    Fails OPEN on any error - EMR and patient records must never be blocked by a
+    bug. Django staff/superusers and platform admins bypass (Wellness manages all
+    clinics and needs EMR everywhere). See docs/roles_subscriptions_and_access.md.
+    """
+
+    _GATED_PREFIXES = ("/emr/", "/ed/")
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        path = request.path or ""
+        if path.startswith(self._GATED_PREFIXES):
+            user = getattr(request, "user", None)
+            if user is not None and user.is_authenticated and not (user.is_staff or user.is_superuser):
+                try:
+                    from accounts.models import DoctorProfile
+                    prof = DoctorProfile.objects.filter(user=user).first()
+                    if not (prof and prof.is_admin):
+                        from emr.services.access import membership_for_request
+                        if not membership_for_request(request).organisation.has_emr:
+                            from django.shortcuts import redirect
+                            return redirect("/scribe/record/?denied=emr")
+                except Exception:  # noqa: BLE001 - fail open, never block records
+                    pass
+        return self.get_response(request)

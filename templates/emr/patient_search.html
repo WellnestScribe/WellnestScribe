@@ -80,7 +80,7 @@
                                 </div>
                                 <div class="d-flex gap-2 flex-wrap mt-3">
                                     <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary btn-sm">Open chart</a>
-                                    {% if not scribe_session_id and doctor_profile.can_use_scribe %}
+                                    {% if not scribe_session_id and can_scribe %}
                                         <a href="{% url 'scribe:record' %}?patient={{ patient.pk }}" class="btn btn-primary btn-sm">
                                             <iconify-icon icon="iconamoon:microphone-duotone" class="me-1"></iconify-icon>Record visit
                                         </a>
@@ -125,7 +125,7 @@
                                             <a href="{% url 'emr:patient_detail' patient.pk %}" class="btn btn-outline-secondary btn-sm">Chart</a>
                                             {% if scribe_session_id %}
                                                 <a href="{% url 'emr:encounter_create' patient.pk %}?scribe={{ scribe_session_id }}" class="btn btn-outline-secondary btn-sm">Import</a>
-                                            {% elif doctor_profile.can_use_scribe %}
+                                            {% elif can_scribe %}
                                                 <a href="{% url 'scribe:record' %}?patient={{ patient.pk }}" class="btn btn-primary btn-sm">Record</a>
                                             {% endif %}
                                         </td>

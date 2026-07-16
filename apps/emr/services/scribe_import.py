@@ -170,8 +170,13 @@ def build_scribe_import_bundle(
     session: ScribeSession,
     *,
     encounter_date: date | None = None,
+    ai_coding: bool = False,
 ) -> ScribeImportBundle:
-    """Build structured EMR defaults from a scribe session and its note."""
+    """Build structured EMR defaults from a scribe session and its note.
+
+    ai_coding=True runs the separate ICD coding pass (one model call). It is set
+    only at finalize (materialize_encounter_from_session); the editor preview
+    leaves it False so opening the page never triggers a model call."""
 
     note = getattr(session, "note", None)
     encounter_date = encounter_date or timezone.localdate()
@@ -207,10 +212,11 @@ def build_scribe_import_bundle(
     )
     if not diagnosis_source and note:
         diagnosis_source = note.edited_note or note.full_note or ""
-    # Primary path: use the ICD-10 codes the model attached to the doctor's
-    # Assessment (context-aware, respects doctor-vs-patient). Fall back to the
-    # deterministic keyword extractor only for older notes with no ICD tags.
-    ai_coded = _parse_ai_coded_diagnoses(diagnosis_source, bundle)
+    # Primary path (finalize only): a separate model pass codes the Problem List
+    # from the doctor's Assessment - context-aware, respects doctor-vs-patient,
+    # and keeps ICD codes out of the note itself. Falls back to the deterministic
+    # keyword extractor if coding is off (preview) or returns nothing.
+    ai_coded = _ai_code_problem_list(_assessment_text(note), bundle) if ai_coding else []
     if ai_coded:
         bundle.diagnosis_initial = ai_coded
     else:
@@ -252,21 +258,41 @@ def materialize_encounter_from_session(session, user):
         return None
 
     today = _tz.localdate()
-    enc = (
-        Encounter.objects.filter(patient=patient, organisation=org, encounter_date=today)
-        .exclude(encounter_status="signed")
-        .order_by("-created_at")
-        .first()
-    )
-    if enc is not None and enc.scribe_session_id and enc.scribe_session_id != session.pk:
-        return enc  # a different note already owns this encounter — leave it
 
-    bundle = build_scribe_import_bundle(session, encounter_date=today)
+    # Idempotency: if this session already produced an encounter, reuse it and do
+    # NOT build/create another. Fixes duplicate encounters that appeared when the
+    # doctor clicked "mark reviewed" several times or retried after an error.
+    existing = Encounter.objects.filter(scribe_session=session).order_by("created_at").first()
+    if existing is not None:
+        return existing
+
+    bundle = build_scribe_import_bundle(session, encounter_date=today, ai_coding=True)
     ei = bundle.encounter_initial
 
-    if enc is None:
-        enc = Encounter(organisation=org, patient=patient, encounter_date=today, created_by=user)
-    enc.scribe_session = session
+    from django.db import transaction
+
+    # Claim (or create) exactly one encounter for this session under a row lock so
+    # concurrent finalizes serialize instead of racing to create duplicates.
+    with transaction.atomic():
+        ScribeSession.objects.select_for_update().filter(pk=session.pk).first()
+        enc = Encounter.objects.filter(scribe_session=session).order_by("created_at").first()
+        if enc is None:
+            enc = (
+                Encounter.objects.filter(
+                    patient=patient, organisation=org, encounter_date=today,
+                    scribe_session__isnull=True,
+                )
+                .exclude(encounter_status="signed")
+                .order_by("-created_at")
+                .first()
+            )
+        if enc is None:
+            enc = Encounter(organisation=org, patient=patient, encounter_date=today, created_by=user)
+        enc.scribe_session = session
+        if enc.pk is None:
+            enc.save()
+        else:
+            Encounter.objects.filter(pk=enc.pk).update(scribe_session=session)
     if enc.provider_id is None:
         enc.provider = user
     for f in (
@@ -676,46 +702,57 @@ def _shorten(text: str, limit: int = 90) -> str:
     return clean if len(clean) <= limit else clean[: limit - 1].rstrip() + "…"
 
 
-# ── AI-coded diagnoses (primary path) ─────────────────────────────────────────
-# The note generator tags each Assessment line the DOCTOR confirmed with its
-# ICD-10 code, e.g. "1. Hypertension (uncontrolled) (ICD-10 I10)". The model -
-# unlike a keyword regex - understands that a condition the patient merely
-# mentioned or denied does NOT belong in the Assessment, so it never codes it.
-# The doctor's Assessment is the ground truth. We parse those codes here; the
-# keyword extractor is only a fallback for notes with no ICD tags.
-_ICD10_TAG_RE = re.compile(r"\(\s*ICD-?10[:\s]+([A-Za-z0-9.\?]+)\s*\)", re.IGNORECASE)
+# ── AI-coded diagnoses (separate coding pass) ─────────────────────────────────
+# ICD codes are NOT shown in the clinical note (the doctor does not want to read
+# them). Instead, at finalize we run a small separate model pass over the
+# doctor's ASSESSMENT only - the conditions the doctor confirmed - and use that
+# to code the structured Problem List. The model understands that a condition the
+# patient merely mentioned or denied never belongs in the Assessment, so it is
+# never coded. Falls back to the deterministic keyword extractor on any failure.
 _ICD10_VALID_RE = re.compile(r"^[A-TV-Z][0-9][0-9AB](\.[0-9A-Za-z]{1,4})?$")
 
 
-def _status_from_line(desc: str) -> str:
-    low = desc.lower()
-    if _has_cue(low, SUSPECTED_CUES):
-        return "suspected"
-    if _has_cue(low, ["chronic", "known", "longstanding", "ongoing"]):
-        return "chronic"
-    return "active"
+def _assessment_text(note) -> str:
+    """The doctor's Assessment - the coding source. Prefer the structured field;
+    otherwise pull the A:/Assessment section out of the full note text."""
+    if note is None:
+        return ""
+    if (getattr(note, "assessment", "") or "").strip():
+        return note.assessment
+    text = (getattr(note, "edited_note", "") or getattr(note, "full_note", "") or "")
+    m = re.search(r"(?:^|\n)\s*(?:A:|Assessment:?)\s*(.+?)(?=\n\s*(?:P:|Plan:)|\Z)", text, re.S | re.I)
+    return m.group(1).strip() if m else ""
 
 
-def _parse_ai_coded_diagnoses(text: str, bundle: ScribeImportBundle) -> list[dict]:
-    """Build the Problem List from the ICD-10 tags the model attached to the
-    doctor's Assessment. Returns [] when the note carries no tags (older notes),
-    so the caller can fall back to the deterministic keyword extractor."""
-    if not text:
+def _ai_code_problem_list(assessment_text: str, bundle: ScribeImportBundle) -> list[dict]:
+    """Code the Problem List via a separate model pass over the Assessment.
+    Returns [] on empty input or any failure so the caller falls back to the
+    deterministic keyword extractor. Codes are format-validated; an unsure code
+    is kept without a code and flagged for the clinician."""
+    if not (assessment_text or "").strip():
         return []
+    from scribe.services.soap_generator import code_diagnoses
+
+    try:
+        coded = code_diagnoses(assessment_text)
+    except Exception:
+        return []
+
     results: list[dict] = []
     seen_codes: set[str] = set()
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        m = _ICD10_TAG_RE.search(line)
-        if not m:
+    seen_desc: set[str] = set()
+    for item in coded:
+        if len(results) >= 8:  # hard cap so the Problem List can't run away
+            break
+        dx = (item.get("diagnosis") or "").strip()
+        if not dx:
             continue
-        code = m.group(1).strip().upper().rstrip(".")
-        desc = _ICD10_TAG_RE.sub("", line).strip()
-        desc = re.sub(r"^\d+[.)]\s*", "", desc)              # strip leading "1. "
-        desc = re.split(r"\s+[—–-]\s+", desc)[0].strip(" -–—.")  # concise name, drop explanation
-        if not desc:
+        desc_key = re.sub(r"\s+", " ", dx.lower()).strip()
+        if desc_key in seen_desc:
             continue
-        valid = code != "?" and bool(_ICD10_VALID_RE.match(code))
+        seen_desc.add(desc_key)
+        code = (item.get("icd10") or "").strip().upper().rstrip(".")
+        valid = code and code != "?" and bool(_ICD10_VALID_RE.match(code))
         code = code if valid else ""
         if code and code in seen_codes:
             continue
@@ -723,13 +760,16 @@ def _parse_ai_coded_diagnoses(text: str, bundle: ScribeImportBundle) -> list[dic
             seen_codes.add(code)
         if not valid:
             bundle.add_flag(
-                f"'{_shorten(desc)}' was diagnosed but its ICD-10 code needs to be entered by the clinician."
+                f"'{_shorten(dx)}' was diagnosed but its ICD-10 code needs to be entered by the clinician."
             )
+        status = (item.get("status") or "active").strip().lower()
+        if status not in {"active", "chronic", "suspected", "resolved"}:
+            status = "active"
         results.append({
             "icd10_code": code,
-            "icd10_description": ICD10_LABELS.get(code) or desc,
-            "status": _status_from_line(desc),
-            "notes": line,  # provenance: the exact Assessment line
+            "icd10_description": ICD10_LABELS.get(code) or dx,
+            "status": status,
+            "notes": dx,  # provenance: the doctor's confirmed diagnosis
         })
     for rank, item in enumerate(results, start=1):
         item["diagnosis_rank"] = rank

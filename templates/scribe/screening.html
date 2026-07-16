@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Mental health screening · WellNest{% endblock %}
+
+{% block content %}
+<div class="wn-shell" style="max-width: 900px; margin: 0 auto;">
+  <div class="page-title-box">
+    <h4 class="mb-1 fw-semibold">Mental health screening</h4>
+    <p class="text-muted small mb-0">
+      PHQ-9 (depression) &amp; GAD-7 (anxiety). Validated, scored instantly, no AI.
+      Copy the result into the note or print it. Not a diagnosis - a clinician interprets it.
+    </p>
+  </div>
+
+  {# Crisis banner - revealed when the self-harm item (PHQ-9 Q9) is > 0 #}
+  <div id="crisisBanner" class="alert alert-danger d-none" role="alert">
+    <strong>Safety flag:</strong> the patient endorsed thoughts of self-harm.
+    Assess suicide risk now. If in immediate danger, call <strong>119</strong> or go to the
+    nearest emergency department. Jamaica Mental Health &amp; Suicide Prevention Helpline:
+    <strong>888-NEW-LIFE (888-639-5433)</strong>. <span class="small">(Confirm current local numbers.)</span>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body p-4">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <h5 class="fw-semibold mb-0">PHQ-9 · Depression</h5>
+        <div class="fw-semibold">Score: <span id="phqScore">0</span>/27 · <span id="phqSeverity" class="badge bg-secondary-subtle text-secondary">Minimal</span></div>
+      </div>
+      <p class="text-muted small">Over the last 2 weeks, how often has the patient been bothered by…</p>
+      <div id="phqQuestions"></div>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body p-4">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <h5 class="fw-semibold mb-0">GAD-7 · Anxiety</h5>
+        <div class="fw-semibold">Score: <span id="gadScore">0</span>/21 · <span id="gadSeverity" class="badge bg-secondary-subtle text-secondary">Minimal</span></div>
+      </div>
+      <p class="text-muted small">Over the last 2 weeks, how often has the patient been bothered by…</p>
+      <div id="gadQuestions"></div>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body p-4">
+      <h5 class="fw-semibold mb-2">Result for the note</h5>
+      <textarea id="resultBox" class="form-control" rows="4" readonly></textarea>
+      <div class="d-flex gap-2 mt-3 flex-wrap">
+        <button class="btn btn-primary btn-sm" id="copyBtn" type="button">Copy to note</button>
+        <button class="btn btn-outline-secondary btn-sm" onclick="window.print()" type="button">Print</button>
+        <button class="btn btn-outline-secondary btn-sm" id="resetBtn" type="button">Reset</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var OPTS = [["Not at all", 0], ["Several days", 1], ["More than half the days", 2], ["Nearly every day", 3]];
+  var PHQ = [
+    "Little interest or pleasure in doing things",
+    "Feeling down, depressed, or hopeless",
+    "Trouble falling/staying asleep, or sleeping too much",
+    "Feeling tired or having little energy",
+    "Poor appetite or overeating",
+    "Feeling bad about yourself, or that you are a failure or have let yourself/family down",
+    "Trouble concentrating (reading, watching TV, etc.)",
+    "Moving/speaking slowly, or being fidgety/restless, that others could notice",
+    "Thoughts that you would be better off dead, or of hurting yourself"
+  ];
+  var GAD = [
+    "Feeling nervous, anxious, or on edge",
+    "Not being able to stop or control worrying",
+    "Worrying too much about different things",
+    "Trouble relaxing",
+    "Being so restless that it is hard to sit still",
+    "Becoming easily annoyed or irritable",
+    "Feeling afraid, as if something awful might happen"
+  ];
+
+  function build(containerId, prefix, items) {
+    var c = document.getElementById(containerId);
+    items.forEach(function (q, i) {
+      var row = document.createElement("div");
+      row.className = "py-2 border-bottom";
+      var opts = OPTS.map(function (o) {
+        var id = prefix + i + "_" + o[1];
+        return '<label class="me-3 small text-nowrap"><input type="radio" name="' + prefix + i +
+               '" value="' + o[1] + '" class="me-1">' + o[0] + '</label>';
+      }).join("");
+      row.innerHTML = '<div class="small fw-semibold mb-1">' + (i + 1) + '. ' + q + '</div>' +
+                      '<div class="d-flex flex-wrap">' + opts + '</div>';
+      c.appendChild(row);
+    });
+  }
+
+  function sevPHQ(s) {
+    if (s >= 20) return ["Severe", "danger"];
+    if (s >= 15) return ["Moderately severe", "danger"];
+    if (s >= 10) return ["Moderate", "warning"];
+    if (s >= 5) return ["Mild", "info"];
+    return ["Minimal", "secondary"];
+  }
+  function sevGAD(s) {
+    if (s >= 15) return ["Severe", "danger"];
+    if (s >= 10) return ["Moderate", "warning"];
+    if (s >= 5) return ["Mild", "info"];
+    return ["Minimal", "secondary"];
+  }
+
+  function sum(prefix, n) {
+    var total = 0, answered = 0;
+    for (var i = 0; i < n; i++) {
+      var el = document.querySelector('input[name="' + prefix + i + '"]:checked');
+      if (el) { total += parseInt(el.value, 10); answered++; }
+    }
+    return { total: total, answered: answered };
+  }
+
+  function recompute() {
+    var phq = sum("phq", 9), gad = sum("gad", 7);
+    var ps = sevPHQ(phq.total), gs = sevGAD(gad.total);
+    document.getElementById("phqScore").textContent = phq.total;
+    document.getElementById("gadScore").textContent = gad.total;
+    var pe = document.getElementById("phqSeverity"); pe.textContent = ps[0]; pe.className = "badge bg-" + ps[1] + "-subtle text-" + ps[1];
+    var ge = document.getElementById("gadSeverity"); ge.textContent = gs[0]; ge.className = "badge bg-" + gs[1] + "-subtle text-" + gs[1];
+
+    var q9 = document.querySelector('input[name="phq8"]:checked'); // 0-indexed -> item 9
+    document.getElementById("crisisBanner").classList.toggle("d-none", !(q9 && parseInt(q9.value, 10) > 0));
+
+    var lines = [
+      "PHQ-9 (depression): " + phq.total + "/27 - " + ps[0] + (phq.answered < 9 ? " [incomplete]" : ""),
+      "GAD-7 (anxiety): " + gad.total + "/21 - " + gs[0] + (gad.answered < 7 ? " [incomplete]" : "")
+    ];
+    if (q9 && parseInt(q9.value, 10) > 0) lines.push("SELF-HARM ITEM POSITIVE - suicide risk assessed.");
+    document.getElementById("resultBox").value = lines.join("\n");
+  }
+
+  build("phqQuestions", "phq", PHQ);
+  build("gadQuestions", "gad", GAD);
+  document.addEventListener("change", function (e) {
+    if (e.target && e.target.type === "radio") recompute();
+  });
+  document.getElementById("copyBtn").addEventListener("click", function () {
+    var t = document.getElementById("resultBox");
+    t.select();
+    try { document.execCommand("copy"); this.textContent = "Copied"; var b = this; setTimeout(function () { b.textContent = "Copy to note"; }, 1500); } catch (e) {}
+  });
+  document.getElementById("resetBtn").addEventListener("click", function () {
+    document.querySelectorAll('input[type="radio"]').forEach(function (r) { r.checked = false; });
+    recompute();
+  });
+  recompute();
+})();
+</script>
+{% endblock %}
