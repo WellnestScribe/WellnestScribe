@@ -109,13 +109,6 @@ Sections are collapsible - state saved in localStorage.
         <span class="nav-text">Drug check</span>
     </a>
 </li>
-{% url 'scribe:screening' as screening_url %}
-<li class="nav-item">
-    <a class="nav-link {% if request.path == screening_url %}active{% endif %}" href="{{ screening_url }}">
-        <span class="nav-icon"><iconify-icon icon="mdi:head-cog-outline"></iconify-icon></span>
-        <span class="nav-text">Screening</span>
-    </a>
-</li>
 
 {% if triage_visible %}
 {% url 'scribe:triage' as triage_url %}

@@ -634,9 +634,10 @@
                             <iconify-icon icon="iconamoon:copy-duotone" class="me-1 align-middle"></iconify-icon>
                             Copy note
                         </button>
-                        <button type="button" class="btn btn-success" id="finalizeBtn">
-                            <iconify-icon icon="iconamoon:check-circle-1-duotone" class="me-1 align-middle"></iconify-icon>
-                            Mark reviewed
+                        <button type="button" class="btn btn-success" id="finalizeBtn"
+                                title="Review complete - finalise this note and push it into the patient's EMR encounter.">
+                            <iconify-icon icon="iconamoon:arrow-up-2-duotone" class="me-1 align-middle"></iconify-icon>
+                            Push to EMR
                         </button>
                     </div>
 
@@ -703,6 +704,10 @@
                             <a href="{% url 'emr:scribe_intake' session.pk %}" class="btn btn-outline-secondary btn-sm" title="Add this patient to the EMR">
                                 <iconify-icon icon="iconamoon:files-duotone" class="me-1 align-middle"></iconify-icon>
                                 Add to EMR
+                            </a>
+                            <a href="{% url 'scribe:screening' %}" target="_blank" class="btn btn-outline-secondary btn-sm" title="PHQ-9 / GAD-7 mental-health screening - opens in a new tab.">
+                                <iconify-icon icon="mdi:head-cog-outline" class="me-1 align-middle"></iconify-icon>
+                                Mental health screening
                             </a>
                             <button type="button" class="btn btn-outline-secondary btn-sm" id="qrBtn"
                                     data-bs-toggle="modal" data-bs-target="#shareModal" title="Transfer to another screen via QR">
