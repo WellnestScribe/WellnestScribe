@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from accounts.models import DoctorProfile
-from emr.models import AuditLog, OrganisationMembership, Patient
+from emr.models import Appointment, AuditLog, Encounter, OrganisationMembership, Patient
 from emr.services.scribe_import import build_scribe_import_bundle
 from scribe.models import SOAPNote, ScribeSession
 
@@ -200,3 +200,31 @@ class EMRSmokeTests(TestCase):
             "Metformin",
         )
         self.assertContains(response, "Auto-detected from the scribe transcript")
+
+    def test_intake_view_creates_encounter_even_when_voided_reason_schema_exists(self):
+        self.client.get(reverse("emr:dashboard"))
+        membership = self.user.organisation_memberships.get(is_default=True)
+        patient = Patient.objects.create(
+            organisation=membership.organisation,
+            legal_first_name="Asha",
+            legal_last_name="Cole",
+            date_of_birth="1992-08-14",
+            sex="female",
+            created_by=self.user,
+            updated_by=self.user,
+        )
+
+        response = self.client.post(
+            reverse("emr:intake", args=[patient.pk]),
+            {
+                "chief_complaint": "tete",
+                "encounter_type": "acute",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        appointment = Appointment.objects.get(patient=patient)
+        encounter = Encounter.objects.get(patient=patient, appointment=appointment)
+        self.assertEqual(encounter.chief_complaint, "tete")
+        self.assertEqual(encounter.voided_reason, "")
+

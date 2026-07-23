@@ -393,6 +393,10 @@ class Encounter(OrganisationScopedModel):
     sick_leave_end = models.DateField(null=True, blank=True)
     sick_leave_diagnosis = models.CharField(max_length=200, blank=True)
     herbal_remedies = models.TextField(blank=True)
+    # Older production MySQL schemas may already carry this column from a prior
+    # soft-void design. Keep it optional with a harmless default so encounter
+    # inserts stay compatible across drifted environments.
+    voided_reason = models.TextField(blank=True, default="")
     encounter_status = models.CharField(
         max_length=20,
         choices=ENCOUNTER_STATUS_CHOICES,
